@@ -374,7 +374,7 @@ onMounted(() => {
     <el-card class="section-card" shadow="never">
       <div class="search-row">
         <el-button type="primary" @click="onQuery">{{ t('common.search') }}</el-button>
-        <el-button type="success" plain @click="openAddDialog">{{ t('tradingMarket.dialogCreate') }}</el-button>
+        <el-button type="primary" @click="openAddDialog">{{ t('tradingMarket.dialogCreate') }}</el-button>
       </div>
     </el-card>
 

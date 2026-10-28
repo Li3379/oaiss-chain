@@ -595,8 +595,8 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .executive-briefing-card {
-  border: 1px solid rgba(20, 167, 154, 0.24);
-  background: linear-gradient(135deg, rgba(20, 167, 154, 0.05) 0%, var(--color-surface) 100%);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
   padding: 6px 10px;
 }
 
@@ -700,7 +700,8 @@ onBeforeUnmount(() => {
 }
 
 .overview-card {
-  background: linear-gradient(130deg, rgba(20, 167, 154, 0.12), rgba(69, 190, 117, 0.1));
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
 }
 
 .metric-label {

@@ -294,3 +294,19 @@ docs/软件技术专业2026届毕业设计文档模版/
 
 # Serena IDE/MCP 工具本地配置
 .serena/
+
+# ----- AC2 verification scratch (captcha images, session tokens) -----
+/c[0-9]*.json
+/c[0-9]*.png
+/c[0-9]*_x5.png
+/captcha*.json
+/captcha*.png
+/cap-new*.json
+/state1.json
+/token.json
+/tok-*.json
+/cn.png
+/cn_x5.png
+oaiss-chain-frontend/.token.tmp
+oaiss-chain-frontend/.tokens.json
+/captcha3.png

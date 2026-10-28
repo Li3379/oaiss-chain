@@ -516,7 +516,7 @@ onMounted(() => {
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="onQuery">{{ t('common.search') }}</el-button>
-          <el-button type="success" plain @click="openAddDialog">{{ t('common.create') }}</el-button>
+          <el-button type="primary" @click="openAddDialog">{{ t('common.create') }}</el-button>
         </el-form-item>
       </el-form>
     </el-card>

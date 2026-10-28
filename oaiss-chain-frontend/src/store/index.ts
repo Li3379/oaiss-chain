@@ -67,7 +67,8 @@ function resolveInitialState(): UserState {
 
 export const useAppStore = defineStore('app', {
   state: () => ({
-    sidebarCollapsed: false,
+    // pen 壳层默认呈现 72px 图标栏；展开为 260px 抽屉由用户主动切换
+    sidebarCollapsed: true,
     systemTitle: 'layout.title',
     ...resolveInitialState(),
   }),

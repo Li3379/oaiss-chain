@@ -27,7 +27,7 @@ const OLD_TOKENS = [
 // Login 左侧是深底品牌面板（配 hero 照片），文字色不随浅色主题；
 // CompanyDashboard 的图表渐变写在 <script> 里，CSS 变量无法替代。
 const ALLOW_HEX = ['views/Login.vue'];
-const ALLOW_GRADIENT = ['views/enterprise/CompanyDashboard.vue'];
+
 
 const files = globSync('src/**/*.{vue,css}', { cwd: process.cwd() });
 const violations = [];
@@ -68,7 +68,8 @@ for (const f of files) {
     while ((m = hexRe.exec(clean))) violations.push({ f, rule: 'bare-hex', detail: m[0] });
   }
 
-  if (!ALLOW_GRADIENT.some((a) => nf.includes(a))) {
+  // 渐变：只检查 style 块；<script> 内的 ECharts 渐变无法用 CSS 变量表达，按设计豁免
+  {
     const gradRe = /(linear|radial|conic)-gradient/g;
     let m;
     while ((m = gradRe.exec(clean))) violations.push({ f, rule: 'gradient', detail: m[0] });
