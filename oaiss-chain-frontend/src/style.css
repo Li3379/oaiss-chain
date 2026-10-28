@@ -1,37 +1,37 @@
 :root {
-  --bg-page: #edf2f4;
-  --bg-surface: #ffffff;
-  --bg-header: #16353a;
-  --text-primary: #1a2c30;
-  --text-secondary: #5e7377;
-  --border-color: #d6e2e3;
-  --teal: #14a79a;
-  --green: #45be75;
-  --success-soft: #d8f4e5;
-  --shadow-soft: 0 14px 34px rgba(10, 34, 38, 0.08);
+  --bg-page: var(--color-ground);
+  --bg-surface: var(--color-surface);
+  --bg-header: var(--color-ground);
+  --text-primary: var(--color-text);
+  --text-secondary: var(--color-text-muted);
+  --border-color: var(--color-border);
+  --teal: var(--color-accent);
+  --green: var(--color-status-success);
+  --success-soft: var(--color-status-success-soft);
+  --shadow-soft: var(--color-shadow-soft);
 
   /* 品牌与表面视觉令牌：组件内不再写裸 hex（UI/UX 规范：语义色令牌） */
   --brand-gradient: linear-gradient(120deg, #18a99a 0%, #42c977 100%);
   --surface-gradient: linear-gradient(180deg, #ffffff 0%, #f8fbfb 100%);
-  --text-on-dark: #ffffff;
+  --text-on-dark: var(--color-on-inverse);
 
   /* 品牌绿 tint 阶梯（原散落于营销页/卡片的裸 hex） */
-  --mint-400: #a8d8cf;
-  --mint-300: #83f2d5;
-  --mint-200: #d7f9f2;
-  --mint-100: #d6fff4;
-  --mint-050: #def8f1;
+  --mint-400: var(--color-mint-400);
+  --mint-300: var(--color-mint-300);
+  --mint-200: var(--color-mint-200);
+  --mint-100: var(--color-mint-100);
+  --mint-050: var(--color-mint-050);
 
   /* 图表系列色与品牌文字（ECharts 不解析 var()，组件按需运行时读取） */
-  --chart-series-1: #2fb38f;
-  --chart-series-2: #22a49a;
-  --chart-series-3: #5ec97f;
-  --chart-series-info: #4fa7d6;
-  --text-brand-strong: #0f3d40;
-  --text-brand-muted: #2f6268;
+  --chart-series-1: var(--color-chart-1);
+  --chart-series-2: var(--color-chart-2);
+  --chart-series-3: var(--color-chart-3);
+  --chart-series-info: var(--color-chart-info);
+  --text-brand-strong: var(--color-brand-strong);
+  --text-brand-muted: var(--color-brand-muted);
 
   /* 深色外壳上的次要文字（统一 4 种近白漂移为 1 个语义令牌） */
-  --text-on-dark-muted: #ecf7f4;
+  --text-on-dark-muted: var(--color-on-inverse-muted);
   /* 统计卡语义渐变（信息/警告/成功/危险/中性） */
   --stat-gradient-info: linear-gradient(135deg, #145f5a 0%, #1b7f76 100%);
   --stat-gradient-warning: linear-gradient(135deg, #a97116 0%, #b57f1e 100%);
@@ -44,12 +44,12 @@
   --chrome-gradient-top: linear-gradient(90deg, #17363a 0%, #1e4d49 100%);
   --chrome-gradient-accent: linear-gradient(130deg, #34d5bf, #90f0b1);
   --chrome-selected-gradient: linear-gradient(120deg, #d8fbef 0%, #e8f4fb 100%);
-  --chrome-selected-text: #1f4748;
-  --teal-on-dark: #5dd4c6;
+  --chrome-selected-text: var(--color-on-selected);
+  --teal-on-dark: var(--color-accent-on-inverse);
   /* 页面级浅底与浅灰（空态/占位） */
-  --bg-subtle: #f5f7fa;
-  --bg-elevated: #fbfdfd;
-  --border-teal-soft: #c3dfd7;
+  --bg-subtle: var(--color-raised);
+  --bg-elevated: var(--color-surface-elevated);
+  --border-teal-soft: var(--color-border-soft);
   --login-backdrop: linear-gradient(180deg, #163237 0%, #1f4a4d 100%);
   --login-accent: linear-gradient(130deg, #23baa8, #6adf85);
 
@@ -63,6 +63,77 @@
   --text-2xl: 24px;
   --text-3xl: 30px;
   --text-display: 42px;
+
+  /* ============================================================
+     pen「石墨台账」令牌层 —— 阶段 1 新增
+     原语（raw primitives）：只定义一次，不直接被组件消费
+     ============================================================ */
+  --pen-ground: #F8F8F8;
+  --pen-surface: #FFFFFF;
+  --pen-raised: #EEEEEE;
+  --pen-border: #E6E6E6;
+  --pen-ink: #0A0A0A;
+  --pen-muted: #5F5F5F;
+  --pen-faint: #6B6B6B;
+  --pen-action: #141414;
+  --pen-chart: #1D5FBF;
+  --pen-chart-2: #6E93CE;
+  --pen-chart-3: #A8BFE0;
+  --pen-chart-4: #D3DEED;
+  --pen-success: #2E7D32;
+  --pen-success-soft: #DCFAE5;
+  --pen-warning: #B45309;
+  --pen-warning-soft: #FEF3C7;
+  --pen-danger: #C4242A;
+  --pen-danger-soft: #FEE2E2;
+  --pen-info: #6B6B6B;
+
+  /* 尺寸令牌（原项目缺失） */
+  --radius-card: 8px;
+  --radius-control: 6px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* 字体令牌 */
+  --font-ui: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+
+  /* ============================================================
+     语义层 —— 阶段 1 值与旧令牌「逐项保真相等」，不允许就近取值
+     阶段 2 才翻到 --pen-* 原语
+     ============================================================ */
+  --color-ground: #edf2f4;
+  --color-surface: #ffffff;
+  --color-surface-elevated: #fbfdfd;
+  --color-raised: #f5f7fa;
+  --color-border: #d6e2e3;
+  --color-border-soft: #c3dfd7;
+  --color-text: #1a2c30;
+  --color-text-muted: #5e7377;
+  --color-brand-strong: #0f3d40;
+  --color-brand-muted: #2f6268;
+  --color-on-selected: #1f4748;
+  --color-accent: #14a79a;
+  --color-accent-on-inverse: #5dd4c6;
+  --color-on-inverse: #ffffff;
+  --color-on-inverse-muted: #ecf7f4;
+  --color-status-success: #45be75;
+  --color-status-success-soft: #d8f4e5;
+  --color-shadow-soft: 0 14px 34px rgba(10, 34, 38, 0.08);
+  --color-mint-400: #a8d8cf;
+  --color-mint-300: #83f2d5;
+  --color-mint-200: #d7f9f2;
+  --color-mint-100: #d6fff4;
+  --color-mint-050: #def8f1;
+  --color-chart-1: #2fb38f;
+  --color-chart-2: #22a49a;
+  --color-chart-3: #5ec97f;
+  --color-chart-info: #4fa7d6;
 
   /* Accent unification: EP default blue (#409eff) → brand teal #14a79a
      (ladder derived from same 30/50/70/80/90 mix EP uses) */

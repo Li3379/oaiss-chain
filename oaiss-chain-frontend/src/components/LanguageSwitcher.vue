@@ -43,9 +43,9 @@ const switchLocale = (lang: LocaleType) => {
   display: flex;
   align-items: center;
   font-size: var(--text-base);
-  color: var(--text-on-dark-muted); /* ≥4.5:1 on both header gradient ends (#17363a/#1e4d49) */
+  color: var(--color-text-muted);
 }
 .language-trigger:hover {
-  color: var(--teal-on-dark); /* brand teal light — ≥4.5:1 on the darkest header end */
+  color: var(--color-text);
 }
 </style>
