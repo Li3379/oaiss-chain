@@ -166,10 +166,7 @@ body,
 
 body {
   color: var(--text-primary);
-  background:
-    radial-gradient(circle at 20% 16%, rgba(20, 167, 154, 0.12), transparent 42%),
-    radial-gradient(circle at 87% 82%, rgba(69, 190, 117, 0.12), transparent 36%),
-    var(--bg-page);
+  background: var(--color-ground);
 }
 
 a {
@@ -223,19 +220,23 @@ a {
 
 /* M18: Dark mode variables */
 html.dark {
-  --bg-page: #141414;
-  --bg-surface: #1d1d1d;
-  --text-primary: #e5eaf3;
-  --text-secondary: #a3a6ad;
-  --border-color: #4c4d4f;
-  --shadow-soft: 0 14px 34px rgba(0, 0, 0, 0.3);
+  /* 暗色反相：只覆盖语义层，原语层不变 */
+  --color-ground: #141414;
+  --color-surface: #1d1d1d;
+  --color-surface-elevated: #232323;
+  --color-raised: #262626;
+  --color-border: #3a3a3a;
+  --color-border-soft: #464646;
+  --color-text: #e5eaf3;
+  --color-text-muted: #a3a6ad;
+  --color-brand-strong: #d5e8ea;
+  --color-brand-muted: #9db8bc;
+  --color-on-selected: #e5eaf3;
+  --color-shadow-soft: 0 14px 34px rgba(0, 0, 0, 0.3);
 
   color-scheme: dark;
 }
 
 html.dark body {
-  background:
-    radial-gradient(circle at 20% 16%, rgba(20, 167, 154, 0.06), transparent 42%),
-    radial-gradient(circle at 87% 82%, rgba(69, 190, 117, 0.06), transparent 36%),
-    var(--bg-page);
+  background: var(--color-ground);
 }
