@@ -60,39 +60,39 @@
      语义层 —— 阶段 1 值与旧令牌「逐项保真相等」，不允许就近取值
      阶段 2 才翻到 --pen-* 原语
      ============================================================ */
-  --color-ground: #edf2f4;
-  --color-surface: #ffffff;
-  --color-surface-elevated: #fbfdfd;
-  --color-raised: #f5f7fa;
-  --color-border: #d6e2e3;
-  --color-border-soft: #c3dfd7;
-  --color-text: #1a2c30;
-  --color-text-muted: #5e7377;
-  --color-brand-strong: #0f3d40;
-  --color-brand-muted: #2f6268;
-  --color-on-selected: #1f4748;
-  --color-accent: #14a79a;
+  --color-ground: var(--pen-ground);
+  --color-surface: var(--pen-surface);
+  --color-surface-elevated: var(--pen-surface);
+  --color-raised: var(--pen-raised);
+  --color-border: var(--pen-border);
+  --color-border-soft: var(--pen-border);
+  --color-text: var(--pen-ink);
+  --color-text-muted: var(--pen-muted);
+  --color-brand-strong: var(--pen-ink);
+  --color-brand-muted: var(--pen-muted);
+  --color-on-selected: var(--pen-ink);
+  --color-accent: var(--pen-action);
   --color-accent-on-inverse: #5dd4c6;
   --color-on-inverse: #ffffff;
   --color-on-inverse-muted: #ecf7f4;
-  --color-status-success: #45be75;
-  --color-status-warning: #b45309;
-  --color-status-danger: #c4242a;
-  --color-status-warning-soft: #fdf6ec;
-  --color-status-danger-soft: #fef2f2;
+  --color-status-success: var(--pen-success);
+  --color-status-warning: var(--pen-warning);
+  --color-status-danger: var(--pen-danger);
+  --color-status-warning-soft: var(--pen-warning-soft);
+  --color-status-danger-soft: var(--pen-danger-soft);
   --color-status-info-soft: #f0f9ff;
   --color-border-strong: #cbd5e1;
-  --color-status-success-soft: #d8f4e5;
+  --color-status-success-soft: var(--pen-success-soft);
   --color-shadow-soft: 0 14px 34px rgba(10, 34, 38, 0.08);
-  --color-mint-400: #a8d8cf;
-  --color-mint-300: #83f2d5;
-  --color-mint-200: #d7f9f2;
-  --color-mint-100: #d6fff4;
-  --color-mint-050: #def8f1;
-  --color-chart-1: #2fb38f;
-  --color-chart-2: #22a49a;
-  --color-chart-3: #5ec97f;
-  --color-chart-info: #4fa7d6;
+  --color-mint-400: var(--pen-raised);
+  --color-mint-300: var(--pen-raised);
+  --color-mint-200: var(--pen-surface);
+  --color-mint-100: var(--pen-surface);
+  --color-mint-050: var(--pen-surface);
+  --color-chart-1: var(--pen-chart);
+  --color-chart-2: var(--pen-chart-2);
+  --color-chart-3: var(--pen-chart-3);
+  --color-chart-info: var(--pen-chart-4);
 
   /* Accent unification: EP default blue (#409eff) → brand teal #14a79a
      (ladder derived from same 30/50/70/80/90 mix EP uses) */
