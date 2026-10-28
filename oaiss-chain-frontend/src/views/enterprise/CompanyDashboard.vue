@@ -233,7 +233,7 @@ const chartEmptyTitle = (data: number[]) =>
         text: t('companyDashboard.noChartData'),
         left: 'center' as const,
         top: 'middle' as const,
-        textStyle: { color: '#909399', fontSize: 13, fontWeight: 400 as const },
+        textStyle: { color: 'var(--color-text-muted)', fontSize: 13, fontWeight: 400 as const },
       }]
 
 const buildBarOption = (title: string, labels: string[], data: number[], color: string) => ({
@@ -320,15 +320,15 @@ const getChartConfigs = () => {
   return [
     {
       ref: chartTradeBarRef,
-      option: buildBarOption(t('companyDashboard.chartTransactionBar'), d.tradeLabels, d.tradeCount, cssToken('--chart-series-1', '#2fb38f')),
+      option: buildBarOption(t('companyDashboard.chartTransactionBar'), d.tradeLabels, d.tradeCount, cssToken('--chart-series-1', 'var(--color-chart-1)')),
     },
     {
       ref: chartTrendLineRef,
-      option: buildLineOption(t('companyDashboard.chartAIPrediction'), d.reportLabels, d.aiTrend, cssToken('--chart-series-2', '#22a49a')),
+      option: buildLineOption(t('companyDashboard.chartAIPrediction'), d.reportLabels, d.aiTrend, cssToken('--chart-series-2', 'var(--color-chart-2)')),
     },
     {
       ref: chartSuggestBarRef,
-      option: buildBarOption(t('companyDashboard.chartAISuggestion'), d.reportLabels, d.aiSuggest, cssToken('--chart-series-3', '#5ec97f')),
+      option: buildBarOption(t('companyDashboard.chartAISuggestion'), d.reportLabels, d.aiSuggest, cssToken('--chart-series-3', 'var(--color-chart-3)')),
     },
     {
       ref: chartEmissionPieRef,
@@ -340,7 +340,7 @@ const getChartConfigs = () => {
     },
     {
       ref: chartCreditLineRef,
-      option: buildLineOption(t('companyDashboard.chartCreditLine'), d.creditLabels, d.creditTrend, cssToken('--chart-series-info', '#4fa7d6')),
+      option: buildLineOption(t('companyDashboard.chartCreditLine'), d.creditLabels, d.creditTrend, cssToken('--chart-series-info', 'var(--color-chart-info)')),
     },
   ]
 }
@@ -596,7 +596,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .executive-briefing-card {
   border: 1px solid rgba(20, 167, 154, 0.24);
-  background: linear-gradient(135deg, rgba(20, 167, 154, 0.05) 0%, #f8fafc 100%);
+  background: linear-gradient(135deg, rgba(20, 167, 154, 0.05) 0%, var(--color-surface) 100%);
   padding: 6px 10px;
 }
 
@@ -623,8 +623,8 @@ onBeforeUnmount(() => {
 .briefing-badge {
   font-size: 11px;
   font-weight: 800;
-  color: #0284c7;
-  background: #e0f2fe;
+  color: var(--color-chart-1);
+  background: var(--color-status-info-soft);
   padding: 2px 8px;
   border-radius: 4px;
   letter-spacing: 0.5px;
@@ -633,12 +633,12 @@ onBeforeUnmount(() => {
 .briefing-headline {
   font-size: 15px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--color-text);
 }
 
 .briefing-text {
   font-size: 13px;
-  color: #475569;
+  color: var(--color-text-muted);
   line-height: 1.6;
   margin: 0;
 }

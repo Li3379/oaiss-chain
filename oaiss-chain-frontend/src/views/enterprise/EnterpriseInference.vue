@@ -76,21 +76,21 @@ const healthScore = computed(() => {
 
 // 格式化异常偏离程度展示
 const anomalyDisplay = computed(() => {
-  if (!inferenceData.value) return { status: 'NORMAL', text: '平稳受控', desc: '未见离群偏离', color: '#10b981' }
+  if (!inferenceData.value) return { status: 'NORMAL', text: '平稳受控', desc: '未见离群偏离', color: 'var(--color-status-success)' }
   const score = inferenceData.value.anomalyScore
   if (inferenceData.value.isAnomaly || (typeof score === 'number' && score < -0.1)) {
     return {
       status: 'ANOMALY',
       text: '存在离群扰动',
       desc: `孤立森林检测到决策距离偏离 (${score ? score.toFixed(3) : '-0.199'})，建议核实排放方差`,
-      color: '#ef4444'
+      color: 'var(--color-status-danger)'
     }
   }
   return {
     status: 'NORMAL',
     text: '数据平稳受控',
     desc: '排碳与报告序列与行业基准吻合度良好',
-    color: '#10b981'
+    color: 'var(--color-status-success)'
   }
 })
 
@@ -243,7 +243,7 @@ function renderRadarChart() {
       data: ['本企业评估值', '国家行业推荐基准线'],
       bottom: 0,
       icon: 'roundRect',
-      textStyle: { color: '#64748b', fontSize: 12 }
+      textStyle: { color: 'var(--color-text-muted)', fontSize: 12 }
     },
     radar: {
       indicator: [
@@ -256,10 +256,10 @@ function renderRadarChart() {
       ],
       shape: 'polygon',
       splitNumber: 4,
-      axisName: { color: '#475569', fontSize: 11.5, fontWeight: 500 },
-      splitLine: { lineStyle: { color: '#e2e8f0' } },
-      splitArea: { show: true, areaStyle: { color: ['#ffffff', '#f8fafc', '#ffffff', '#f1f5f9'] } },
-      axisLine: { lineStyle: { color: '#cbd5e1' } }
+      axisName: { color: 'var(--color-text-muted)', fontSize: 11.5, fontWeight: 500 },
+      splitLine: { lineStyle: { color: 'var(--color-border)' } },
+      splitArea: { show: true, areaStyle: { color: ['var(--color-surface)', 'var(--color-surface)', 'var(--color-surface)', 'var(--color-raised)'] } },
+      axisLine: { lineStyle: { color: 'var(--color-border-strong)' } }
     },
     series: [
       {
@@ -271,16 +271,16 @@ function renderRadarChart() {
             name: '本企业评估值',
             symbol: 'circle',
             symbolSize: 6,
-            lineStyle: { width: 2.5, color: '#0284c7' },
-            itemStyle: { color: '#0284c7' },
+            lineStyle: { width: 2.5, color: 'var(--color-chart-1)' },
+            itemStyle: { color: 'var(--color-chart-1)' },
             areaStyle: { color: 'rgba(2, 132, 199, 0.22)' }
           },
           {
             value: benchmarkValues,
             name: '国家行业推荐基准线',
             symbol: 'none',
-            lineStyle: { width: 1.5, type: 'dashed', color: '#10b981' },
-            itemStyle: { color: '#10b981' }
+            lineStyle: { width: 1.5, type: 'dashed', color: 'var(--color-status-success)' },
+            itemStyle: { color: 'var(--color-status-success)' }
           }
         ]
       }
@@ -507,14 +507,14 @@ onBeforeUnmount(() => {
         <el-col :xs="24" :sm="12" :md="6">
           <el-card shadow="hover" class="health-card">
             <div class="card-title-muted">{{ t('enterpriseInference.confidenceScore') }}</div>
-            <div class="card-main-val" style="color: #0284c7;">
+            <div class="card-main-val" style="color: var(--color-chart-1);">
               {{ toPercentage(inferenceData?.confidence || 0.96) }}%
             </div>
             <el-progress
               :percentage="toPercentage(inferenceData?.confidence || 0.96)"
               :show-text="false"
               :stroke-width="4"
-              color="#0284c7"
+              color="var(--color-chart-1)"
               style="margin: 6px 0 2px;"
             />
             <div class="card-footer-tip">
@@ -540,8 +540,8 @@ onBeforeUnmount(() => {
         <el-col :xs="24" :sm="12" :md="6">
           <el-card shadow="hover" class="health-card">
             <div class="card-title-muted">综合低碳健康分</div>
-            <div class="card-main-val" style="color: #10b981;">
-              {{ healthScore }} <span style="font-size: 13px; color: #94a3b8; font-weight: normal;">/ 100</span>
+            <div class="card-main-val" style="color: var(--color-status-success);">
+              {{ healthScore }} <span style="font-size: 13px; color: var(--color-text-muted); font-weight: normal;">/ 100</span>
             </div>
             <div class="card-footer-tip">
               <span>评级: 稳健合规标杆 ｜ 风险敞口收窄</span>
@@ -558,8 +558,8 @@ onBeforeUnmount(() => {
             <template #header>
               <div class="card-header-flex">
                 <div style="display: inline-flex; align-items: center; gap: 6px;">
-                  <el-icon color="#409eff" :size="15"><DataAnalysis /></el-icon>
-                  <strong style="color: #1e293b;">多维碳排放与合规特征偏离诊断</strong>
+                  <el-icon color="var(--color-chart-1)" :size="15"><DataAnalysis /></el-icon>
+                  <strong style="color: var(--color-text);">多维碳排放与合规特征偏离诊断</strong>
                 </div>
                 <el-tag type="info" size="small" effect="plain">国标基准线比对</el-tag>
               </div>
@@ -584,15 +584,15 @@ onBeforeUnmount(() => {
             <div class="dim-drilldown-card">
               <div class="dim-header-flex">
                 <div style="display: flex; align-items: center; gap: 8px;">
-                  <strong style="color: #0f172a; font-size: 13.5px;">{{ currentDimProfile.name }}</strong>
-                  <span style="font-size: 12px; color: #64748b;">(得分: <strong>{{ currentDimProfile.score }}</strong> ｜ 行业基准: {{ currentDimProfile.benchmark }})</span>
+                  <strong style="color: var(--color-text); font-size: 13.5px;">{{ currentDimProfile.name }}</strong>
+                  <span style="font-size: 12px; color: var(--color-text-muted);">(得分: <strong>{{ currentDimProfile.score }}</strong> ｜ 行业基准: {{ currentDimProfile.benchmark }})</span>
                 </div>
                 <el-tag :type="currentDimProfile.statusType" size="small">{{ currentDimProfile.status }}</el-tag>
               </div>
               <p class="dim-diag-desc">{{ currentDimProfile.diagnosis }}</p>
               <div class="dim-advice-box">
                 <span style="display: inline-flex; align-items: center; gap: 4px;">
-                  <el-icon color="#e6a23c"><InfoFilled /></el-icon>
+                  <el-icon color="var(--color-status-warning)"><InfoFilled /></el-icon>
                   <strong>优化建议:</strong> {{ currentDimProfile.advice }}
                 </span>
               </div>
@@ -606,8 +606,8 @@ onBeforeUnmount(() => {
             <template #header>
               <div class="card-header-flex">
                 <div style="display: inline-flex; align-items: center; gap: 6px;">
-                  <el-icon color="#e6a23c" :size="15"><Search /></el-icon>
-                  <strong style="color: #1e293b;">{{ t('enterpriseInference.riskFactors') }}深度穿透解析</strong>
+                  <el-icon color="var(--color-status-warning)" :size="15"><Search /></el-icon>
+                  <strong style="color: var(--color-text);">{{ t('enterpriseInference.riskFactors') }}深度穿透解析</strong>
                 </div>
                 <el-tag type="warning" size="small">{{ detailedRisks.length }} 项待关注</el-tag>
               </div>
@@ -626,7 +626,7 @@ onBeforeUnmount(() => {
                 <p class="risk-item-desc">{{ item.desc }}</p>
                 <div class="risk-item-action">
                   <span style="display: inline-flex; align-items: center; gap: 4px;">
-                    <el-icon color="#e6a23c"><InfoFilled /></el-icon>
+                    <el-icon color="var(--color-status-warning)"><InfoFilled /></el-icon>
                     <strong>整改建议:</strong> {{ item.action }}
                   </span>
                 </div>
@@ -650,10 +650,10 @@ onBeforeUnmount(() => {
           <div class="card-header-flex">
             <div>
               <div style="display: inline-flex; align-items: center; gap: 6px;">
-                <el-icon color="#14a79a" :size="15"><TrendCharts /></el-icon>
-                <strong style="font-size: 15px; color: #1e293b;">AI 智能企业降碳与能效跃升实施路径</strong>
+                <el-icon color="var(--color-accent)" :size="15"><TrendCharts /></el-icon>
+                <strong style="font-size: 15px; color: var(--color-text);">AI 智能企业降碳与能效跃升实施路径</strong>
               </div>
-              <span style="font-size: 12px; color: #94a3b8; margin-left: 10px;">
+              <span style="font-size: 12px; color: var(--color-text-muted); margin-left: 10px;">
                 (基于 GB/T 32150 工业指南与机器学习优化算法测算)
               </span>
             </div>
@@ -680,11 +680,11 @@ onBeforeUnmount(() => {
                 <div class="roadmap-item-meta">
                   <div class="roadmap-metric-row">
                     <span>减排潜力:</span>
-                    <strong style="color: #10b981;">{{ item.potential }}</strong>
+                    <strong style="color: var(--color-status-success);">{{ item.potential }}</strong>
                   </div>
                   <div class="roadmap-metric-row">
                     <span>实施成本:</span>
-                    <span style="color: #64748b;">{{ item.cost }}</span>
+                    <span style="color: var(--color-text-muted);">{{ item.cost }}</span>
                   </div>
                 </div>
               </div>
@@ -704,16 +704,16 @@ onBeforeUnmount(() => {
           <!-- 白皮书抬头 -->
           <div class="dossier-header-bar">
             <div>
-              <h3 style="margin: 0 0 4px; font-size: 16px; color: #0f172a;">
+              <h3 style="margin: 0 0 4px; font-size: 16px; color: var(--color-text);">
                 {{ enterpriseInfo?.enterpriseName || '绿色能源科技有限公司' }}
               </h3>
-              <span style="font-size: 12px; color: #64748b;">
+              <span style="font-size: 12px; color: var(--color-text-muted);">
                 评估基准: GB/T 32150-2015 ｜ 算法模型: Isolation Forest + XGBoost (v1.0.0)
               </span>
             </div>
             <div style="text-align: right;">
               <el-tag type="success" size="large">综合低碳健康分: {{ healthScore }} / 100</el-tag>
-              <div style="font-size: 11.5px; color: #94a3b8; margin-top: 4px;">评级: AAA 稳健合规标杆</div>
+              <div style="font-size: 11.5px; color: var(--color-text-muted); margin-top: 4px;">评级: AAA 稳健合规标杆</div>
             </div>
           </div>
 
@@ -721,11 +721,11 @@ onBeforeUnmount(() => {
           <el-card shadow="never" style="margin-bottom: 14px; border-radius: 8px;">
             <template #header>
               <div style="display: inline-flex; align-items: center; gap: 6px;">
-                <el-icon color="#409eff" :size="15"><Document /></el-icon>
-                <strong style="color: #303133;">一、企业碳合规状态综合审计结论</strong>
+                <el-icon color="var(--color-chart-1)" :size="15"><Document /></el-icon>
+                <strong style="color: var(--color-text);">一、企业碳合规状态综合审计结论</strong>
               </div>
             </template>
-            <div style="font-size: 13px; line-height: 1.8; color: #475569;">
+            <div style="font-size: 13px; line-height: 1.8; color: var(--color-text-muted);">
               本企业当前碳核算合规状态评定为 <strong>{{ getStatusLabel(inferenceData?.complianceStatus || 'compliant') }}</strong>，
               算法置信度达到 <strong>{{ toPercentage(inferenceData?.confidence || 0.96) }}%</strong>。
               {{ anomalyDisplay.desc }}。
@@ -737,8 +737,8 @@ onBeforeUnmount(() => {
           <el-card shadow="never" style="margin-bottom: 14px; border-radius: 8px;">
             <template #header>
               <div style="display: inline-flex; align-items: center; gap: 6px;">
-                <el-icon color="#14a79a" :size="15"><DataAnalysis /></el-icon>
-                <strong style="color: #303133;">二、六维特征雷达体检得分与行业基准对比</strong>
+                <el-icon color="var(--color-accent)" :size="15"><DataAnalysis /></el-icon>
+                <strong style="color: var(--color-text);">二、六维特征雷达体检得分与行业基准对比</strong>
               </div>
             </template>
             <el-table :data="radarDimensionProfiles" border size="small">
@@ -762,15 +762,15 @@ onBeforeUnmount(() => {
           <el-card shadow="never" style="margin-bottom: 14px; border-radius: 8px;">
             <template #header>
               <div style="display: inline-flex; align-items: center; gap: 6px;">
-                <el-icon color="#67c23a" :size="15"><TrendCharts /></el-icon>
-                <strong style="color: #303133;">三、三阶段企业降碳技改路径实施规划</strong>
+                <el-icon color="var(--color-status-success)" :size="15"><TrendCharts /></el-icon>
+                <strong style="color: var(--color-text);">三、三阶段企业降碳技改路径实施规划</strong>
               </div>
             </template>
             <div v-for="(stage, idx) in abatementRoadmap" :key="idx" style="margin-bottom: 12px;">
-              <div style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">
+              <div style="font-size: 13px; font-weight: 700; color: var(--color-text); margin-bottom: 4px;">
                 {{ stage.horizon }} ({{ stage.tag }})
               </div>
-              <div style="padding-left: 12px; font-size: 12.5px; color: #475569; line-height: 1.7;">
+              <div style="padding-left: 12px; font-size: 12.5px; color: var(--color-text-muted); line-height: 1.7;">
                 <div v-for="(it, i) in stage.items" :key="i">
                   • <strong>{{ it.name }}</strong>：{{ it.potential }}（实施成本：{{ it.cost }}）
                 </div>
@@ -779,7 +779,7 @@ onBeforeUnmount(() => {
           </el-card>
 
           <!-- 存证哈希 -->
-          <div style="padding: 10px 14px; background: #fdf6ec; border: 1px solid #faecd8; border-radius: 6px; font-size: 12px; color: #e6a23c; word-break: break-all;">
+          <div style="padding: 10px 14px; background: var(--color-status-warning-soft); border: 1px solid var(--color-status-warning-soft); border-radius: 6px; font-size: 12px; color: var(--color-status-warning); word-break: break-all;">
             <span style="display: inline-flex; align-items: center; gap: 4px;"><el-icon><Lock /></el-icon>{{ t('enterpriseInference.dossierHashTip') }}: </span>
             <code>{{ dossierHash }}</code>
           </div>
@@ -804,9 +804,9 @@ onBeforeUnmount(() => {
 }
 
 .section-card {
-  border: 1px solid var(--border-color, #e2e8f0);
+  border: 1px solid var(--border-color, var(--color-border));
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--color-surface);
 }
 
 .header-summary-card {
@@ -824,13 +824,13 @@ onBeforeUnmount(() => {
 .ent-title {
   font-size: 20px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--color-text);
   margin: 0;
 }
 
 .ent-subtitle {
   font-size: 13px;
-  color: #64748b;
+  color: var(--color-text-muted);
   margin: 4px 0 0;
 }
 
@@ -840,29 +840,29 @@ onBeforeUnmount(() => {
 
 .health-card {
   border-radius: 10px;
-  border: 1px solid #e2e8f0;
-  background: #f8fafc;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
   padding: 4px 8px;
 }
 
 .card-title-muted {
   font-size: 12.5px;
-  color: #64748b;
+  color: var(--color-text-muted);
   margin-bottom: 6px;
 }
 
 .card-main-val {
   font-size: 26px;
   font-weight: 800;
-  color: #0f172a;
+  color: var(--color-text);
   line-height: 1.2;
   margin-bottom: 6px;
 }
 
 .card-footer-tip {
   font-size: 11.5px;
-  color: #64748b;
-  border-top: 1px dashed #e2e8f0;
+  color: var(--color-text-muted);
+  border-top: 1px dashed var(--color-border);
   padding-top: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -900,8 +900,8 @@ onBeforeUnmount(() => {
 }
 
 .risk-detail-item {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 10px 12px;
 }
@@ -915,20 +915,20 @@ onBeforeUnmount(() => {
 
 .risk-item-title {
   font-size: 13px;
-  color: #1e293b;
+  color: var(--color-text);
 }
 
 .risk-item-desc {
   font-size: 12px;
-  color: #64748b;
+  color: var(--color-text-muted);
   line-height: 1.5;
   margin: 0 0 6px;
 }
 
 .risk-item-action {
   font-size: 11.5px;
-  color: #0284c7;
-  background: #f0f9ff;
+  color: var(--color-chart-1);
+  background: var(--color-status-info-soft);
   border-radius: 4px;
   padding: 4px 8px;
 }
@@ -948,8 +948,8 @@ onBeforeUnmount(() => {
 
 .dim-drilldown-card {
   margin-top: 10px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 10px 12px;
 }
@@ -963,15 +963,15 @@ onBeforeUnmount(() => {
 
 .dim-diag-desc {
   font-size: 12px;
-  color: #475569;
+  color: var(--color-text-muted);
   line-height: 1.5;
   margin: 0 0 6px;
 }
 
 .dim-advice-box {
   font-size: 11.5px;
-  color: #0284c7;
-  background: #f0f9ff;
+  color: var(--color-chart-1);
+  background: var(--color-status-info-soft);
   border-radius: 4px;
   padding: 4px 8px;
 }
@@ -981,8 +981,8 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   margin-bottom: 16px;
 }
@@ -995,8 +995,8 @@ onBeforeUnmount(() => {
 }
 
 .roadmap-column {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 12px 14px;
 }
@@ -1007,13 +1007,13 @@ onBeforeUnmount(() => {
   align-items: center;
   margin-bottom: 10px;
   padding-bottom: 6px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .roadmap-title {
   font-size: 13px;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--color-text);
 }
 
 .roadmap-cards {
@@ -1023,8 +1023,8 @@ onBeforeUnmount(() => {
 }
 
 .roadmap-card {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 10px 12px;
 }
@@ -1032,7 +1032,7 @@ onBeforeUnmount(() => {
 .roadmap-item-name {
   font-size: 13px;
   font-weight: 600;
-  color: #0f172a;
+  color: var(--color-text);
   margin-bottom: 6px;
 }
 

@@ -174,7 +174,7 @@ const rawText = computed(() => (props.data || '').trim())
 .emission-panel__raw pre {
   white-space: pre-wrap;
   word-break: break-all;
-  background: var(--bg-subtle, #f5f7fa);
+  background: var(--bg-subtle, var(--color-raised));
   border-radius: 6px;
   padding: 8px;
   margin: 0;

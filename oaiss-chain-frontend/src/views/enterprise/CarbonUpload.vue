@@ -713,7 +713,7 @@ onMounted(() => {
                 >
                   {{ item.name }} ({{ formatAttachmentSize(item.size) }})
                 </el-tag>
-                <div v-if="item.hash" style="font-size: 11px; color: #909399; margin-top: 2px; display: inline-flex; align-items: center; gap: 4px;">
+                <div v-if="item.hash" style="font-size: 11px; color: var(--color-text-muted); margin-top: 2px; display: inline-flex; align-items: center; gap: 4px;">
                   <el-icon :size="12"><Lock /></el-icon>
                   <span>SHA-256 存证指纹: <code>{{ item.hash.slice(0, 16) }}...{{ item.hash.slice(-8) }}</code></span>
                 </div>
@@ -742,21 +742,21 @@ onMounted(() => {
           </div>
 
           <!-- 区块链不可篡改凭证卡片 -->
-          <div v-if="detailData.blockchainTxHash" style="margin-bottom: 16px; padding: 12px 16px; background: #f0f9eb; border: 1px solid #c2e7b0; border-radius: 6px;">
+          <div v-if="detailData.blockchainTxHash" style="margin-bottom: 16px; padding: 12px 16px; background: var(--pen-success-soft); border: 1px solid var(--color-status-success-soft); border-radius: 6px;">
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-              <span style="font-weight: 600; color: #67c23a; font-size: 13px; display: inline-flex; align-items: center; gap: 5px;">
+              <span style="font-weight: 600; color: var(--color-status-success); font-size: 13px; display: inline-flex; align-items: center; gap: 5px;">
                 <el-icon><Link /></el-icon>
                 {{ t('carbonUpload.blockchainCertifiedTitle') }}
               </span>
-              <router-link to="/enterprise/blockchain/browser" style="font-size: 12px; color: #409eff; text-decoration: none; display: inline-flex; align-items: center; gap: 3px;">
+              <router-link to="/enterprise/blockchain/browser" style="font-size: 12px; color: var(--color-chart-1); text-decoration: none; display: inline-flex; align-items: center; gap: 3px;">
                 <span>{{ t('carbonUpload.viewInExplorer') }}</span>
                 <el-icon :size="12"><ArrowRight /></el-icon>
               </router-link>
             </div>
-            <div style="font-size: 12px; color: #606266; word-break: break-all;">
-              <span style="color: #909399;">TxHash:</span> <code>{{ detailData.blockchainTxHash }}</code>
+            <div style="font-size: 12px; color: var(--color-text-muted); word-break: break-all;">
+              <span style="color: var(--color-text-muted);">TxHash:</span> <code>{{ detailData.blockchainTxHash }}</code>
             </div>
-            <div v-if="detailData.onChainAt" style="font-size: 11px; color: #909399; margin-top: 4px;">
+            <div v-if="detailData.onChainAt" style="font-size: 11px; color: var(--color-text-muted); margin-top: 4px;">
               上链时间: {{ formatDateTime(detailData.onChainAt) }}
             </div>
           </div>
@@ -796,8 +796,8 @@ onMounted(() => {
     >
       <div v-loading="aiAnalysisLoading" style="min-height: 200px;">
         <template v-if="aiAnalysisData">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding: 10px 14px; background: #ecf5ff; border: 1px solid #d9ecff; border-radius: 6px;">
-            <span style="font-size: 13px; color: #409eff; display: inline-flex; align-items: center; gap: 6px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding: 10px 14px; background: var(--color-status-info-soft); border: 1px solid var(--color-status-info-soft); border-radius: 6px;">
+            <span style="font-size: 13px; color: var(--color-chart-1); display: inline-flex; align-items: center; gap: 6px;">
               <el-icon><Cpu /></el-icon>
               <span>{{ t('carbonUpload.aiModelUsed') }}: <strong>{{ aiAnalysisData.model_used }}</strong></span>
             </span>
@@ -808,11 +808,11 @@ onMounted(() => {
           <el-card shadow="never" style="margin-bottom: 14px; border-radius: 8px;">
             <template #header>
               <div style="display: inline-flex; align-items: center; gap: 6px;">
-                <el-icon color="#409eff" :size="15"><Document /></el-icon>
-                <strong style="color: #303133;">{{ t('carbonUpload.aiSummaryTitle') }}</strong>
+                <el-icon color="var(--color-chart-1)" :size="15"><Document /></el-icon>
+                <strong style="color: var(--color-text);">{{ t('carbonUpload.aiSummaryTitle') }}</strong>
               </div>
             </template>
-            <p style="font-size: 13.5px; line-height: 1.8; color: #606266; margin: 0;">
+            <p style="font-size: 13.5px; line-height: 1.8; color: var(--color-text-muted); margin: 0;">
               {{ aiAnalysisData.summary }}
             </p>
           </el-card>
@@ -821,11 +821,11 @@ onMounted(() => {
           <el-card shadow="never" style="margin-bottom: 14px; border-radius: 8px;">
             <template #header>
               <div style="display: inline-flex; align-items: center; gap: 6px;">
-                <el-icon color="#14a79a" :size="15"><Search /></el-icon>
-                <strong style="color: #303133;">{{ t('carbonUpload.aiKeyFindingsTitle') }}</strong>
+                <el-icon color="var(--color-accent)" :size="15"><Search /></el-icon>
+                <strong style="color: var(--color-text);">{{ t('carbonUpload.aiKeyFindingsTitle') }}</strong>
               </div>
             </template>
-            <ul style="padding-left: 20px; margin: 0; font-size: 13.5px; line-height: 1.8; color: #606266;">
+            <ul style="padding-left: 20px; margin: 0; font-size: 13.5px; line-height: 1.8; color: var(--color-text-muted);">
               <li v-for="(finding, i) in aiAnalysisData.key_findings" :key="i">
                 {{ finding }}
               </li>
@@ -836,11 +836,11 @@ onMounted(() => {
           <el-card shadow="never" style="margin-bottom: 14px; border-radius: 8px;">
             <template #header>
               <div style="display: inline-flex; align-items: center; gap: 6px;">
-                <el-icon color="#e6a23c" :size="15"><TrendCharts /></el-icon>
-                <strong style="color: #303133;">{{ t('carbonUpload.aiSuggestionsTitle') }}</strong>
+                <el-icon color="var(--color-status-warning)" :size="15"><TrendCharts /></el-icon>
+                <strong style="color: var(--color-text);">{{ t('carbonUpload.aiSuggestionsTitle') }}</strong>
               </div>
             </template>
-            <ul style="padding-left: 20px; margin: 0; font-size: 13.5px; line-height: 1.8; color: #606266;">
+            <ul style="padding-left: 20px; margin: 0; font-size: 13.5px; line-height: 1.8; color: var(--color-text-muted);">
               <li v-for="(sug, i) in aiAnalysisData.reduction_suggestions" :key="i">
                 {{ sug }}
               </li>
@@ -848,7 +848,7 @@ onMounted(() => {
           </el-card>
 
           <!-- 区块链存证摘要哈希 -->
-          <div style="padding: 10px 14px; background: #fdf6ec; border: 1px solid #faecd8; border-radius: 6px; font-size: 12px; color: #e6a23c; word-break: break-all;">
+          <div style="padding: 10px 14px; background: var(--color-status-warning-soft); border: 1px solid var(--color-status-warning-soft); border-radius: 6px; font-size: 12px; color: var(--color-status-warning); word-break: break-all;">
             <span style="display: inline-flex; align-items: center; gap: 4px;"><el-icon><Lock /></el-icon>{{ t('carbonUpload.aiHashTip') }}: </span>
             <code>{{ aiAnalysisData.analysis_hash }}</code>
           </div>

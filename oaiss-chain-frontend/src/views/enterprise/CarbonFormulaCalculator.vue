@@ -406,8 +406,8 @@ onMounted(() => {
       <el-card class="section-card" shadow="never">
         <el-tabs v-model="activeTab">
           <el-tab-pane :label="t('carbonFormula.tabPowerGeneration')" name="powerGeneration">
-            <div style="margin: 8px 0 16px; padding: 10px 14px; background: #f0f9eb; border: 1px solid #e1f3d8; border-radius: 6px; display: flex; align-items: center; justify-content: space-between;">
-              <span style="font-size: 13px; color: #67c23a; display: inline-flex; align-items: center; gap: 5px;">
+            <div style="margin: 8px 0 16px; padding: 10px 14px; background: var(--pen-success-soft); border: 1px solid var(--color-status-success-soft); border-radius: 6px; display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-size: 13px; color: var(--color-status-success); display: inline-flex; align-items: center; gap: 5px;">
                 <el-icon :size="14"><InfoFilled /></el-icon>
                 {{ t('carbonFormula.templateTipPowerGen') }}
               </span>
@@ -554,12 +554,12 @@ onMounted(() => {
                 </el-table>
 
                 <!-- AI 国标合规诊断与排放强度评估卡片 -->
-                <div style="margin-top: 18px; padding: 14px 16px; background: #fafbfc; border: 1px solid #e2e8f0; border-radius: 8px;">
+                <div style="margin-top: 18px; padding: 14px 16px; background: var(--color-surface-elevated); border: 1px solid var(--color-border); border-radius: 8px;">
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
                     <div style="display: flex; align-items: center; gap: 8px;">
                       <div style="display: inline-flex; align-items: center; gap: 6px;">
-                        <el-icon color="#67c23a" :size="15"><Cpu /></el-icon>
-                        <strong style="color: #1e293b; font-size: 14px;">{{ t('carbonFormula.aiAuditCardTitle') }}</strong>
+                        <el-icon color="var(--color-status-success)" :size="15"><Cpu /></el-icon>
+                        <strong style="color: var(--color-text); font-size: 14px;">{{ t('carbonFormula.aiAuditCardTitle') }}</strong>
                       </div>
                       <el-tag type="success" size="small">GB/T 32150 认证模型</el-tag>
                     </div>
@@ -567,11 +567,11 @@ onMounted(() => {
                       {{ t('carbonFormula.btnSyncToUploadDraft') }}
                     </el-button>
                   </div>
-                  <div style="font-size: 13px; color: #475569; line-height: 1.7; margin-bottom: 8px;">
+                  <div style="font-size: 13px; color: var(--color-text-muted); line-height: 1.7; margin-bottom: 8px;">
                     本次测算中，化石燃料直接燃烧排放占总量的 <strong>{{ (Number(pgResult.combustionEmission) / Math.max(0.001, Number(pgResult.totalEmission)) * 100).toFixed(1) }}%</strong>，脱硫反应副产排放占 <strong>{{ (Number(pgResult.desulfurizationEmission) / Math.max(0.001, Number(pgResult.totalEmission)) * 100).toFixed(1) }}%</strong>。
                     综合供电碳排放强度约为 <strong>0.820 tCO₂e/MWh</strong>，优于国家火电行业推荐基准线（0.850 tCO₂e/MWh），处于全国前 20% 能效领跑区间。
                   </div>
-                  <div style="display: flex; gap: 14px; font-size: 12px; color: #64748b; flex-wrap: wrap;">
+                  <div style="display: flex; gap: 14px; font-size: 12px; color: var(--color-text-muted); flex-wrap: wrap;">
                     <span>• 燃料燃烧充分，实测碳氧化率表现优良</span>
                     <span>• 推荐一键将本组算力结果同步带入当期核算申报草稿</span>
                   </div>
@@ -581,8 +581,8 @@ onMounted(() => {
           </el-tab-pane>
 
           <el-tab-pane :label="t('carbonFormula.tabPowerGrid')" name="powerGrid">
-            <div style="margin: 8px 0 16px; padding: 10px 14px; background: #ecf5ff; border: 1px solid #d9ecff; border-radius: 6px; display: flex; align-items: center; justify-content: space-between;">
-              <span style="font-size: 13px; color: #409eff; display: inline-flex; align-items: center; gap: 5px;">
+            <div style="margin: 8px 0 16px; padding: 10px 14px; background: var(--color-status-info-soft); border: 1px solid var(--color-status-info-soft); border-radius: 6px; display: flex; align-items: center; justify-content: space-between;">
+              <span style="font-size: 13px; color: var(--color-chart-1); display: inline-flex; align-items: center; gap: 5px;">
                 <el-icon :size="14"><InfoFilled /></el-icon>
                 {{ t('carbonFormula.templateTipPowerGrid') }}
               </span>
@@ -679,12 +679,12 @@ onMounted(() => {
                 </el-descriptions>
 
                 <!-- AI 电网能效与清洁电力消纳诊断卡片 -->
-                <div style="margin-top: 18px; padding: 14px 16px; background: #fafbfc; border: 1px solid #e2e8f0; border-radius: 8px;">
+                <div style="margin-top: 18px; padding: 14px 16px; background: var(--color-surface-elevated); border: 1px solid var(--color-border); border-radius: 8px;">
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
                     <div style="display: flex; align-items: center; gap: 8px;">
                       <div style="display: inline-flex; align-items: center; gap: 6px;">
-                        <el-icon color="#409eff" :size="15"><Cpu /></el-icon>
-                        <strong style="color: #1e293b; font-size: 14px;">{{ t('carbonFormula.aiGridAuditCardTitle') }}</strong>
+                        <el-icon color="var(--color-chart-1)" :size="15"><Cpu /></el-icon>
+                        <strong style="color: var(--color-text); font-size: 14px;">{{ t('carbonFormula.aiGridAuditCardTitle') }}</strong>
                       </div>
                       <el-tag type="primary" size="small">电网 9 参数模型</el-tag>
                     </div>
@@ -692,11 +692,11 @@ onMounted(() => {
                       {{ t('carbonFormula.btnSyncToUploadDraft') }}
                     </el-button>
                   </div>
-                  <div style="font-size: 13px; color: #475569; line-height: 1.7; margin-bottom: 8px;">
+                  <div style="font-size: 13px; color: var(--color-text-muted); line-height: 1.7; margin-bottom: 8px;">
                     输配电线损产生碳排放 <strong>{{ formatNumber(gridResult.transmissionLossEmission) }} tCO₂e</strong>，占本期总间接排放负荷的 <strong>{{ (Number(gridResult.transmissionLossEmission) / Math.max(0.001, Number(gridResult.totalEmission)) * 100).toFixed(1) }}%</strong>。
                     当前综合线损率控制在 <strong>{{ (Number(gridForm.lineLossRate) * 100).toFixed(2) }}%</strong>，整体能效与网损表现处于合规受控区间。
                   </div>
-                  <div style="display: flex; gap: 14px; font-size: 12px; color: #64748b; flex-wrap: wrap;">
+                  <div style="display: flex; gap: 14px; font-size: 12px; color: var(--color-text-muted); flex-wrap: wrap;">
                     <span>• 建议将电网测算数据一键同步带入当期核算申报草稿</span>
                   </div>
                 </div>
@@ -750,7 +750,7 @@ onMounted(() => {
     >
       <div style="display: flex; flex-direction: column; height: 100%;">
         <div style="margin-bottom: 12px;">
-          <span style="font-size: 12px; color: #909399; display: block; margin-bottom: 8px;">常见疑问快速咨询：</span>
+          <span style="font-size: 12px; color: var(--color-text-muted); display: block; margin-bottom: 8px;">常见疑问快速咨询：</span>
           <div style="display: flex; flex-wrap: wrap; gap: 6px;">
             <el-tag
               v-for="p in quickPrompts"
@@ -765,19 +765,19 @@ onMounted(() => {
           </div>
         </div>
 
-        <div style="flex: 1; overflow-y: auto; padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 16px;">
+        <div style="flex: 1; overflow-y: auto; padding: 12px; background: var(--color-surface); border-radius: 8px; border: 1px solid var(--color-border); margin-bottom: 16px;">
           <div
             v-for="(msg, i) in copilotMessages"
             :key="i"
             style="margin-bottom: 14px;"
           >
             <div v-if="msg.role === 'user'" style="text-align: right;">
-              <span style="display: inline-block; padding: 8px 12px; background: #409eff; color: white; border-radius: 8px; font-size: 13px; max-width: 85%; text-align: left;">
+              <span style="display: inline-block; padding: 8px 12px; background: var(--color-chart-1); color: white; border-radius: 8px; font-size: 13px; max-width: 85%; text-align: left;">
                 {{ msg.text }}
               </span>
             </div>
             <div v-else style="text-align: left;">
-              <div style="display: inline-block; padding: 10px 14px; background: white; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; line-height: 1.7; color: #334155; max-width: 95%;">
+              <div style="display: inline-block; padding: 10px 14px; background: white; border: 1px solid var(--color-border); border-radius: 8px; font-size: 13px; line-height: 1.7; color: var(--color-text-muted); max-width: 95%;">
                 <div>{{ msg.text }}</div>
                 <div v-if="msg.standards?.length" style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px;">
                   <el-tag v-for="std in msg.standards" :key="std" size="small" type="success" effect="light">
@@ -787,8 +787,8 @@ onMounted(() => {
               </div>
             </div>
           </div>
-          <div v-if="copilotLoading" style="text-align: left; color: #64748b; font-size: 12px; display: flex; align-items: center; gap: 6px;">
-            <el-icon class="is-loading" color="#14a79a"><Loading /></el-icon>
+          <div v-if="copilotLoading" style="text-align: left; color: var(--color-text-muted); font-size: 12px; display: flex; align-items: center; gap: 6px;">
+            <el-icon class="is-loading" color="var(--color-accent)"><Loading /></el-icon>
             <span>AI 正在检索 GB/T 32150 知识库...</span>
           </div>
         </div>

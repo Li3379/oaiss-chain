@@ -343,24 +343,24 @@ onMounted(() => {
     <PageHint :text="t('pageHints.tradingMarket')" />
 
     <!-- AI 智能履约与采购决策卡片 -->
-    <el-card v-if="adviceData" class="section-card" shadow="never" style="border: 1px solid rgba(64, 158, 255, 0.28); background: linear-gradient(180deg, rgba(64, 158, 255, 0.04) 0%, #fafbfc 100%);">
+    <el-card v-if="adviceData" class="section-card" shadow="never" style="border: 1px solid rgba(64, 158, 255, 0.28); background: linear-gradient(180deg, rgba(64, 158, 255, 0.04) 0%, var(--color-surface-elevated) 100%);">
       <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;">
         <div style="flex: 1;">
           <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
             <div style="display: inline-flex; align-items: center; gap: 6px;">
-              <el-icon color="#409eff" :size="15"><Cpu /></el-icon>
-              <strong style="font-size: 14px; color: #303133;">{{ t('tradingMarket.aiAdviceCardTitle') }}</strong>
+              <el-icon color="var(--color-chart-1)" :size="15"><Cpu /></el-icon>
+              <strong style="font-size: 14px; color: var(--color-text);">{{ t('tradingMarket.aiAdviceCardTitle') }}</strong>
             </div>
             <el-tag :type="adviceData.risk_level === 'HIGH' ? 'danger' : (adviceData.risk_level === 'MEDIUM' ? 'warning' : 'success')" size="small">
               {{ t('tradingMarket.riskLevel') }}: {{ adviceData.risk_level }}
             </el-tag>
-            <span style="font-size: 12px; color: #909399;">缺口: {{ formatNumber(adviceData.shortfall_tons) }} 吨 ｜ 预估成本: {{ formatNumber(adviceData.estimated_cost) }} 元</span>
+            <span style="font-size: 12px; color: var(--color-text-muted);">缺口: {{ formatNumber(adviceData.shortfall_tons) }} 吨 ｜ 预估成本: {{ formatNumber(adviceData.estimated_cost) }} 元</span>
           </div>
-          <p style="font-size: 13px; color: #606266; line-height: 1.6; margin: 0 0 8px;">
+          <p style="font-size: 13px; color: var(--color-text-muted); line-height: 1.6; margin: 0 0 8px;">
             {{ adviceData.advice }}
           </p>
           <div v-if="adviceData.action_items?.length" style="display: flex; flex-direction: column; gap: 4px;">
-            <div v-for="(act, idx) in adviceData.action_items" :key="idx" style="font-size: 12px; color: #475569;">
+            <div v-for="(act, idx) in adviceData.action_items" :key="idx" style="font-size: 12px; color: var(--color-text-muted);">
               • {{ act }}
             </div>
           </div>
@@ -525,8 +525,8 @@ onMounted(() => {
         </el-form-item>
 
         <div style="margin: -10px 0 16px 100px; display: flex; align-items: center; justify-content: space-between;">
-          <span style="font-size: 12px; color: #64748b; display: inline-flex; align-items: center; gap: 5px;">
-            <el-icon :size="13" color="#14a79a"><InfoFilled /></el-icon>
+          <span style="font-size: 12px; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: 5px;">
+            <el-icon :size="13" color="var(--color-accent)"><InfoFilled /></el-icon>
             {{ t('tradingMarket.aiPriceTip', { price: aiReferencePrice }) }}
           </span>
           <el-button link type="primary" size="small" @click="applyAiPrice">
@@ -544,13 +544,13 @@ onMounted(() => {
 
           <!-- 买入资产联动卡片 -->
           <div v-if="formModel.direction === 1" style="margin-top: 10px; font-size: 13px; line-height: 1.8;">
-            <div style="color: #606266; display: flex; justify-content: space-between;">
+            <div style="color: var(--color-text-muted); display: flex; justify-content: space-between;">
               <span>{{ t('tradingMarket.userBalance') }}:</span>
               <strong>{{ formatNumber(userBalance) }} 碳币</strong>
             </div>
-            <div style="color: #606266; display: flex; justify-content: space-between;">
+            <div style="color: var(--color-text-muted); display: flex; justify-content: space-between;">
               <span>{{ t('tradingMarket.estimatedFreeze') }}:</span>
-              <strong style="color: #e6a23c;">{{ estimatedTotal }} 碳币</strong>
+              <strong style="color: var(--color-status-warning);">{{ estimatedTotal }} 碳币</strong>
             </div>
             <div v-if="parseFloat(estimatedTotal) > userBalance" style="margin-top: 6px;">
               <el-alert type="error" :closable="false" show-icon :title="t('tradingMarket.balanceInsufficientWarn')" />
@@ -559,13 +559,13 @@ onMounted(() => {
 
           <!-- 卖出配额联动卡片 -->
           <div v-else-if="formModel.direction === 2" style="margin-top: 10px; font-size: 13px; line-height: 1.8;">
-            <div style="color: #606266; display: flex; justify-content: space-between;">
+            <div style="color: var(--color-text-muted); display: flex; justify-content: space-between;">
               <span>{{ t('tradingMarket.userQuota') }}:</span>
               <strong>{{ formatNumber(userQuota) }} 吨</strong>
             </div>
-            <div style="color: #606266; display: flex; justify-content: space-between;">
+            <div style="color: var(--color-text-muted); display: flex; justify-content: space-between;">
               <span>{{ t('tradingMarket.estimatedQuotaFreeze') }}:</span>
-              <strong style="color: #e6a23c;">{{ formModel.quantity || '0' }} 吨</strong>
+              <strong style="color: var(--color-status-warning);">{{ formModel.quantity || '0' }} 吨</strong>
             </div>
             <div v-if="parseFloat(formModel.quantity || '0') > userQuota" style="margin-top: 6px;">
               <el-alert type="error" :closable="false" show-icon :title="t('tradingMarket.quotaInsufficientWarn')" />

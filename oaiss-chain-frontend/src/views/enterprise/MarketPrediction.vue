@@ -230,8 +230,8 @@ function renderChart() {
       trigger: 'axis',
       axisPointer: {
         type: 'cross',
-        lineStyle: { color: '#0ea5e9', width: 1, type: 'dashed' },
-        crossStyle: { color: '#0ea5e9' }
+        lineStyle: { color: 'var(--color-chart-2)', width: 1, type: 'dashed' },
+        crossStyle: { color: 'var(--color-chart-2)' }
       },
       formatter: (params: any) => {
         if (!params || !params.length) return ''
@@ -242,17 +242,17 @@ function renderChart() {
 
         return `
           <div style="font-family: sans-serif; font-size: 13px; line-height: 1.7; padding: 4px;">
-            <div style="font-weight: 600; color: #1e293b; margin-bottom: 6px;">${date}</div>
-            <div style="color: #0284c7; display: flex; align-items: center; gap: 6px;">
-              <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#0284c7;"></span>
+            <div style="font-weight: 600; color: var(--color-text); margin-bottom: 6px;">${date}</div>
+            <div style="color: var(--color-chart-1); display: flex; align-items: center; gap: 6px;">
+              <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--color-chart-1);"></span>
               <span>${t('marketPrediction.price')}: <strong>${pVal != null ? Number(pVal).toFixed(2) : '--'}</strong> 元/吨</span>
             </div>
-            <div style="color: #10b981; display: flex; align-items: center; gap: 6px;">
-              <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#10b981;"></span>
+            <div style="color: var(--color-status-success); display: flex; align-items: center; gap: 6px;">
+              <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--color-status-success);"></span>
               <span>${t('marketPrediction.upperBound')}: <strong>${uVal != null ? Number(uVal).toFixed(2) : '--'}</strong> 元/吨</span>
             </div>
-            <div style="color: #f59e0b; display: flex; align-items: center; gap: 6px;">
-              <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#f59e0b;"></span>
+            <div style="color: var(--color-status-warning); display: flex; align-items: center; gap: 6px;">
+              <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--color-status-warning);"></span>
               <span>${t('marketPrediction.lowerBound')}: <strong>${lVal != null ? Number(lVal).toFixed(2) : '--'}</strong> 元/吨</span>
             </div>
           </div>
@@ -263,26 +263,26 @@ function renderChart() {
       data: [t('marketPrediction.price'), t('marketPrediction.confidenceBand')],
       bottom: 6,
       icon: 'roundRect',
-      textStyle: { color: '#64748b', fontSize: 12 }
+      textStyle: { color: 'var(--color-text-muted)', fontSize: 12 }
     },
     grid: { left: 50, right: 30, top: 40, bottom: 65, containLabel: true },
     xAxis: {
       type: 'category',
       data: dates,
       boundaryGap: false,
-      axisLine: { lineStyle: { color: '#cbd5e1' } },
-      axisLabel: { color: '#64748b', fontSize: 11, rotate: dates.length > 40 ? 30 : 0 }
+      axisLine: { lineStyle: { color: 'var(--color-border-strong)' } },
+      axisLabel: { color: 'var(--color-text-muted)', fontSize: 11, rotate: dates.length > 40 ? 30 : 0 }
     },
     yAxis: {
       type: 'value',
       name: t('marketPrediction.priceUnit'),
       min: minY,
       max: maxY,
-      nameTextStyle: { color: '#94a3b8', fontSize: 11 },
+      nameTextStyle: { color: 'var(--color-text-muted)', fontSize: 11 },
       axisLine: { show: false },
       axisTick: { show: false },
-      splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } },
-      axisLabel: { color: '#64748b' }
+      splitLine: { lineStyle: { color: 'var(--color-raised)', type: 'dashed' } },
+      axisLabel: { color: 'var(--color-text-muted)' }
     },
     dataZoom: [
       { type: 'inside', start: 0, end: 100 },
@@ -291,9 +291,9 @@ function renderChart() {
         height: 18,
         bottom: 30,
         borderColor: 'transparent',
-        backgroundColor: '#f8fafc',
+        backgroundColor: 'var(--color-surface)',
         fillerColor: 'rgba(14, 165, 233, 0.15)',
-        handleStyle: { color: '#0ea5e9' }
+        handleStyle: { color: 'var(--color-chart-2)' }
       }
     ],
     series: [
@@ -342,18 +342,18 @@ function renderChart() {
         symbolSize: 6,
         lineStyle: {
           width: 3.5,
-          color: '#0284c7',
+          color: 'var(--color-chart-1)',
           shadowColor: 'rgba(2, 132, 199, 0.35)',
           shadowBlur: 8,
           shadowOffsetY: 3
         },
-        itemStyle: { color: '#0284c7' },
+        itemStyle: { color: 'var(--color-chart-1)' },
         markPoint: {
           symbol: 'pin',
           symbolSize: 45,
           data: [
-            { type: 'max', name: t('marketPrediction.maxResistance'), itemStyle: { color: '#ef4444' } },
-            { type: 'min', name: t('marketPrediction.minSupport'), itemStyle: { color: '#10b981' } }
+            { type: 'max', name: t('marketPrediction.maxResistance'), itemStyle: { color: 'var(--color-status-danger)' } },
+            { type: 'min', name: t('marketPrediction.minSupport'), itemStyle: { color: 'var(--color-status-success)' } }
           ],
           label: { fontSize: 10, color: '#fff' }
         }
@@ -373,11 +373,11 @@ function renderChart() {
       lineStyle: {
         width: 2.8,
         type: 'dashed',
-        color: '#a855f7',
+        color: 'var(--color-chart-2)',
         shadowColor: 'rgba(168, 85, 247, 0.45)',
         shadowBlur: 8
       },
-      itemStyle: { color: '#a855f7' }
+      itemStyle: { color: 'var(--color-chart-2)' }
     })
     if (!(option.legend.data as any[]).includes(t('marketPrediction.simScenarioCurve'))) {
       (option.legend.data as any[]).push(t('marketPrediction.simScenarioCurve'))
@@ -489,7 +489,7 @@ onBeforeUnmount(() => {
             <el-tag :type="trendTagType" size="small">{{ expectedChangePercent }}</el-tag>
           </div>
           <div class="metric-body">
-            <span class="metric-number" style="color: #0284c7;">{{ Number(targetEndPrice).toFixed(2) }}</span>
+            <span class="metric-number" style="color: var(--color-chart-1);">{{ Number(targetEndPrice).toFixed(2) }}</span>
             <span class="metric-unit">元/吨</span>
           </div>
           <div class="metric-footer">
@@ -506,7 +506,7 @@ onBeforeUnmount(() => {
             <el-tag type="info" size="small">95% CI</el-tag>
           </div>
           <div class="metric-body">
-            <span class="metric-number" style="color: #10b981;">91.2%</span>
+            <span class="metric-number" style="color: var(--color-status-success);">91.2%</span>
             <span class="metric-unit">R² 优度</span>
           </div>
           <div class="metric-footer">
@@ -522,7 +522,7 @@ onBeforeUnmount(() => {
             <span class="metric-title">{{ t('marketPrediction.metricModelArchitecture') }}</span>
             <el-tag type="warning" size="small">Hybrid</el-tag>
           </div>
-          <div class="metric-body" style="font-size: 17px; font-weight: 700; color: #334155; line-height: 38px;">
+          <div class="metric-body" style="font-size: 17px; font-weight: 700; color: var(--color-text-muted); line-height: 38px;">
             Prophet + XGBoost
           </div>
           <div class="metric-footer">
@@ -537,10 +537,10 @@ onBeforeUnmount(() => {
       <div class="chart-card-header">
         <div class="chart-title-left">
           <div style="display: inline-flex; align-items: center; gap: 6px;">
-            <el-icon color="#0284c7" :size="16"><TrendCharts /></el-icon>
-            <strong style="font-size: 15px; color: #1e293b;">{{ t('marketPrediction.chartTitle') }}</strong>
+            <el-icon color="var(--color-chart-1)" :size="16"><TrendCharts /></el-icon>
+            <strong style="font-size: 15px; color: var(--color-text);">{{ t('marketPrediction.chartTitle') }}</strong>
           </div>
-          <span style="font-size: 12px; color: #94a3b8; margin-left: 8px;">
+          <span style="font-size: 12px; color: var(--color-text-muted); margin-left: 8px;">
             (蓝线：AI 预测中位走势 ｜ 浅蓝阴影：95% 置信波动区间通道)
           </span>
         </div>
@@ -565,8 +565,8 @@ onBeforeUnmount(() => {
         <div class="card-title-flex">
           <div style="display: flex; align-items: center; gap: 8px;">
             <div style="display: inline-flex; align-items: center; gap: 6px;">
-              <el-icon color="#8b5cf6" :size="16"><DataLine /></el-icon>
-              <strong style="color: #1e293b; font-size: 15px;">{{ t('marketPrediction.sandboxTitle') }}</strong>
+              <el-icon color="var(--color-chart-3)" :size="16"><DataLine /></el-icon>
+              <strong style="color: var(--color-text); font-size: 15px;">{{ t('marketPrediction.sandboxTitle') }}</strong>
             </div>
             <el-tag :type="isSimulationActive ? 'warning' : 'info'" size="small" effect="plain">
               {{ isSimulationActive ? t('marketPrediction.sandboxSimulating') : t('marketPrediction.sandboxBaseline') }}
@@ -578,7 +578,7 @@ onBeforeUnmount(() => {
         </div>
       </template>
 
-      <p style="font-size: 13px; color: #64748b; line-height: 1.6; margin: 0 0 16px;">
+      <p style="font-size: 13px; color: var(--color-text-muted); line-height: 1.6; margin: 0 0 16px;">
         {{ t('marketPrediction.sandboxDesc') }}
       </p>
 
@@ -590,10 +590,10 @@ onBeforeUnmount(() => {
             <div class="slider-item">
               <div class="slider-label-row">
                 <span class="slider-label" style="display: inline-flex; align-items: center; gap: 4px;">
-                  <el-icon color="#ef4444" :size="14"><PriceTag /></el-icon>
+                  <el-icon color="var(--color-status-danger)" :size="14"><PriceTag /></el-icon>
                   {{ t('marketPrediction.simCoalLabel') }}
                 </span>
-                <span class="slider-val" :style="{ color: simCoalDelta > 0 ? '#ef4444' : (simCoalDelta < 0 ? '#10b981' : '#64748b') }">
+                <span class="slider-val" :style="{ color: simCoalDelta > 0 ? 'var(--color-status-danger)' : (simCoalDelta < 0 ? 'var(--color-status-success)' : 'var(--color-text-muted)') }">
                   {{ simCoalDelta > 0 ? '+' : '' }}{{ simCoalDelta }}%
                 </span>
               </div>
@@ -604,10 +604,10 @@ onBeforeUnmount(() => {
             <div class="slider-item" style="margin-top: 22px;">
               <div class="slider-label-row">
                 <span class="slider-label" style="display: inline-flex; align-items: center; gap: 4px;">
-                  <el-icon color="#0284c7" :size="14"><Document /></el-icon>
+                  <el-icon color="var(--color-chart-1)" :size="14"><Document /></el-icon>
                   {{ t('marketPrediction.simQuotaLabel') }}
                 </span>
-                <span class="slider-val" :style="{ color: simQuotaTightening > 0 ? '#ef4444' : (simQuotaTightening < 0 ? '#10b981' : '#64748b') }">
+                <span class="slider-val" :style="{ color: simQuotaTightening > 0 ? 'var(--color-status-danger)' : (simQuotaTightening < 0 ? 'var(--color-status-success)' : 'var(--color-text-muted)') }">
                   {{ simQuotaTightening > 0 ? '+' : '' }}{{ simQuotaTightening }}%
                 </span>
               </div>
@@ -618,10 +618,10 @@ onBeforeUnmount(() => {
             <div class="slider-item" style="margin-top: 22px;">
               <div class="slider-label-row">
                 <span class="slider-label" style="display: inline-flex; align-items: center; gap: 4px;">
-                  <el-icon color="#10b981" :size="14"><Lightning /></el-icon>
+                  <el-icon color="var(--color-status-success)" :size="14"><Lightning /></el-icon>
                   {{ t('marketPrediction.simGreenPowerLabel') }}
                 </span>
-                <span class="slider-val" style="color: #10b981;">
+                <span class="slider-val" style="color: var(--color-status-success);">
                   +{{ simGreenPowerDelta }}%
                 </span>
               </div>
@@ -664,13 +664,13 @@ onBeforeUnmount(() => {
           <template #header>
             <div class="card-title-flex">
               <div style="display: inline-flex; align-items: center; gap: 6px;">
-                <el-icon color="#0284c7" :size="15"><Search /></el-icon>
-                <strong style="color: #1e293b;">{{ t('marketPrediction.xaiCardTitle') }}</strong>
+                <el-icon color="var(--color-chart-1)" :size="15"><Search /></el-icon>
+                <strong style="color: var(--color-text);">{{ t('marketPrediction.xaiCardTitle') }}</strong>
               </div>
               <el-tag size="small" type="primary" effect="plain">SHAP 贡献权重</el-tag>
             </div>
           </template>
-          <p style="font-size: 12.5px; color: #64748b; line-height: 1.6; margin-top: 0; margin-bottom: 14px;">
+          <p style="font-size: 12.5px; color: var(--color-text-muted); line-height: 1.6; margin-top: 0; margin-bottom: 14px;">
             {{ t('marketPrediction.xaiCardDesc') }}
           </p>
 
@@ -683,7 +683,7 @@ onBeforeUnmount(() => {
               <el-progress
                 :percentage="feat.weight"
                 :stroke-width="10"
-                :color="feat.weight >= 30 ? '#0284c7' : (feat.weight >= 20 ? '#38bdf8' : '#94a3b8')"
+                :color="feat.weight >= 30 ? 'var(--color-chart-1)' : (feat.weight >= 20 ? 'var(--color-chart-3)' : 'var(--color-text-muted)')"
                 :show-text="false"
               />
               <div class="xai-tip">{{ t(feat.tipKey) }}</div>
@@ -698,8 +698,8 @@ onBeforeUnmount(() => {
           <template #header>
             <div class="card-title-flex">
               <div style="display: inline-flex; align-items: center; gap: 6px;">
-                <el-icon color="#14a79a" :size="15"><Guide /></el-icon>
-                <strong style="color: #1e293b;">{{ t('marketPrediction.advisoryCardTitle') }}</strong>
+                <el-icon color="var(--color-accent)" :size="15"><Guide /></el-icon>
+                <strong style="color: var(--color-text);">{{ t('marketPrediction.advisoryCardTitle') }}</strong>
               </div>
               <el-tag size="small" type="success" effect="plain">履约决策驱动</el-tag>
             </div>
@@ -718,15 +718,15 @@ onBeforeUnmount(() => {
           <div class="strategy-metrics-box">
             <div class="strat-item">
               <span class="strat-label">当前支撑位 (下轨):</span>
-              <strong style="color: #10b981;">{{ dataPoints[0]?.lowerBound ? Number(dataPoints[0].lowerBound).toFixed(2) : '55.30' }} 元/吨</strong>
+              <strong style="color: var(--color-status-success);">{{ dataPoints[0]?.lowerBound ? Number(dataPoints[0].lowerBound).toFixed(2) : '55.30' }} 元/吨</strong>
             </div>
             <div class="strat-item">
               <span class="strat-label">预期阻力位 (上轨):</span>
-              <strong style="color: #ef4444;">{{ dataPoints[0]?.upperBound ? Number(dataPoints[0].upperBound).toFixed(2) : '64.80' }} 元/吨</strong>
+              <strong style="color: var(--color-status-danger);">{{ dataPoints[0]?.upperBound ? Number(dataPoints[0].upperBound).toFixed(2) : '64.80' }} 元/吨</strong>
             </div>
             <div class="strat-item">
               <span class="strat-label">建议建仓窗口:</span>
-              <span style="color: #0284c7; font-weight: 600;">未来 7~10 天</span>
+              <span style="color: var(--color-chart-1); font-weight: 600;">未来 7~10 天</span>
             </div>
           </div>
 
@@ -749,9 +749,9 @@ onBeforeUnmount(() => {
 }
 
 .section-card {
-  border: 1px solid var(--border-color, #e2e8f0);
+  border: 1px solid var(--border-color, var(--color-border));
   border-radius: 12px;
-  background: #ffffff;
+  background: var(--color-surface);
 }
 
 .header-terminal-card {
@@ -775,13 +775,13 @@ onBeforeUnmount(() => {
 .terminal-title {
   font-size: 20px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--color-text);
   margin: 0;
 }
 
 .terminal-subtitle {
   font-size: 13px;
-  color: #64748b;
+  color: var(--color-text-muted);
   margin: 4px 0 0;
 }
 
@@ -798,8 +798,8 @@ onBeforeUnmount(() => {
 
 .metric-card {
   border-radius: 10px;
-  border: 1px solid #e2e8f0;
-  background: #f8fafc;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
   padding: 4px 8px;
 }
 
@@ -812,7 +812,7 @@ onBeforeUnmount(() => {
 
 .metric-title {
   font-size: 12.5px;
-  color: #64748b;
+  color: var(--color-text-muted);
   font-weight: 500;
 }
 
@@ -826,19 +826,19 @@ onBeforeUnmount(() => {
 .metric-number {
   font-size: 28px;
   font-weight: 800;
-  color: #0f172a;
+  color: var(--color-text);
   line-height: 1;
 }
 
 .metric-unit {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--color-text-muted);
 }
 
 .metric-footer {
   font-size: 11.5px;
-  color: #64748b;
-  border-top: 1px dashed #e2e8f0;
+  color: var(--color-text-muted);
+  border-top: 1px dashed var(--color-border);
   padding-top: 6px;
 }
 
@@ -900,18 +900,18 @@ onBeforeUnmount(() => {
 }
 
 .xai-name {
-  color: #334155;
+  color: var(--color-text-muted);
   font-weight: 600;
 }
 
 .xai-weight {
-  color: #64748b;
+  color: var(--color-text-muted);
   font-size: 12px;
 }
 
 .xai-tip {
   font-size: 11.5px;
-  color: #94a3b8;
+  color: var(--color-text-muted);
   margin-top: 2px;
 }
 
@@ -919,46 +919,46 @@ onBeforeUnmount(() => {
   padding: 14px 16px;
   border-radius: 8px;
   margin-bottom: 14px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
+  background: var(--pen-success-soft);
+  border: 1px solid var(--color-status-success-soft);
 }
 
 .strategy-banner--danger {
-  background: #fef2f2;
-  border-color: #fecaca;
+  background: var(--color-status-danger-soft);
+  border-color: var(--color-status-danger-soft);
 }
 
 .strategy-banner--warning {
-  background: #fffbeb;
-  border-color: #fde68a;
+  background: var(--pen-warning-soft);
+  border-color: var(--color-status-warning-soft);
 }
 
 .strategy-badge {
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  color: #16a34a;
+  color: var(--color-status-success);
   margin-bottom: 4px;
 }
 
 .strategy-headline {
   font-size: 15px;
-  color: #0f172a;
+  color: var(--color-text);
   display: block;
   margin-bottom: 4px;
 }
 
 .strategy-detail {
   font-size: 12.5px;
-  color: #475569;
+  color: var(--color-text-muted);
   line-height: 1.6;
   margin: 0;
 }
 
 .strategy-metrics-box {
-  background: #f8fafc;
+  background: var(--color-surface);
   border-radius: 8px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border);
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
@@ -973,11 +973,11 @@ onBeforeUnmount(() => {
 }
 
 .strat-label {
-  color: #64748b;
+  color: var(--color-text-muted);
 }
 
 .sandbox-card {
-  background: #ffffff;
+  background: var(--color-surface);
 }
 
 .slider-group {
@@ -996,7 +996,7 @@ onBeforeUnmount(() => {
   align-items: center;
   font-size: 13px;
   font-weight: 600;
-  color: #334155;
+  color: var(--color-text-muted);
   margin-bottom: 2px;
 }
 
@@ -1013,15 +1013,15 @@ onBeforeUnmount(() => {
 }
 
 .sim-price-card {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 12px 14px;
 }
 
 .sim-price-label {
   font-size: 12px;
-  color: #64748b;
+  color: var(--color-text-muted);
   margin-bottom: 4px;
 }
 
@@ -1035,25 +1035,25 @@ onBeforeUnmount(() => {
 .sim-price-num {
   font-size: 26px;
   font-weight: 800;
-  color: #0f172a;
+  color: var(--color-text);
   line-height: 1;
 }
 
 .sim-price-unit {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--color-text-muted);
 }
 
 .sim-contrast-tip {
   font-size: 11.5px;
-  color: #64748b;
+  color: var(--color-text-muted);
 }
 
 .sim-insight-card {
   padding: 12px 14px;
   border-radius: 8px;
-  border: 1px solid #e2e8f0;
-  background: #f8fafc;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1061,30 +1061,30 @@ onBeforeUnmount(() => {
 }
 
 .sim-insight-card--danger {
-  background: #fef2f2;
-  border-color: #fecaca;
+  background: var(--color-status-danger-soft);
+  border-color: var(--color-status-danger-soft);
 }
 
 .sim-insight-card--success {
-  background: #f0fdf4;
-  border-color: #bbf7d0;
+  background: var(--pen-success-soft);
+  border-color: var(--color-status-success-soft);
 }
 
 .sim-insight-card--info {
-  background: #f0f9ff;
-  border-color: #bae6fd;
+  background: var(--color-status-info-soft);
+  border-color: var(--color-status-info-soft);
 }
 
 .sim-insight-title {
   font-size: 13px;
-  color: #1e293b;
+  color: var(--color-text);
   margin-bottom: 6px;
   display: block;
 }
 
 .sim-insight-body {
   font-size: 12px;
-  color: #475569;
+  color: var(--color-text-muted);
   line-height: 1.6;
   margin: 0;
 }

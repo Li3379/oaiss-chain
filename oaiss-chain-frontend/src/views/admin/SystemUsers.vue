@@ -204,7 +204,7 @@ onMounted(() => {
               inline-prompt
               :active-text="t('systemUsers.statusEnabled')"
               :inactive-text="t('systemUsers.statusDisabled')"
-              style="--el-switch-on-color: #14a79a;"
+              style="--el-switch-on-color: var(--color-accent);"
             />
           </template>
         </el-table-column>

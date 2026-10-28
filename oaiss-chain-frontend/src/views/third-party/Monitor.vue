@@ -277,7 +277,7 @@ onMounted(() => {
 
         <div class="stats-dials-row">
           <div class="dial-card">
-            <el-progress type="dashboard" :percentage="numericApprovalRate" :color="'#14a79a'" :width="110">
+            <el-progress type="dashboard" :percentage="numericApprovalRate" :color="'var(--color-accent)'" :width="110">
               <template #default="{ percentage }">
                 <div class="dial-inner">
                   <span class="dial-val">{{ percentage }}%</span>
@@ -287,7 +287,7 @@ onMounted(() => {
             </el-progress>
           </div>
           <div class="dial-card">
-            <el-progress type="dashboard" :percentage="numericPendingRate" :color="'#e6a23c'" :width="110">
+            <el-progress type="dashboard" :percentage="numericPendingRate" :color="'var(--color-status-warning)'" :width="110">
               <template #default="{ percentage }">
                 <div class="dial-inner">
                   <span class="dial-val">{{ percentage }}%</span>

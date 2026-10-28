@@ -159,7 +159,7 @@ function handleVisibleChange(visible: boolean) {
   align-items: center;
   padding: 10px 16px;
   font-weight: 600;
-  border-bottom: 1px solid var(--border-color, #e4e7ed);
+  border-bottom: 1px solid var(--border-color, var(--color-border));
 }
 .header-left-title {
   display: flex;
@@ -168,7 +168,7 @@ function handleVisibleChange(visible: boolean) {
 }
 .unread-pill {
   font-size: 11px;
-  background-color: var(--el-color-danger, #f56c6c);
+  background-color: var(--el-color-danger, var(--color-status-danger));
   color: #fff;
   padding: 1px 6px;
   border-radius: 10px;
@@ -196,16 +196,16 @@ function handleVisibleChange(visible: boolean) {
 .notification-title {
   font-weight: 600;
   font-size: var(--text-sm, 13px);
-  color: var(--text-primary, #303133);
+  color: var(--text-primary, var(--color-text));
 }
 .notification-time {
   font-size: 11px;
-  color: var(--el-text-color-placeholder, #a8abb2);
+  color: var(--el-text-color-placeholder, var(--color-text-muted));
   white-space: nowrap;
 }
 .notification-content {
   font-size: var(--text-xs, 12px);
-  color: var(--el-text-color-secondary, #606266);
+  color: var(--el-text-color-secondary, var(--color-text-muted));
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -215,7 +215,7 @@ function handleVisibleChange(visible: boolean) {
   -webkit-box-orient: vertical;
 }
 .is-unread {
-  background: var(--el-color-primary-light-9, #ecf5ff);
+  background: var(--el-color-primary-light-9, var(--color-status-info-soft));
 }
 .ws-indicator {
   position: absolute;
@@ -226,9 +226,9 @@ function handleVisibleChange(visible: boolean) {
   border-radius: 50%;
 }
 .ws-connected {
-  background: var(--el-color-success, #67c23a);
+  background: var(--el-color-success, var(--color-status-success));
 }
 .ws-disconnected {
-  background: var(--el-color-info-light-3, #c8c9cc);
+  background: var(--el-color-info-light-3, var(--color-border));
 }
 </style>

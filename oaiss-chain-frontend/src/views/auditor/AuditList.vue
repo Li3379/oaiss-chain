@@ -460,8 +460,8 @@ onMounted(() => {
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <div style="display: inline-flex; align-items: center; gap: 6px;">
-                <el-icon color="#409eff" :size="15"><Cpu /></el-icon>
-                <strong style="color: #1e293b; font-size: 13.5px;">{{ t('auditList.aiPreAuditTitle') }}</strong>
+                <el-icon color="var(--color-chart-1)" :size="15"><Cpu /></el-icon>
+                <strong style="color: var(--color-text); font-size: 13.5px;">{{ t('auditList.aiPreAuditTitle') }}</strong>
               </div>
               <el-tag :type="aiPreAudit.statusType" size="small">{{ aiPreAudit.statusText }}</el-tag>
             </div>
@@ -469,7 +469,7 @@ onMounted(() => {
               {{ t('auditList.btnAdoptAiComment') }}
             </el-button>
           </div>
-          <div style="font-size: 12px; color: #475569; line-height: 1.6;">
+          <div style="font-size: 12px; color: var(--color-text-muted); line-height: 1.6;">
             <div v-for="(f, idx) in aiPreAudit.findings" :key="idx" style="margin-bottom: 2px;">
               • {{ f }}
             </div>
@@ -483,7 +483,7 @@ onMounted(() => {
           </el-radio-group>
           <div v-if="!reviewForm.approved" class="reject-credit-notice">
             <span style="display: inline-flex; align-items: center; gap: 4px;">
-              <el-icon color="#e6a23c"><Warning /></el-icon>
+              <el-icon color="var(--color-status-warning)"><Warning /></el-icon>
               {{ t('quickReasons.creditNotice') }}
             </span>
           </div>
@@ -588,8 +588,8 @@ onMounted(() => {
 .ai-preaudit-card {
   margin: 0 0 16px 110px;
   padding: 12px 14px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 8px;
 }
 
