@@ -98,6 +98,63 @@ const menuTree = computed<MenuItem[]>(() => MENU_BY_ROLE[appStore.role as keyof 
 
 const sectionIcon = (label: string): Component | undefined => SECTION_ICONS[label]
 
+/* ---------- pen 壳层：顶栏一级页签 + 72px 图标栏 ---------- */
+const TAB_LABEL: Record<string, string> = {
+  carbon: 'layout.tabCarbon',
+  trade: 'layout.tabTrade',
+  asset: 'layout.tabAsset',
+  intel: 'layout.tabIntel',
+  audit: 'layout.tabAudit',
+  project: 'layout.tabProject',
+  verify: 'layout.tabVerify',
+  monitor: 'layout.tabMonitor',
+  system: 'layout.tabSystem',
+  data: 'layout.tabData',
+  cert: 'layout.tabCert',
+}
+
+/** 拍平所有叶子节点（保留父级 label 以便图标与提示） */
+const flatLeaves = computed<MenuItem[]>(() => {
+  const out: MenuItem[] = []
+  for (const item of menuTree.value) {
+    if (item.children?.length) out.push(...item.children)
+    else if (item.path) out.push(item)
+  }
+  return out
+})
+
+/** 顶栏页签：按出现顺序去重 */
+const tabs = computed<{ key: string; label: string }[]>(() => {
+  const seen: string[] = []
+  for (const leaf of flatLeaves.value) {
+    if (leaf.tab && !seen.includes(leaf.tab)) seen.push(leaf.tab)
+  }
+  return seen.map((key) => ({ key, label: TAB_LABEL[key] || key }))
+})
+
+/** 当前路由所属页签：先精确匹配叶子，再按路径前缀兜底（覆盖 CarbonNeutralDetail 这类参数路由） */
+const activeTab = computed<string>(() => {
+  const exact = flatLeaves.value.find((l) => l.path === route.path)?.tab
+  if (exact) return exact
+  const prefix = flatLeaves.value.find((l) => l.path && route.path.startsWith(l.path + '/'))?.tab
+  return prefix || tabs.value[0]?.key || ''
+})
+
+/** 图标栏条目：rail === true 的叶子 */
+const railItems = computed<MenuItem[]>(() => flatLeaves.value.filter((l) => l.rail === true))
+
+/** 页签内的二级条目（rail === false 的叶子，属于当前页签） */
+const tabSubItems = computed<MenuItem[]>(() =>
+  flatLeaves.value.filter((l) => l.rail === false && l.tab === activeTab.value),
+)
+
+/** 页签切换：跳到该页签下第一个叶子 */
+const onSelectTab = (key: string) => {
+  const first = flatLeaves.value.find((l) => l.tab === key && l.path)
+  if (first?.path && first.path !== route.path) router.push(first.path)
+}
+
+
 /* ---------- 新用户 3 步上手引导（仅首次访问，完成/跳过后不再弹出） ---------- */
 // 键按用户隔离：旧实现使用全局常量键，导致「A 用户看过 → B 用户也看不到」，
 // 且仅写 localStorage —— 隐身模式/存储被清理后会反复弹出（27 张截图被遮挡的根因）。
@@ -173,18 +230,6 @@ watch(tourVisible, (visible) => {
 
 const activeMenu = computed(() => route.path)
 
-const defaultOpeneds = computed(() => {
-  const openList: string[] = []
-
-  menuTree.value.forEach((item) => {
-    if (item.children?.some((child) => child.path === route.path)) {
-      openList.push(item.label)
-    }
-  })
-
-  return openList
-})
-
 const onSelectMenu = (index: string) => {
   if (index && index.startsWith('/') && index !== route.path) {
     router.push(index)
@@ -233,37 +278,17 @@ onMounted(() => {
         <el-menu
           class="side-menu"
           :default-active="activeMenu"
-          :default-openeds="defaultOpeneds"
           :collapse="appStore.sidebarCollapsed"
           :collapse-transition="false"
           @select="onSelectMenu"
         >
-          <template v-for="item in menuTree" :key="item.label">
-            <!-- 1. 包含多个子页面的可展开分组菜单 -->
-            <el-sub-menu
-              v-if="item.children && item.children.length > 0"
-              :index="item.label"
-            >
-              <template #title>
-                <el-icon v-if="sectionIcon(item.label)" class="menu-icon">
-                  <component :is="sectionIcon(item.label)" />
-                </el-icon>
-                <span>{{ t(item.label) }}</span>
-              </template>
-
-              <el-menu-item
-                v-for="sub in item.children"
-                :key="sub.path"
-                :index="sub.path"
-              >
-                <span>{{ t(sub.label) }}</span>
-              </el-menu-item>
-            </el-sub-menu>
-
-            <!-- 2. 单页面直接跳转菜单项 -->
+          <!-- 折叠：72px 图标栏，悬停显示名称（aria-label 保住 e2e 的 menuitem 可访问名） -->
+          <template v-if="appStore.sidebarCollapsed">
             <el-menu-item
-              v-else-if="item.path"
-              :index="item.path"
+              v-for="item in railItems"
+              :key="item.path"
+              :index="item.path as string"
+              :aria-label="t(item.label)"
             >
               <el-icon v-if="sectionIcon(item.label)" class="menu-icon">
                 <component :is="sectionIcon(item.label)" />
@@ -272,6 +297,43 @@ onMounted(() => {
                 <span>{{ t(item.label) }}</span>
               </template>
             </el-menu-item>
+          </template>
+
+          <!-- 展开：按 pen 稿分组呈现，分组标题不可点击，叶子逐条保留 -->
+          <template v-else>
+            <template v-for="item in menuTree" :key="item.label">
+              <el-sub-menu
+                v-if="item.children && item.children.length > 0"
+                :index="item.label"
+              >
+                <template #title>
+                  <el-icon v-if="sectionIcon(item.label)" class="menu-icon">
+                    <component :is="sectionIcon(item.label)" />
+                  </el-icon>
+                  <span>{{ t(item.label) }}</span>
+                </template>
+
+                <el-menu-item
+                  v-for="sub in item.children"
+                  :key="sub.path"
+                  :index="sub.path as string"
+                >
+                  <span>{{ t(sub.label) }}</span>
+                </el-menu-item>
+              </el-sub-menu>
+
+              <el-menu-item
+                v-else-if="item.path"
+                :index="item.path"
+              >
+                <el-icon v-if="sectionIcon(item.label)" class="menu-icon">
+                  <component :is="sectionIcon(item.label)" />
+                </el-icon>
+                <template #title>
+                  <span>{{ t(item.label) }}</span>
+                </template>
+              </el-menu-item>
+            </template>
           </template>
         </el-menu>
       </el-scrollbar>
@@ -297,6 +359,21 @@ onMounted(() => {
             <div class="system-title">{{ t(appStore.systemTitle) }}</div>
             <div class="system-subtitle">{{ t('layout.systemDesc') }}</div>
           </div>
+
+          <!-- pen 壳层：顶栏一级页签 -->
+          <nav v-if="tabs.length > 1" class="top-tabs" :aria-label="t('layout.primaryNav')">
+            <button
+              v-for="tab in tabs"
+              :key="tab.key"
+              type="button"
+              class="top-tab"
+              :class="{ 'is-active': tab.key === activeTab }"
+              :aria-current="tab.key === activeTab ? 'page' : undefined"
+              @click="onSelectTab(tab.key)"
+            >
+              {{ t(tab.label) }}
+            </button>
+          </nav>
         </div>
 
         <div class="header-right">
@@ -557,6 +634,56 @@ onMounted(() => {
   font-size: var(--text-xs);
   opacity: 0.78;
   margin-top: 3px;
+}
+
+/* ---------- pen 壳层：顶栏一级页签 ---------- */
+.top-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 18px;
+  flex-shrink: 0;
+}
+
+.top-tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0 12px;
+  height: 32px;
+  border-radius: var(--radius-control);
+  font-family: inherit;
+  font-size: var(--text-base);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  position: relative;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.top-tab:hover {
+  background: var(--color-raised);
+  color: var(--color-text);
+}
+
+.top-tab:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.top-tab.is-active {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.top-tab.is-active::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--color-accent);
 }
 
 .header-right {
