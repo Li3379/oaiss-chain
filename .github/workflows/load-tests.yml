@@ -1,0 +1,131 @@
+name: Load Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Test type'
+        required: true
+        default: 'smoke'
+        type: choice
+        options:
+          - smoke
+          - stress
+      vus:
+        description: 'Virtual users (0 = use test default)'
+        required: false
+        default: '0'
+        type: string
+      duration:
+        description: 'Duration (empty = use test default)'
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  load-test:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: oaiss_chain
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_USERNAME: root
+      DB_PASSWORD: root
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      JWT_SECRET: load-test-jwt-secret-key-minimum-32-characters
+      SPRING_PROFILES_ACTIVE: docker
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2-
+
+      - name: Build backend
+        run: |
+          cd oaiss-chain-backend
+          mvn clean package -DskipTests -B
+
+      - name: Start backend
+        run: |
+          cd oaiss-chain-backend
+          java -jar target/*.jar &
+          echo "BACKEND_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Wait for backend
+        run: |
+          timeout 120 bash -c 'until curl -sf http://localhost:8080/api/v1/actuator/health > /dev/null 2>&1; do sleep 3; done'
+          echo "Backend is healthy"
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D68
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install -y k6
+
+      - name: Run load tests
+        run: |
+          EXTRA_ARGS=""
+          VUS="${{ github.event.inputs.vus }}"
+          DURATION="${{ github.event.inputs.duration }}"
+          TEST_TYPE="${{ github.event.inputs.test_type || 'smoke' }}"
+          if [ "$VUS" != "0" ] && [ -n "$VUS" ]; then
+            EXTRA_ARGS="$EXTRA_ARGS --vus $VUS"
+          fi
+          if [ -n "$DURATION" ]; then
+            EXTRA_ARGS="$EXTRA_ARGS --duration $DURATION"
+          fi
+          k6 run $EXTRA_ARGS "tests/load/$TEST_TYPE.js"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-results
+          path: tests/load/*-summary.json
+          retention-days: 30
+
+      - name: Stop backend
+        if: always()
+        run: |
+          kill $BACKEND_PID 2>/dev/null || true

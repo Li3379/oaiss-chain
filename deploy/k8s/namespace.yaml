@@ -1,0 +1,9 @@
+# OAISS CHAIN - Namespace
+# Usage: kubectl apply -f k8s/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: oaiss-chain
+  labels:
+    app.kubernetes.io/name: oaiss-chain
+    app.kubernetes.io/part-of: oaiss-chain

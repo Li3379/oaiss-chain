@@ -1,0 +1,296 @@
+# =============================================
+# OAISS CHAIN — Monorepo .gitignore
+# =============================================
+
+# ----- Environment & Secrets (NEVER commit) -----
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# ----- Java / Maven / Spring Boot -----
+oaiss-chain-backend/target/
+oaiss-chain-backend/.m2/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+oaiss-chain-backend/.mvn/wrapper/maven-wrapper.jar
+oaiss-chain-backend/BOOT-INF/
+oaiss-chain-backend/cookies.txt
+oaiss-chain-backend/test-output.txt
+oaiss-chain-backend/test-result.txt
+
+# ----- Python -----
+__pycache__/
+*.pyc
+*.pyo
+
+# ----- Node.js / Vue / Vite -----
+node_modules/
+dist/
+dist-ssr/
+*.tsbuildinfo
+oaiss-chain-frontend/write_script.js
+
+# ----- Go compiled test binaries -----
+*.test
+
+# ----- Build artifacts -----
+build/
+out/
+
+# ----- Docker volumes (local data) -----
+mysql-data/
+redis-data/
+minio-data/
+
+# ----- Fabric crypto materials (generated, never commit) -----
+fabric-config/crypto/
+fabric-config/channel-artifacts/
+deploy/fabric/crypto/
+deploy/fabric/channel-artifacts/
+oaiss-chain-backend/src/main/resources/fabric/crypto/
+
+# ----- Test results & coverage -----
+test-results/
+playwright-report/
+coverage/
+.nyc_output/
+
+# ----- IDE -----
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+*.sw?
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# ----- OS -----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ----- Logs -----
+*.log
+logs/
+
+# ----- Playwright -----
+.playwright-cli/
+.playwright-mcp/
+
+# ----- Tool state (not project code) -----
+.omc/
+.omc*/
+.claude/
+.gstack/
+.planning/
+.entroly/
+.codegraph/
+.codex/
+.cursor/
+.mimosa/
+.omo/
+.serena/
+.zcode/
+**/.mimosa/
+**/.omc/
+**/.claude/
+**/.vscode/
+
+# ----- Chrome debug (browser-harness) -----
+.chrome-debug/
+
+# ----- Graphify output (regenerated locally, never commit) -----
+graphify-out/
+
+# ----- Tool-generated docs -----
+docs/superpowers/
+
+# ----- Frontend QA screenshots -----
+oaiss-chain-frontend/docs/
+
+# ----- Frontend temp screenshots -----
+oaiss-chain-frontend/current_state.png
+oaiss-chain-frontend/admin_users_page.png
+oaiss-chain-frontend/after_click.png
+
+# ----- Temporary test screenshots & logs -----
+screenshots/
+docs/qa-screenshots/
+runtime-logs/
+test-screenshots/
+test_screenshots/
+login_page
+00-official-home
+00-official-home-check
+tracks/
+
+# ----- Backend root temp screenshots (no extension) -----
+oaiss-chain-backend/404_page
+oaiss-chain-backend/admin_users
+oaiss-chain-backend/login_page
+oaiss-chain-backend/official_home
+oaiss-chain-backend/enterprise_home
+
+# ----- Backend root temp screenshots (.png) -----
+oaiss-chain-backend/admin-data-statistics.png
+oaiss-chain-backend/admin-system-carbon.png
+oaiss-chain-backend/admin-system-config.png
+oaiss-chain-backend/admin-system-users.png
+oaiss-chain-backend/admin-user-disabled.png
+oaiss-chain-backend/enterprise-blockchain.png
+oaiss-chain-backend/enterprise-carbon-coin.png
+oaiss-chain-backend/enterprise-carbon-neutral.png
+oaiss-chain-backend/enterprise-credit-score.png
+oaiss-chain-backend/third-party-monitor.png
+
+# ----- Temporary test scripts -----
+bh_*.py
+crud_test.py
+test_all_enterprise_pages.py
+test_bh_creditscore*.py
+test_final_verification.py
+test_fixes_verification.py
+test_other_roles.py
+test_tokens.json
+browser_*.py
+ultraqa_*.py
+skill-verify.sh
+
+# ----- Captcha temp files -----
+captcha_*.txt
+captcha_*.png
+
+# ----- QA screenshots -----
+qa-*.png
+
+# ----- Misc temp files -----
+after_login_click.png
+cap.png
+credit_score_*.png
+initial_page.png
+message_test.png
+official_home.png
+test_screenshot.png
+backend-build.log
+backend-full-log.txt
+backend-full-logs.txt
+backend-full.log
+backend-logs.txt
+backend-stdout.txt
+backend.log
+backend_full.log
+backend_full_notrunc.log
+logback-console.xml
+
+# ----- Temporary -----
+*.tmp
+*.bak
+*.cache
+
+# ----- Runtime error logs & temp artifacts -----
+*.err
+tmp/
+ent-token.json
+full-functional-segment.txt
+
+# ----- AI Tool Artifacts -----
+.codex/
+.graphify_detect.json
+.cursor/
+
+# ----- AI Agent Documentation & Planning (not project code) -----
+**/AGENTS.md
+.claude/
+.planning/
+/CLAUDE.md
+/.graphify_python
+
+# ----- Go binary & chaincode artifacts -----
+oaiss-chain-chaincode/chaincode
+oaiss-chain-chaincode/*.exe
+
+# ----- Temporary test & MCP tool artifacts -----
+.playwright-mcp/
+.pytest_cache/
+.reports/
+reports/
+backend-run.log
+**/playwright-report/
+**/test-results/
+**/tmp/
+*.log
+/.codegraph/
+
+# ----- Root temp files (no extension screenshots, ci check dumps) -----
+/prod-compose-config-ci-check.txt
+/00-official-home
+/00-official-home-check
+
+# ----- Frontend root temp screenshots (legacy) -----
+oaiss-chain-frontend/admin_users_page.png
+oaiss-chain-frontend/after_click.png
+oaiss-chain-frontend/current_state.png
+
+# ----- AI Agent Documentation (not project code) -----
+**/AGENTS.md
+
+# ----- AI QA/调试脚本产物 (非项目代码) -----
+scripts/browser-qa*.mjs
+scripts/browser-qa*.cjs
+scripts/browser-qa*.js
+scripts/qa-test*.cjs
+scripts/qa-test*.js
+scripts/add-tooltip.cjs
+scripts/check-tooltip.cjs
+scripts/*.py
+oaiss-chain-frontend/browser-qa-v*.mjs
+oaiss-chain-frontend/qa-test*.cjs
+oaiss-chain-frontend/qa-test*.js
+oaiss-chain-frontend/bundle-report.json
+oaiss-chain-frontend/.bundle-budget.json
+oaiss-chain-frontend/playwright.browser-qa.config.ts
+playwright.browser-qa.config.ts
+qa-runner/
+debug_notification.py
+/fix.mjs
+/.omo/
+oaiss-chain-frontend/tests/e2e/browser-qa/
+scripts/interactive-browser-qa.cjs
+scripts/e2e-*.cjs
+scripts/deep-qa.mjs
+scripts/workflow-qa.mjs
+scripts/edge-case-qa.mjs
+scripts/closure-audit.mjs
+scripts/debug-auth.cjs
+scripts/debug-pages.cjs
+scripts/deep-interactive-qa.cjs
+scripts/full-qa*.mjs
+scripts/qa-browser-auto.mjs
+scripts/phase2-interactions.cjs
+scripts/i18n-audit.ps1
+
+# 豁免: scripts/AGENTS.md 第五节记录的正式 Playwright QA 通道 (已入库)
+!scripts/browser-qa.mjs
+!scripts/deep-qa.mjs
+!scripts/edge-case-qa.mjs
+!scripts/workflow-qa.mjs
+!scripts/closure-audit.mjs
+
+# ----- Mimosa 安全扫描工具状态 (2026-09-06 清理治理) -----
+.mimosa/
+**/.mimosa/
+
+# ----- Windows 误重定向事故文件 (2026-09-06 清理治理) -----
+nul
+
+# ----- 个人文件: 毕业设计文档模版 (2026-09-06 清理治理, 内容不动仅忽略) -----
+docs/软件技术专业2026届毕业设计文档模版/
+
+# Serena IDE/MCP 工具本地配置
+.serena/

@@ -1,0 +1,84 @@
+# Rate limiting disabled in tests
+# Test Profile - H2 in-memory database, no Testcontainers needed
+
+oaiss:
+  ratelimit:
+    enabled: false
+
+# Default H2 configuration for fast unit tests
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;NON_KEYWORDS=USER,VALUE,ORDER,GROUP
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+
+  h2:
+    console:
+      enabled: true
+
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    serialization:
+      write-dates-as-timestamps: false
+
+  flyway:
+    enabled: false
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 0
+      timeout: 10000
+
+# JWT configuration
+jwt:
+  secret: test-jwt-secret-key-for-unit-testing-only-must-be-256-bits-long
+  expiration: 3600000
+  refresh-expiration: 604800000
+
+# Test KEK for AES-256-GCM private key encryption flows
+RSA_KEK: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+
+# Logging configuration
+logging:
+  level:
+    root: WARN
+    com.oaiss.chain: DEBUG
+    org.springframework.security: WARN
+
+# MinIO configuration
+minio:
+  endpoint: http://localhost:9000
+  access-key: minioadmin
+  secret-key: minioadmin
+  bucket-name: oaiss-chain-test
+  presigned-url-expiry: 3600
+  max-file-size: 104857600
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+# API docs disabled in tests
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

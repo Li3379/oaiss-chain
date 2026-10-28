@@ -1,0 +1,196 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
+
+vi.mock('../../api/carbon', () => ({
+  getMyReports: vi.fn(() => Promise.resolve({ items: [], total: 0 })),
+  createReport: vi.fn(() => Promise.resolve()),
+  deleteReport: vi.fn(() => Promise.resolve()),
+  submitReport: vi.fn(() => Promise.resolve()),
+}))
+
+vi.mock('element-plus', async (importOriginal) => {
+  const actual = (await importOriginal() as any)
+  return {
+    ...actual,
+    ElMessage: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
+    ElMessageBox: { confirm: vi.fn(() => Promise.resolve()) },
+  }
+})
+
+import CarbonUpload from '../enterprise/CarbonUpload.vue'
+import { getMyReports, createReport, deleteReport, submitReport } from '../../api/carbon'
+import { ElMessage, ElMessageBox } from 'element-plus'
+
+const stubs = {
+  'el-card': { template: '<div class="el-card"><slot /></div>' },
+  'el-breadcrumb': { template: '<div class="el-breadcrumb"><slot /></div>' },
+  'el-breadcrumb-item': { template: '<span class="el-breadcrumb-item"><slot /></span>' },
+  'el-form': {
+    template: '<form @submit.prevent><slot /></form>',
+    methods: {
+      validate() { return Promise.resolve(true) },
+      resetFields() {},
+    },
+  },
+  'el-form-item': { template: '<div class="el-form-item"><slot /></div>', props: ['label', 'prop'] },
+  'el-input': {
+    template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
+    props: ['modelValue', 'type', 'placeholder', 'showPassword', 'clearable', 'rows'],
+    emits: ['update:modelValue'],
+  },
+  'el-button': {
+    template: '<button :disabled="loading" @click="$emit(\'click\')"><slot /></button>',
+    props: ['type', 'size', 'loading', 'link', 'plain'],
+    emits: ['click'],
+  },
+  'el-table': {
+    template: '<table><slot /><slot name="append" /></table>',
+    props: ['data', 'border', 'emptyText'],
+  },
+  'el-table-column': {
+    template: '<td><slot :row="{}" :$index="0" /></td>',
+    props: ['prop', 'label', 'minWidth', 'width', 'fixed', 'showOverflowTooltip'],
+  },
+  'el-tag': { template: '<span class="el-tag"><slot /></span>', props: ['type'] },
+  'el-input-number': {
+    template: '<input class="el-input-number" :value="modelValue" @input="$emit(\'update:modelValue\', Number($event.target.value))" />',
+    props: ['modelValue', 'min', 'max', 'step', 'precision', 'controls', 'placeholder', 'ariaLabel'],
+    emits: ['update:modelValue'],
+  },
+  'el-radio-group': {
+    template:
+      '<div class="el-radio-group">' +
+      '<button class="mode-structured" @click="$emit(\'update:modelValue\', \'structured\')">structured</button>' +
+      '<button class="mode-json" @click="$emit(\'update:modelValue\', \'json\')">json</button>' +
+      '<slot />' +
+      '</div>',
+    props: ['modelValue', 'size'],
+    emits: ['update:modelValue'],
+  },
+  'el-radio-button': { template: '<span class="el-radio-button"><slot /></span>', props: ['value'] },
+  'el-tooltip': { template: '<span class="el-tooltip"><slot /></span>', props: ['content', 'placement', 'effect'] },
+  'el-pagination': {
+    template: '<div class="el-pagination"></div>',
+    props: ['currentPage', 'pageSize', 'background', 'pageSizes', 'layout', 'total'],
+    emits: ['size-change', 'current-change', 'update:current-page', 'update:page-size'],
+  },
+  'el-dialog': {
+    template: '<div class="el-dialog" v-if="modelValue"><slot /><slot name="footer" /></div>',
+    props: ['modelValue', 'title', 'width', 'destroyOnClose'],
+    emits: ['update:modelValue'],
+  },
+  'el-select': {
+    template: '<select :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><slot /></select>',
+    props: ['modelValue', 'placeholder', 'style'],
+    emits: ['update:modelValue'],
+  },
+  'el-option': {
+    template: '<option :value="value"><slot /></option>',
+    props: ['label', 'value'],
+  },
+}
+
+function mountComponent() {
+  return mount(CarbonUpload, {
+    global: {
+      plugins: [createPinia()],
+      stubs,
+    },
+  })
+}
+
+describe('CarbonUpload.vue', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setActivePinia(createPinia())
+  })
+
+  it('组件正确渲染', () => {
+    const wrapper = mountComponent()
+    expect(wrapper.exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('页面加载时获取碳核算报告列表', async () => {
+    const wrapper = mountComponent()
+    await flushPromises()
+    expect(getMyReports).toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('获取报告失败显示错误消息', async () => {
+    vi.mocked(getMyReports).mockRejectedValueOnce(new Error('network error'))
+    const wrapper = mountComponent()
+    await flushPromises()
+    expect(ElMessage.error).toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('组件渲染报告列表数据', async () => {
+    vi.mocked(getMyReports).mockResolvedValueOnce({
+      items: [{ id: 1, title: '报告1', status: 0 }] as never,
+      total: 1,
+    } as never)
+    const wrapper = mountComponent()
+    await flushPromises()
+    expect(getMyReports).toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('结构化填写排放数据：自动生成 JSON 与合计（ELI5 改造回归）', async () => {
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    // 打开创建对话框（搜索栏的「创建」按钮）
+    const createButton = wrapper.findAll('button').find((btn) => btn.text() === '创建')
+    expect(createButton).toBeTruthy()
+    await createButton!.trigger('click')
+    await flushPromises()
+
+    const dialog = wrapper.find('.el-dialog')
+    expect(dialog.exists()).toBe(true)
+    expect(dialog.find('[data-testid="structured-emission"]').exists()).toBe(true)
+
+    // 填写范围一一行：100 t x 2.5 = 250
+    const numbers = dialog.findAll('.el-input-number')
+    expect(numbers.length).toBeGreaterThanOrEqual(2)
+    await numbers[0].setValue('100')
+    await numbers[1].setValue('2.5')
+    await flushPromises()
+
+    expect(dialog.find('[data-testid="structured-total"]').text()).toContain('250')
+
+    // 提交仍走既有契约 createReport({ emissionData: 结构化生成的 JSON })
+    const dialogCreate = dialog.findAll('button').filter((btn) => btn.text() === '创建')[0]
+    await dialogCreate.trigger('click')
+    await flushPromises()
+
+    expect(createReport).toHaveBeenCalled()
+    const payload = vi.mocked(createReport).mock.calls[0][0] as { emissionData: string }
+    const parsed = JSON.parse(payload.emissionData)
+    expect(parsed.scope1).toEqual([{ activity_data: 100, emission_factor: 2.5 }])
+    wrapper.unmount()
+  })
+
+  it('切换到高级模式：JSON 文本框可直接填写', async () => {
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    const createButton = wrapper.findAll('button').find((btn) => btn.text() === '创建')
+    await createButton!.trigger('click')
+    await flushPromises()
+
+    // 默认结构化模式
+    expect(wrapper.find('[data-testid="structured-emission"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="create-emission"]').exists()).toBe(false)
+
+    // 切到 JSON 模式 → 出现高级文本框
+    await wrapper.find('.mode-json').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="create-emission"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="structured-emission"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+})

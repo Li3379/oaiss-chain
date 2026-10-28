@@ -1,0 +1,32 @@
+﻿# OAISS CHAIN - Pod Disruption Budgets
+# Ensures availability during voluntary disruptions (node drain, cluster upgrade)
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: backend-pdb
+  namespace: oaiss-chain
+  labels:
+    app: oaiss-chain
+    component: backend
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: oaiss-chain
+      component: backend
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: frontend-pdb
+  namespace: oaiss-chain
+  labels:
+    app: oaiss-chain
+    component: frontend
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: oaiss-chain
+      component: frontend

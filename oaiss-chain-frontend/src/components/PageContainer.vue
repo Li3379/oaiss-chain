@@ -1,0 +1,64 @@
+<script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
+
+defineProps({
+  title: {
+    type: String,
+    required: true,
+  },
+  description: {
+    type: String,
+    default: '',
+  },
+})
+</script>
+
+<template>
+  <section class="page-container">
+    <el-card shadow="never" class="page-card">
+      <h1 class="page-title">{{ title }}</h1>
+      <p class="page-description">{{ description || t('pageContainer.pageHint', { title }) }}</p>
+    </el-card>
+    <slot />
+  </section>
+</template>
+
+<style scoped>
+.page-container {
+  min-height: calc(100vh - 112px);
+}
+
+.page-card {
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  background: var(--surface-gradient);
+  box-shadow: var(--shadow-soft);
+}
+
+.page-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
+
+.page-description {
+  margin: 14px 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-base);
+  line-height: 1.8;
+}
+
+@media (max-width: 768px) {
+  .page-container {
+    min-height: calc(100vh - 128px);
+  }
+
+  .page-title {
+    font-size: var(--text-xl);
+  }
+}
+</style>

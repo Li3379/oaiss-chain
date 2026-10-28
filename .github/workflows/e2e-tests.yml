@@ -1,0 +1,393 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'oaiss-chain-backend/**'
+      - 'oaiss-chain-frontend/**'
+      - 'oaiss-chain-ml-service/**'
+      - '.env.prod.example'
+      - '.env.staging.example'
+      - 'docker-compose.prod.yml'
+      - 'docker-compose.release.yml'
+      - 'scripts/bootstrap-remote-release-host.sh'
+      - 'scripts/closure-audit.mjs'
+      - 'scripts/prod-compose.sh'
+      - 'scripts/prod-compose.ps1'
+      - 'scripts/validate-prod-env.mjs'
+      - '.github/workflows/e2e-tests.yml'
+  pull_request:
+    paths:
+      - 'oaiss-chain-backend/**'
+      - 'oaiss-chain-frontend/**'
+      - 'oaiss-chain-ml-service/**'
+      - '.env.prod.example'
+      - '.env.staging.example'
+      - 'docker-compose.prod.yml'
+      - 'docker-compose.release.yml'
+      - 'scripts/bootstrap-remote-release-host.sh'
+      - 'scripts/closure-audit.mjs'
+      - 'scripts/prod-compose.sh'
+      - 'scripts/prod-compose.ps1'
+      - 'scripts/validate-prod-env.mjs'
+      - '.github/workflows/e2e-tests.yml'
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: oaiss_chain
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+      minio:
+        image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+        env:
+          MINIO_ROOT_USER: minio-test-access
+          MINIO_ROOT_PASSWORD: minio-test-secret-key
+        ports:
+          - 9000:9000
+        options: >-
+          --health-cmd="wget -q -O /dev/null http://localhost:9000/minio/health/live || exit 1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_USERNAME: root
+      DB_PASSWORD: root
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      JWT_SECRET: e2e-test-jwt-secret-key-minimum-32-characters
+      SPRING_PROFILES_ACTIVE: docker
+      MINIO_ENDPOINT: http://localhost:9000
+      MINIO_ACCESS_KEY: minio-test-access
+      MINIO_SECRET_KEY: minio-test-secret-key
+      API_BASE_URL: http://localhost:8080/api/v1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: oaiss-chain-frontend/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-node-
+
+      - name: Install frontend dependencies
+        run: |
+          cd oaiss-chain-frontend
+          npm ci
+
+      - name: Validate production env template
+        run: |
+          node scripts/validate-prod-env.mjs | tee prod-env-validation.txt
+
+      - name: Validate staging env template
+        run: |
+          node scripts/validate-prod-env.mjs .env.staging.example | tee staging-env-validation.txt
+
+      - name: Validate strict deployment env guardrails
+        run: |
+          set +e
+          node scripts/validate-prod-env.mjs --require-real-secrets .env.prod.example > strict-prod-env-validation.txt 2>&1
+          strict_prod_exit=$?
+          if [ "$strict_prod_exit" -eq 0 ]; then
+            echo "Expected strict production env validation to fail for placeholder template" >&2
+            exit 1
+          fi
+
+          node scripts/validate-prod-env.mjs --require-real-secrets .env.staging.example > strict-staging-env-validation.txt 2>&1
+          strict_staging_exit=$?
+          if [ "$strict_staging_exit" -eq 0 ]; then
+            echo "Expected strict staging env validation to fail for placeholder template" >&2
+            exit 1
+          fi
+
+          set -e
+          SMOKE_DB_PASS="SmokeDb$(openssl rand -hex 8)"
+          SMOKE_REDIS_PASS="SmokeRedis$(openssl rand -hex 8)"
+          SMOKE_JWT_SECRET="$(openssl rand -hex 24)"
+          SMOKE_ML_SECRET="$(openssl rand -hex 12)"
+          SMOKE_GRAFANA_PASS="SmokeGrafana$(openssl rand -hex 8)"
+          SMOKE_SMTP_PASS="SmokeSmtp$(openssl rand -hex 8)"
+          SMOKE_WEBHOOK_SECRET="$(openssl rand -hex 12)"
+          SMOKE_FABRIC_CA_PASS="SmokeFabricCA$(openssl rand -hex 8)"
+          SMOKE_COUCHDB_PASS="SmokeCouchDB$(openssl rand -hex 8)"
+          SMOKE_MINIO_ACCESS="SmokeMinioAccess$(openssl rand -hex 4)"
+          SMOKE_MINIO_SECRET="$(openssl rand -hex 12)"
+          cat > strict-release-smoke.env <<EOF
+          SPRING_PROFILES_ACTIVE=prod,fabric
+          LOG_LEVEL=INFO
+          APP_LOG_LEVEL=INFO
+          BACKEND_IMAGE=ghcr.io/example-org/oaiss-chain-backend:release-smoke-tag
+          FRONTEND_IMAGE=ghcr.io/example-org/oaiss-chain-frontend:release-smoke-tag
+          ML_SERVICE_IMAGE=ghcr.io/example-org/oaiss-chain-ml-service:release-smoke-tag
+          CORS_ALLOWED_ORIGINS=https://app.example.com
+          DB_URL=jdbc:mysql://mysql.example.internal:3306/oaiss_chain?useSSL=true&requireSSL=true&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8
+          DB_USERNAME=oaiss_app
+          DB_PASSWORD=${SMOKE_DB_PASS}
+          DB_POOL_MIN_IDLE=5
+          DB_POOL_MAX_SIZE=20
+          DB_POOL_CONNECTION_TIMEOUT_MS=30000
+          DB_POOL_LEAK_DETECTION_MS=0
+          REDIS_HOST=redis.example.internal
+          REDIS_PORT=6379
+          REDIS_DATABASE=0
+          REDIS_PASSWORD=${SMOKE_REDIS_PASS}
+          JWT_SECRET=${SMOKE_JWT_SECRET}
+          JWT_EXPIRATION_MS=3600000
+          JWT_REFRESH_EXPIRATION_MS=604800000
+          RSA_KEK=QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo0MTIzNDU2Nzg5MDE=
+          MINIO_ENDPOINT=https://object-storage.example.internal
+          MINIO_ACCESS_KEY=${SMOKE_MINIO_ACCESS}
+          MINIO_SECRET_KEY=${SMOKE_MINIO_SECRET}
+          MINIO_BUCKET=oaiss-chain-prod
+          MINIO_PRESIGNED_URL_EXPIRY_SECONDS=1800
+          ML_LOG_LEVEL=INFO
+          ML_SERVICE_URL=http://ml-service:8001
+          ML_SERVICE_SECRET=${SMOKE_ML_SECRET}
+          ML_SERVICE_CONNECT_TIMEOUT=5s
+          ML_SERVICE_READ_TIMEOUT=30s
+          REQUIRE_OPS_SECRETS=true
+          GRAFANA_ADMIN_USER=admin
+          GRAFANA_ADMIN_PASSWORD=${SMOKE_GRAFANA_PASS}
+          ALERT_SMTP_HOST=smtp.example.com
+          ALERT_SMTP_USERNAME=alerts@example.com
+          ALERT_SMTP_PASSWORD=${SMOKE_SMTP_PASS}
+          ALERT_WEBHOOK_URL=https://alerts.example.com/webhook
+          ALERT_WEBHOOK_SECRET=${SMOKE_WEBHOOK_SECRET}
+          BACKEND_LOG_DIR=./runtime-logs/backend
+          FRONTEND_LOG_DIR=./runtime-logs/frontend
+          ML_LOG_DIR=./runtime-logs/ml-service
+          FABRIC_ENABLED=true
+          FABRIC_MSP_ID=Org1MSP
+          FABRIC_CHANNEL_NAME=mychannel
+          FABRIC_CHAINCODE_NAME=carbon-chaincode
+          FABRIC_PEER_ENDPOINT=peer0.org1.example.internal:7051
+          FABRIC_TLS_ENABLED=true
+          FABRIC_PEER_TLS_CERT_PATH=/run/secrets/fabric/peer-tls-ca.crt
+          FABRIC_CERT_PATH=/run/secrets/fabric/user-cert.pem
+          FABRIC_KEY_PATH=/run/secrets/fabric/user-key.pem
+          FABRIC_CA_ENABLED=true
+          FABRIC_CA_ENDPOINT=https://ca.org1.example.internal:7054
+          FABRIC_CA_ADMIN_NAME=admin
+          FABRIC_CA_ADMIN_PASSWORD=${SMOKE_FABRIC_CA_PASS}
+          FABRIC_COUCHDB_USER=admin
+          FABRIC_COUCHDB_PASSWORD=${SMOKE_COUCHDB_PASS}
+          FABRIC_SECRETS_DIR=./secrets/fabric
+          FABRIC_SECRETS_MOUNT_PATH=/run/secrets/fabric
+          EOF
+          node scripts/validate-prod-env.mjs --require-real-secrets strict-release-smoke.env | tee strict-release-env-validation.txt
+          ./scripts/prod-compose.sh --env-file strict-release-smoke.env --compose-file docker-compose.release.yml config > strict-release-compose-config.txt
+          grep -q "SPRING_PROFILES_ACTIVE: prod,fabric" strict-release-compose-config.txt
+          grep -q "image: ghcr.io/example-org/oaiss-chain-backend:release-smoke-tag" strict-release-compose-config.txt
+          grep -q "image: ghcr.io/example-org/oaiss-chain-frontend:release-smoke-tag" strict-release-compose-config.txt
+          grep -q "image: ghcr.io/example-org/oaiss-chain-ml-service:release-smoke-tag" strict-release-compose-config.txt
+          grep -q "/app/logs" strict-release-compose-config.txt
+          grep -q "/run/secrets/fabric" strict-release-compose-config.txt
+          rm -f strict-release-smoke.env
+
+      - name: Install ML test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install fastapi==0.115.6 pydantic==2.10.6 pydantic-settings==2.7.1 httpx==0.28.1
+
+      - name: Validate production compose config
+        run: |
+          chmod +x scripts/prod-compose.sh
+          export SPRING_PROFILES_ACTIVE=default
+          export DB_PASSWORD=local-shadow-value
+          export JWT_SECRET=local-shadow-jwt
+          export REDIS_HOST=localhost
+          export MINIO_ENDPOINT=http://localhost:9004
+          ./scripts/prod-compose.sh --env-file .env.prod.example config > prod-compose-config.txt
+          grep -q "SPRING_PROFILES_ACTIVE: prod" prod-compose-config.txt
+          grep -q "DB_USERNAME: oaiss_app" prod-compose-config.txt
+          grep -q "CORS_ALLOWED_ORIGINS: https://app.example.com" prod-compose-config.txt
+          grep -q "MINIO_ENDPOINT: https://object-storage.example.internal" prod-compose-config.txt
+
+      - name: Validate release compose config
+        run: |
+          chmod +x scripts/prod-compose.sh
+          ./scripts/prod-compose.sh --env-file .env.prod.example --compose-file docker-compose.release.yml config > release-compose-config.txt
+          grep -q "image: ghcr.io/example-org/oaiss-chain-backend:replace_with_release_tag" release-compose-config.txt
+          grep -q "image: ghcr.io/example-org/oaiss-chain-frontend:replace_with_release_tag" release-compose-config.txt
+          grep -q "image: ghcr.io/example-org/oaiss-chain-ml-service:replace_with_release_tag" release-compose-config.txt
+          grep -q "SPRING_PROFILES_ACTIVE: prod,fabric" release-compose-config.txt
+          grep -q "/app/logs" release-compose-config.txt
+          grep -q "/run/secrets/fabric" release-compose-config.txt
+
+      - name: Validate staging release compose config
+        run: |
+          chmod +x scripts/prod-compose.sh
+          ./scripts/prod-compose.sh --env-file .env.staging.example --compose-file docker-compose.release.yml config > staging-release-compose-config.txt
+          grep -q "image: ghcr.io/example-org/oaiss-chain-backend:replace_with_staging_release_tag" staging-release-compose-config.txt
+          grep -q "image: ghcr.io/example-org/oaiss-chain-frontend:replace_with_staging_release_tag" staging-release-compose-config.txt
+          grep -q "image: ghcr.io/example-org/oaiss-chain-ml-service:replace_with_staging_release_tag" staging-release-compose-config.txt
+          grep -q "SPRING_PROFILES_ACTIVE: staging,fabric" staging-release-compose-config.txt
+          grep -q "/app/logs" staging-release-compose-config.txt
+          grep -q "/run/secrets/fabric" staging-release-compose-config.txt
+
+      - name: Smoke test remote release host bootstrap script
+        run: |
+          chmod +x scripts/bootstrap-remote-release-host.sh
+          ./scripts/bootstrap-remote-release-host.sh --target-dir ./tmp/release-host-smoke-ci --deploy-user "$(id -un)" > bootstrap-release-host-smoke.txt
+          test -d ./tmp/release-host-smoke-ci/runtime-logs/backend
+          test -d ./tmp/release-host-smoke-ci/runtime-logs/frontend
+          test -d ./tmp/release-host-smoke-ci/runtime-logs/ml-service
+          test -d ./tmp/release-host-smoke-ci/secrets/fabric
+          test -d ./tmp/release-host-smoke-ci/backups
+          test -d ./tmp/release-host-smoke-ci/scripts
+          grep -q "Directory layout ready" bootstrap-release-host-smoke.txt
+          grep -q "docker compose version" bootstrap-release-host-smoke.txt
+          rm -rf ./tmp/release-host-smoke-ci
+
+      - name: Run repository closure audit
+        run: |
+          node scripts/closure-audit.mjs | tee closure-audit.txt
+
+      - name: Run backend security and contract tests
+        run: |
+          cd oaiss-chain-backend
+          mvn -q "-Dtest=SecurityStartupValidatorTest,CorsAllowedOriginsConfigTest,ProductionDataPolicyValidatorTest,MlServiceConfigTest,ProductionProfileContractTest" test
+
+      - name: Run ML security tests
+        run: |
+          python -m unittest oaiss-chain-ml-service.tests.test_security
+
+      - name: Build backend
+        run: |
+          cd oaiss-chain-backend
+          mvn clean package -DskipTests -B
+
+      - name: Run backend
+        run: |
+          cd oaiss-chain-backend
+          java -jar target/*.jar &
+          echo "BACKEND_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Wait for backend
+        run: |
+          timeout 120 bash -c 'until curl -sf http://localhost:8080/api/v1/actuator/health > /dev/null 2>&1; do sleep 3; done'
+          echo "Backend is healthy"
+
+      - name: Install Playwright
+        run: |
+          cd oaiss-chain-frontend
+          npx playwright install --with-deps chromium
+
+      - name: Run E2E tests (smoke)
+        run: |
+          cd oaiss-chain-frontend
+          npm run test:e2e
+
+      - name: Start frontend dev server
+        run: |
+          cd oaiss-chain-frontend
+          npx vite --port 5173 &
+
+      - name: Run E2E tests (v1.1)
+        if: success() || failure()
+        run: |
+          cd oaiss-chain-frontend
+          TEST_MODE=v1.1 npx playwright test
+
+      # TODO(main session decision): wire `bash scripts/run-all-tests.sh` (26 API
+      # smoke scripts) into CI. Not enabled here because this job's stack cannot
+      # run it as-is:
+      #   - DB helpers in test-helpers.sh exec into the `oaiss-mysql` compose
+      #     container or fall back to a local `mysql` client; this job only has
+      #     the ephemeral `mysql:8.0` GitHub *service* (different container name,
+      #     no mysql client on the runner), and its env (DB_PASSWORD=root) must
+      #     match db-config.sh expectations.
+      #   - Several scripts (market-prediction-test.sh, ...) require the ML
+      #     service on localhost:8001, which this job never starts.
+      #   - 26 scripts * (20s rate-limit pacing + runtime) exceeds this job's
+      #     30-minute timeout.
+      # A dedicated job is needed: up infra via docker-compose.infra.yml, build
+      # and run the backend (SPRING_PROFILES_ACTIVE=docker, Flyway-seeded users
+      # admin123), run the ML service, then execute scripts/run-all-tests.sh.
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: oaiss-chain-frontend/playwright-report/
+          retention-days: 7
+
+      - name: Upload production validation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-validation
+          path: |
+            prod-env-validation.txt
+            staging-env-validation.txt
+            strict-prod-env-validation.txt
+            strict-staging-env-validation.txt
+            strict-release-env-validation.txt
+            strict-release-compose-config.txt
+            prod-compose-config.txt
+            release-compose-config.txt
+            staging-release-compose-config.txt
+            bootstrap-release-host-smoke.txt
+            closure-audit.txt
+          retention-days: 7
+
+      - name: Stop backend
+        if: always()
+        run: |
+          kill $BACKEND_PID 2>/dev/null || true

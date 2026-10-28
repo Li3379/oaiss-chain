@@ -1,0 +1,17 @@
+# application-fabric.yml
+# Fabric 区块链 Profile - 激活区块链集成
+# 用法: mvn spring-boot:run -Dspring-boot.run.profiles=local,fabric
+# 或:   SPRING_PROFILES_ACTIVE=local,fabric java -jar app.jar
+# 注意: Spring Boot 3.x 不允许在 profile 文件中使用 spring.profiles.include
+#       如需同时加载其他 profile，请在命令行指定: -Dspring.profiles.active=local,fabric
+
+fabric:
+  enabled: true
+  peer-endpoint: ${FABRIC_PEER_ENDPOINT:127.0.0.1:7051}
+  peer-host-override: ${FABRIC_PEER_HOST_OVERRIDE:peer0.org1.example.com}
+  ca:
+    enabled: false
+    # SECURITY: Change to https:// for production. Admin credentials are sent via Basic auth.
+    endpoint: http://127.0.0.1:7054
+    admin-name: admin
+    admin-password: ${FABRIC_CA_ADMIN_PASSWORD:}

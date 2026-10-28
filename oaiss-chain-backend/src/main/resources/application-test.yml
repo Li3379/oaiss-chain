@@ -1,0 +1,27 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: 
+  
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+  
+  h2:
+    console:
+      enabled: true
+
+jwt:
+  secret: test-jwt-secret-key-must-be-at-least-256-bits-long-for-testing
+  expiration: 3600000
+  refresh-expiration: 604800000
+
+logging:
+  level:
+    com.oaiss.chain: DEBUG

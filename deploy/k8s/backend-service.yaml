@@ -1,0 +1,19 @@
+﻿# OAISS CHAIN - Backend Service (ClusterIP)
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: oaiss-chain
+  labels:
+    app: oaiss-chain
+    component: backend
+spec:
+  type: ClusterIP
+  selector:
+    app: oaiss-chain
+    component: backend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP

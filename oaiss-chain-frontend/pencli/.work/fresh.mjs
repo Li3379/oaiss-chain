@@ -1,0 +1,13 @@
+import { spawn } from 'node:child_process';
+const EXE='D:/Program File/Pencil/resources/app.asar.unpacked/out/mcp-server-windows-x64.exe';
+const child=spawn(EXE,['--app','desktop'],{stdio:['pipe','pipe','pipe']});
+let buf='';const pending=new Map();
+child.stdout.on('data',d=>{buf+=d.toString();let i;while((i=buf.indexOf('\n'))>=0){const l=buf.slice(0,i).trim();buf=buf.slice(i+1);if(!l)continue;try{const m=JSON.parse(l);if(m.id&&pending.has(m.id)){pending.get(m.id)(m);pending.delete(m.id);}}catch{}}});
+const req=(m,p,id)=>new Promise(r=>{pending.set(id,r);child.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method:m,params:p})+'\n')});
+let id=1;
+await req('initialize',{protocolVersion:'2024-11-05',capabilities:{},clientInfo:{name:'x',version:'1'}},id++);
+child.stdin.write(JSON.stringify({jsonrpc:'2.0',method:'notifications/initialized'})+'\n');
+const call=async(n,i)=>{const r=await req('tools/call',{name:n,arguments:i},id++);return (r.result?.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('\n')||JSON.stringify(r.error||{});};
+console.log(await call('batch_design',{filePath:'pencli/fresh.pen',input:'f=Insert(document,{type:"frame",name:"F1",x:0,y:0,width:400,height:160,fill:"#0C1512",layout:"vertical",padding:20,gap:10});Insert(f,{type:"text",name:"t",content:"全新文件测试 Fresh",fontFamily:"Inter",fontSize:20,fill:"#E9F2ED"});Insert(f,{type:"text",name:"t2",content:"2026 年 12,480.6 tCO₂e",fontFamily:"Inter",fontSize:14,fill:"#93A79E"})'}));
+console.log(await call('export_nodes',{filePath:'pencli/fresh.pen',nodeIds:['F1'],outputDir:'pencli/.work/fresh',format:'png',scale:2}));
+child.kill();process.exit(0);

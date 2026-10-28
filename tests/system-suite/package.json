@@ -1,0 +1,9 @@
+{
+  "name": "oaiss-chain-system-suite",
+  "version": "1.0.0",
+  "description": "OAISS CHAIN 120-case Multi-Methodology System Test Suite",
+  "type": "module",
+  "scripts": {
+    "test": "node runner.mjs"
+  }
+}

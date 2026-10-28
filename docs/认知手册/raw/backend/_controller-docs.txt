@@ -1,0 +1,1134 @@
+===== AdminController =====
+/**
+ * ==============================================================================
+ * 【业务模块】：16. 系统管理与资质证书管控 (Admin Governance & Certification)
+ * 【服务角色】：系统管理员 (ADMIN)
+ * 【对应前端页面与路由】：
+ *   - 用户管理页面: views/admin/SystemUsers.vue -> 路由: /admin/system/users
+ *   - 证书管理页面: views/admin/CertificateManage.vue -> 路由: /admin/certificates
+ *   - 统计数据大盘: views/admin/DataStatistics.vue -> 路由: /admin/data/statistics
+ *   - 系统配置中心: views/admin/SystemConfig.vue -> 路由: /admin/system/config
+ * 【调用前端 API 模块】：src/api/admin.ts
+ * ==============================================================================
+ */
+/**
+     * 【业务功能】：分页多条件查询系统全量用户列表（支持按角色、启用状态、用户名检索）
+     * 【对应前端页面】：views/admin/SystemUsers.vue (/admin/system/users)
+     * 【对应前端API】：api/admin.ts -> getUserList()
+     * 【可见UI操作】：进入用户管理页面加载用户表格，或在顶部筛选栏按角色/状态过滤
+     */
+/**
+     * 【业务功能】：启用或禁用系统用户账号（安全管控与账号冻结）
+     * 【对应前端页面】：views/admin/SystemUsers.vue (/admin/system/users)
+     * 【对应前端API】：api/admin.ts -> updateUserStatus()
+     * 【可见UI操作】：在用户表格操作列点击【禁用】或【启用】开关，弹出确认框后提交
+     */
+/**
+     * 【业务功能】：获取管理后台仪表板的总体用户数与活跃用户数
+     * 【对应前端页面】：views/admin/DataStatistics.vue (/admin/data/statistics)
+     * 【对应前端API】：api/admin.ts -> getDashboard()
+     * 【可见UI操作】：进入数据大屏自动加载顶部统计数字卡片
+     */
+/**
+     * 【业务功能】：获取系统用户角色构成统计与各组织类型宏观分布指标
+     * 【对应前端页面】：views/admin/DataStatistics.vue (/admin/data/statistics)
+     * 【对应前端API】：api/admin.ts -> getStatistics()
+     * 【可见UI操作】：大屏中心区域渲染“用户角色构成饼图”与各项组织统计卡片
+     */
+/**
+     * 【业务功能】：获取平台基础运行配置与参数（区块链开启状态、上传上限、会话超时等）
+     * 【对应前端页面】：views/admin/SystemConfig.vue (/admin/system/config)
+     * 【对应前端API】：api/admin.ts -> getConfig()
+     * 【可见UI操作】：进入系统配置页面展示当前只读参数列表
+     */
+/**
+     * 【业务功能】：查询系统权限清单列表与角色访问控制规则定义
+     * 【对应前端页面】：views/admin/SystemConfig.vue (/admin/system/config)
+     * 【对应前端API】：api/admin.ts -> getPermissions()
+     * 【可见UI操作】：系统配置页面切换至“权限矩阵与安全策略”Tab查看
+     */
+/**
+     * 【业务功能】：审核并向合规排碳企业正式签发市场准入证书
+     * 【对应前端页面】：views/admin/CertificateManage.vue (/admin/certificates)
+     * 【对应前端API】：api/admin.ts -> issueEnterpriseAdmission()
+     * 【可见UI操作】：在企业准入列表操作列点击【签发准入证书】按钮
+     */
+/**
+     * 【业务功能】：吊销或作废违规/退出市场的企业准入资格证书
+     * 【对应前端页面】：views/admin/CertificateManage.vue (/admin/certificates)
+     * 【对应前端API】：api/admin.ts -> revokeEnterpriseAdmission()
+     * 【可见UI操作】：在企业准入列表操作列点击【吊销证书】按钮并二次确认
+     */
+/**
+     * 【业务功能】：分页查询企业准入资格证书列表（Enterprise Admission）
+     * 【对应前端页面】：views/admin/CertificateManage.vue (/admin/certificates)
+     * 【对应前端API】：api/admin.ts -> getEnterpriseAdmissionList()
+     * 【可见UI操作】：证书管理页面“企业准入资质”Tab加载表格
+     */
+/**
+     * 【业务功能】：向通过资质考核的核查员签发专业执业资格证书
+     * 【对应前端页面】：views/admin/CertificateManage.vue (/admin/certificates)
+     * 【对应前端API】：api/admin.ts -> issueReviewerQualification()
+     * 【可见UI操作】：在审核员资格列表操作列点击【签发资格证】按钮
+     */
+/**
+     * 【业务功能】：吊销或废止违规审核员的专业执业资格证书
+     * 【对应前端页面】：views/admin/CertificateManage.vue (/admin/certificates)
+     * 【对应前端API】：api/admin.ts -> revokeReviewerQualification()
+     * 【可见UI操作】：在审核员资格列表操作列点击【吊销资质】按钮并二次确认
+     */
+/**
+     * 【业务功能】：分页查询第三方审核员专业执业资格证书列表（Reviewer Qualification）
+     * 【对应前端页面】：views/admin/CertificateManage.vue (/admin/certificates)
+     * 【对应前端API】：api/admin.ts -> getReviewerQualificationList()
+     * 【可见UI操作】：证书管理页面“审核员执业资格”Tab加载表格
+     */
+
+===== AuthController =====
+/**
+ * ==============================================================================
+ * 【业务模块】：01. 统一身份认证与访问控制 (User Authentication & IAM)
+ * 【服务角色】：全系统角色（企业 ENTERPRISE、审核员 REVIEWER、监管 THIRD_PARTY、管理员 ADMIN）
+ * 【对应前端页面与路由】：
+ *   - 登录页面: views/Login.vue -> 路由: /login
+ *   - 顶部导航栏: layout/index.vue (右上角登出、用户信息展示)
+ *   - 全局认证鉴权: router/index.ts (路由守卫), stores/user.ts (状态持久化)
+ * 【调用前端 API 模块】：src/api/auth.ts
+ * ==============================================================================
+ */
+/**
+     * 【业务功能】：用户账号密码认证登录，签发双 Token (Access + Refresh Token)
+     * 【对应前端页面】：views/Login.vue (/login)
+     * 【对应前端API】：api/auth.ts -> login()
+     * 【可见UI操作】：输入用户名、密码与验证码后，点击【登录】按钮或按回车键
+     */
+/**
+     * 【业务功能】：新排碳企业或用户注册申报
+     * 【对应前端页面】：views/Login.vue (/login 注册Tab)
+     * 【对应前端API】：api/auth.ts -> register()
+     * 【可见UI操作】：切换至“企业注册”Tab，填写组织机构代码、账号密码等后点击【注册账号】
+     */
+/**
+     * 【业务功能】：生成防刷图形验证码
+     * 【对应前端页面】：views/Login.vue (/login)
+     * 【对应前端API】：api/auth.ts / api/captcha.ts -> generateCaptcha()
+     * 【可见UI操作】：进入登录页自动渲染验证码图片，或用户点击验证码图片刷新
+     */
+/**
+     * 【业务功能】：刷新 Access Token 延长会话有效期（双Token无感刷新机制）
+     * 【对应前端页面】：全局网络请求拦截器 api/request.ts
+     * 【对应前端API】：api/request.ts 自动拦截 401 触发刷新重试
+     * 【可见UI操作】：后台无感刷新，避免用户操作过程中被强制退出
+     */
+/**
+     * 【业务功能】：客户端网络 IP 安全检查与访问受限检测
+     * 【对应前端页面】：views/Login.vue (/login)
+     * 【对应前端API】：api/auth.ts -> checkIp()
+     * 【可见UI操作】：登录前置网络安全探针，若在黑名单则弹出阻断提示
+     */
+/**
+     * 【业务功能】：获取当前已登录用户的详细身份上下文与权限角色
+     * 【对应前端页面】：layout/index.vue, stores/user.ts
+     * 【对应前端API】：api/auth.ts -> getCurrentUser()
+     * 【可见UI操作】：页面刷新或登录跳转后，拉取用户姓名、角色并在顶部导航栏和侧边栏菜单展示
+     */
+/**
+     * 【业务功能】：用户安全登出，销毁服务端会话并废止当前 Token
+     * 【对应前端页面】：layout/index.vue
+     * 【对应前端API】：api/auth.ts -> logout()
+     * 【可见UI操作】：点击右上角个人头像下拉框中的【退出登录】菜单项
+     */
+/**
+     * 【业务功能】：用户修改自身登录密码
+     * 【对应前端页面】：views/enterprise/UserProfile.vue (/enterprise/user/profile)
+     * 【对应前端API】：api/user.ts -> changePassword()
+     * 【可见UI操作】：个人中心“安全设置”面板录入原密码与新密码后，点击【确认修改】按钮
+     */
+
+===== BlockchainController =====
+/**
+ * ==============================================================================
+ * 【业务模块】：09. 超级账本（Hyperledger Fabric）区块链浏览器与存证溯源 (Blockchain Explorer)
+ * 【服务角色】：企业用户 (ENTERPRISE)、系统管理员 (ADMIN)、第三方监管 (THIRD_PARTY)
+ * 【对应前端页面与路由】：
+ *   - 区块链浏览器: views/enterprise/Blockchain.vue -> 路由: /enterprise/blockchain/browser
+ *   - 官网首页链状态: views/OfficialHome.vue -> 路由: /official-home
+ *   - 管理员终审上链: views/admin/VerifyList.vue -> 路由: /admin/verify/list
+ * 【调用前端 API 模块】：src/api/blockchain.ts
+ * ==============================================================================
+ */
+/**
+     * 【业务功能】：探活底层 Hyperledger Fabric 网络健康度（通道、节点状态、最新区块高度与智能合约版本）
+     * 【对应前端页面】：views/enterprise/Blockchain.vue, views/OfficialHome.vue
+     * 【对应前端API】：api/blockchain.ts -> getStatus()
+     * 【可见UI操作】：区块链浏览器顶部“网络状态监控卡片”及官网首页底层节点运行指示灯
+     */
+/**
+     * 【业务功能】：根据区块高度（Block Number）查询具体区块的头哈希、前序哈希与完整交易列表
+     * 【对应前端页面】：views/enterprise/Blockchain.vue (/enterprise/blockchain/browser)
+     * 【对应前端API】：api/blockchain.ts -> queryBlock()
+     * 【可见UI操作】：在检索框输入区块号或点击区块高度徽标，弹出区块详情对话框
+     */
+/**
+     * 【业务功能】：根据交易哈希 (TxHash) 穿透溯源查询单笔存证记录（防伪溯源验证）
+     * 【对应前端页面】：views/enterprise/Blockchain.vue, views/enterprise/CarbonUpload.vue
+     * 【对应前端API】：api/blockchain.ts -> queryTransaction()
+     * 【可见UI操作】：在搜索栏输入 64 位交易哈希或点击“上链凭证 TxHash”，穿透展示防伪存证原件
+     */
+/**
+     * 【业务功能】：分页查询链上所有碳报告存证与交易结算事务流水列表
+     * 【对应前端页面】：views/enterprise/Blockchain.vue (/enterprise/blockchain/browser)
+     * 【对应前端API】：api/blockchain.ts -> getTransactions()
+     * 【可见UI操作】：切换至“交易存证流”Tab查看全网提交上链的交易ID、发起方及时间戳
+     */
+/**
+     * 【业务功能】：查询底层区块链最新打包生成的区块列表（出块高度、区块哈希、包含交易数）
+     * 【对应前端页面】：views/enterprise/Blockchain.vue (/enterprise/blockchain/browser)
+     * 【对应前端API】：api/blockchain.ts -> getLatestBlocks()
+     * 【可见UI操作】：浏览器左侧“最新区块高度瀑布流”实时展示最新出块动态
+     */
+
+===== CaptchaController =====
+/**
+ * ==============================================================================
+ * 【业务模块】：06. 安全验证码与多通道身份核验 (Captcha & Verification)
+ * 【服务角色】：全系统角色（企业、审核员、第三方监管、管理员）
+ * 【对应前端页面与路由】：
+ *   - 登录页面: views/Login.vue -> 路由: /login
+ *   - 个人中心验证: views/enterprise/UserProfile.vue -> 路由: /enterprise/user/profile
+ * 【调用前端 API 模块】：src/api/captcha.ts
+ * ==============================================================================
+ */
+/**
+     * 【业务功能】：生成防刷图形验证码（Base64图片与缓存Key）
+     * 【对应前端页面】：views/Login.vue (/login)
+     * 【对应前端API】：api/captcha.ts -> generateCaptcha()
+     * 【可见UI操作】：登录表单右侧验证码图片加载，或用户点击验证码图片刷新
+     */
+/**
+     * 【业务功能】：服务端校验用户输入的图形验证码是否正确
+     * 【对应前端页面】：views/Login.vue (/login)
+     * 【对应前端API】：api/captcha.ts -> verifyCaptcha()
+     * 【可见UI操作】：表单提交前置校验或登录流程联动
+     */
+/**
+     * 【业务功能】：向指定手机号发送短信动态验证码
+     * 【对应前端页面】：views/Login.vue, views/enterprise/UserProfile.vue
+     * 【对应前端API】：api/captcha.ts -> sendSmsCode()
+     * 【可见UI操作】：点击【获取短信验证码】按钮，触发倒计时
+     */
+/**
+     * 【业务功能】：向指定邮箱发送动态验证码
+     * 【对应前端页面】：views/Login.vue, views/enterprise/UserProfile.vue
+     * 【对应前端API】：api/captcha.ts -> sendEmailCode()
+     * 【可见UI操作】：点击【发送邮箱验证码】按钮
+     */
+
+===== CarbonCoinController =====
+/**
+ * ==============================================================================
+ * 【业务模块】：18. 碳币金融资产代币钱包与转账清算 (Carbon Coin Wallet)
+ * 【服务角色】：企业用户 (ENTERPRISE)、系统管理员 (ADMIN)
+ * 【对应前端页面与路由】：
+ *   - 碳币账户页面: views/enterprise/CarbonCoin.vue -> 路由: /enterprise/carbon-coin/account
+ *   - 企业综合大屏: views/enterprise/CompanyDashboard.vue -> 路由: /enterprise/company/dashboard
+ *   - 拍卖大厅资金卡片: views/enterprise/TradingMarket.vue
+ * 【调用前端 API 模块】：src/api/carbonCoin.ts
+ * ==============================================================================
+ */
+/**
+     * 【业务功能】：查询当前企业/用户的碳币钱包账户信息与当前可用/冻结余额
+     * 【对应前端页面】：views/enterprise/CarbonCoin.vue (/enterprise/carbon-coin/account), views/enterprise/CompanyDashboard.vue
+     * 【对应前端API】：api/carbonCoin.ts -> getMyAccount()
+     * 【可见UI操作】：进入碳币账户页面自动展示当前碳币总资产余额卡片
+     */
+/**
+     * 【业务功能】：向指定用户或企业碳币账户进行充值（资金入账）
+     * 【对应前端页面】：views/enterprise/CarbonCoin.vue (/enterprise/carbon-coin/account)
+     * 【对应前端API】：api/carbonCoin.ts -> recharge()
+     * 【可见UI操作】：点击【充值】按钮输入充值金额并确认
+     */
+/**
+     * 【业务功能】：执行企业间碳币点对点转账
+     * 【对应前端页面】：views/enterprise/CarbonCoin.vue (/enterprise/carbon-coin/account)
+     * 【对应前端API】：api/carbonCoin.ts -> transferCoins()
+     * 【可见UI操作】：在“定向转账”对话框输入收款企业ID、转账金额与备注后，点击【确认转账】按钮
+     */
+/**
+     * 【业务功能】：分页查询碳币账户收支交易明细与转账流水
+     * 【对应前端页面】：views/enterprise/CarbonCoin.vue (/enterprise/carbon-coin/account)
+     * 【对应前端API】：api/carbonCoin.ts -> getTransactions()
+     * 【可见UI操作】：查看“交易明细”表格，展示充值、扣减、交易结算与转账收支记录
+     */
+
+===== CarbonController =====
+/**
+ * ==============================================================================
+ * 【业务模块】：03. 碳核算与排放报告生命周期管理 (Carbon Accounting)
+ * 【服务角色】：企业用户 (ENTERPRISE)、核查员 (REVIEWER)、系统管理员 (ADMIN)、监管机构 (THIRD_PARTY)
+ * 【对应前端页面与路由】：
+ *   - 企业端填报: views/enterprise/CarbonUpload.vue -> 路由: /enterprise/carbon/upload
+ *   - 国标公式计算器: views/enterprise/CarbonFormulaCalculator.vue -> 路由: /enterprise/carbon-formula
+ *   - 核查员初审列表: views/auditor/AuditList.vue -> 路由: /auditor/audit/list
+ *   - 管理员终审上链: views/admin/VerifyList.vue -> 路由: /admin/verify/list
+ *   - 管理员报告监管: views/admin/SystemCarbon.vue -> 路由: /admin/system/carbon
+ *   - 监管看板穿透审计: views/third-party/Monitor.vue -> 路由: /third-party/monitor
+ * 【调用前端 API 模块】：src/api/carbon.ts, src/api/carbonFormula.ts
+ * ==============================================================================
+ */
+/**
+     * 【业务功能】：企业用户创建碳排放核算报告草稿（保存草稿）
+     * 【对应前端页面】：views/enterprise/CarbonUpload.vue (/enterprise/carbon/upload)
+     * 【对应前端API】：api/carbon.ts -> createReport()
+     * 【可见UI操作】：填报范围一/范围二排碳数据后，点击卡片下方【保存为草稿】按钮
+     */
+/**
+     * 【业务功能】：企业正式提交碳报告进入第三方核查审核流程
+     * 【对应前端页面】：views/enterprise/CarbonUpload.vue (/enterprise/carbon/upload)
+     * 【对应前端API】：api/carbon.ts -> submitReport()
+     * 【可见UI操作】：点击报告列表或填报卡片中的【提交审核】按钮，自动触发RSA数字签名并流转
+     */
+/**
+     * 【业务功能】：根据报告ID查询单个碳报告的完整明细数据与结构化因子
+     * 【对应前端页面】：views/enterprise/CarbonUpload.vue, views/auditor/AuditList.vue
+     * 【对应前端API】：api/carbon.ts -> getReport()
+     * 【可见UI操作】：点击报告行操作列的【查看详情】链接展开抽屉
+     */
+/**
+     * 【业务功能】：管理员/监管端/核查员分页检索全平台碳核算报告列表
+     * 【对应前端页面】：views/admin/VerifyList.vue, views/admin/SystemCarbon.vue, views/third-party/Monitor.vue
+     * 【对应前端API】：api/carbon.ts -> getReportList()
+     * 【可见UI操作】：进入报告管理或认证列表，按企业名称、状态过滤查询
+     */
+/**
+     * 【业务功能】：企业用户分页查询自身提报的历史碳核算报告
+     * 【对应前端页面】：views/enterprise/CarbonUpload.vue (/enterprise/carbon/upload), views/enterprise/CompanyDashboard.vue
+     * 【对应前端API】：api/carbon.ts -> getMyReports()
+     * 【可见UI操作】：填报页面下方“历史填报记录”表格自动分页加载与状态展示
+     */
+/**
+     * 【业务功能】：企业用户删除草稿状态的碳报告
+     * 【对应前端页面】：views/enterprise/CarbonUpload.vue (/enterprise/carbon/upload)
+     * 【对应前端API】：api/carbon.ts -> deleteReport()
+     * 【可见UI操作】：草稿状态报告行点击【删除】图标并在确认弹窗中确认
+     */
+/**
+     * 【业务功能】：核查员初审评审报告（审核通过或驳回修改并附审核意见）
+     * 【对应前端页面】：views/auditor/AuditList.vue (/auditor/audit/list)
+     * 【对应前端API】：api/carbon.ts -> reviewReport()
+     * 【可见UI操作】：审核抽屉审查凭证后，点击【通过审核】或【驳回修改】按钮提交
+     */
+/**
+     * 【业务功能】：系统管理员对初审通过的碳报告进行终审认证并触发区块链存证上链
+     * 【对应前端页面】：views/admin/VerifyList.vue (/admin/verify/list)
+     * 【对应前端API】：api/carbon.ts -> certifyReport()
+     * 【可见UI操作】：认证列表单条记录操作列点击【终审上链】按钮
+     */
+/**
+     * 【业务功能】：系统管理员批量认证多份碳报告并批量存证上链至 Hyperledger Fabric
+     * 【对应前端页面】：views/admin/VerifyList.vue (/admin/verify/list)
+     * 【对应前端API】：api/carbon.ts -> batchCertifyReports()
+     * 【可见UI操作】：勾选多个复选框后点击表格上方的【批量上链认证】按钮
+     */
+/**
+     * [DEFENSE-TRACE-CARBON-CALC-01]
+     * 【业务功能】：GB/T 32150 电网行业碳排放公式核算（六氟化硫泄漏与线损模型）
+     * 【对应前端页面】：views/enterprise/CarbonFormulaCalculator.vue (/enterprise/carbon-formula)
+     * 【对应前端API】：api/carbonFormula.ts -> calculatePowerGrid()
+     * 【可见UI操作】：在“电网输配核算”Tab录入参数后点击【计算电网排放量】按钮
+     * 【底层核心服务】：PowerGridFormulaService.calculate
+     */
+/**
+     * [DEFENSE-TRACE-CARBON-CALC-02]
+     * 【业务功能】：GB/T 32150 发电行业综合碳排放公式核算（化石燃烧、脱硫与净购入电力25参）
+     * 【对应前端页面】：views/enterprise/CarbonFormulaCalculator.vue (/enterprise/carbon-formula)
+     * 【对应前端API】：api/carbonFormula.ts -> calculatePowerGeneration()
+     * 【可见UI操作】：在“火力发电核算”Tab录入机组数据后点击【计算发电综合排放】按钮
+     * 【底层核心服务】：PowerGenerationFormulaService.calculate
+     */
+/**
+     * 【业务功能】：燃煤碳氧化率实测值反推计算（根据炉渣、飞灰含碳量测算燃烧充分度）
+     * 【对应前端页面】：views/enterprise/CarbonFormulaCalculator.vue (/enterprise/carbon-formula)
+     * 【对应前端API】：api/carbonFormula.ts -> calculateCoalOxidationRate()
+     * 【可见UI操作】：点击【反推实测碳氧化率】弹窗录入灰渣化验数据并点击【确认反推】
+     */
+
+===== CarbonNeutralProjectController =====
+/**
+ * ==============================================================================
+ * 【业务模块】：11. 碳中和项目培育、核证与碳信用抵消 (Carbon Neutral Projects & CCER)
+ * 【服务角色】：企业用户 (ENTERPRISE)、审核员 (REVIEWER)、系统管理员 (ADMIN)
+ * 【对应前端页面与路由】：
+ *   - 碳中和项目列表: views/enterprise/CarbonNeutral.vue -> 路由: /enterprise/carbon-neutral/projects
+ *   - 碳中和项目全景详情: views/enterprise/CarbonNeutralDetail.vue -> 路由: /enterprise/carbon-neutral/projects/:id
+ *   - 核查员项目核证: views/auditor/ProjectReview.vue -> 路由: /auditor/project/review
+ * 【调用前端 API 模块】：src/api/carbonNeutral.ts
+ * ==============================================================================
+ */
+/**
+     * 【业务功能】：企业发起申报新的碳中和/林业碳汇/CCUS减排项目（草稿立项）
+     * 【对应前端页面】：views/enterprise/CarbonNeutral.vue (/enterprise/carbon-neutral/projects)
+     * 【对应前端API】：api/carbonNeutral.ts -> createProject()
+     * 【可见UI操作】：点击【新建碳中和项目】按钮，填报项目名称、预期减排量等并保存
+     */
+/**
+     * 【业务功能】：更新修改草稿阶段的项目设计方案资料
+     * 【对应前端页面】：views/enterprise/CarbonNeutralDetail.vue
+     * 【对应前端API】：api/carbonNeutral.ts -> updateProject()
+     * 【可见UI操作】：项目详情页点击【编辑项目信息】
+     */
+/**
+     * 【业务功能】：获取单个碳中和项目的全景详情（基本方案、监测数据、核查历史与碳信用签发）
+     * 【对应前端页面】：views/enterprise/CarbonNeutralDetail.vue (/enterprise/carbon-neutral/projects/:id)
+     * 【对应前端API】：api/carbonNeutral.ts -> getProject()
+     * 【可见UI操作】：在项目列表中点击【查看项目详情】进入全景看板
+     */
+/**
+     * 【业务功能】：多维度检索公开的碳中和项目列表（按项目类型、状态、地区过滤）
+     * 【对应前端页面】：views/enterprise/CarbonNeutral.vue (/enterprise/carbon-neutral/projects)
+     * 【对应前端API】：api/carbonNeutral.ts -> getProjects()
+     * 【可见UI操作】：项目列表页按类型、阶段筛选与分页展示
+     */
+/**
+     * 【业务功能】：企业用户查询自身申报的所有碳中和项目列表
+     * 【对应前端页面】：views/enterprise/CarbonNeutral.vue (/enterprise/carbon-neutral/projects)
+     * 【对应前端API】：api/carbonNeutral.ts -> getMyProjects()
+     * 【可见UI操作】：进入项目列表页，加载“我申报的项目”Tab
+     */
+/**
+     * 【业务功能】：将碳中和项目立项方案正式提交至专家评审
+     * 【对应前端页面】：views/enterprise/CarbonNeutral.vue, views/enterprise/CarbonNeutralDetail.vue
+     * 【对应前端API】：api/carbonNeutral.ts -> submitProject()
+     * 【可见UI操作】：在项目卡片或详情页点击【提交立项审批】按钮
+     */
+/**
+     * 【业务功能】：专家/监管方审核碳中和项目立项方案（审批通过或驳回）
+     * 【对应前端页面】：views/auditor/ProjectReview.vue (/auditor/project/review)
+     * 【对应前端API】：api/carbonNeutral.ts -> reviewProject()
+     * 【可见UI操作】：审核员在待审项目抽屉中点击【通过立项】或【驳回修改】按钮
+     */
+/**
+     * 【业务功能】：通过立项审批后，正式启动项目工程落地实施
+     * 【对应前端页面】：views/enterprise/CarbonNeutralDetail.vue
+     * 【对应前端API】：api/carbonNeutral.ts -> startProject()
+     * 【可见UI操作】：立项通过后，企业在项目详情页点击【启动项目实施】按钮
+     */
+/**
+     * 【业务功能】：企业向第三方专业核证机构提交现场核查申请
+     * 【对应前端页面】：views/enterprise/CarbonNeutralDetail.vue
+     * 【对应前端API】：api/carbonNeutral.ts -> submitVerification()
+     * 【可见UI操作】：实施阶段完成周期监测后，点击【申请第三方核证】按钮
+     */
+/**
+     * 【业务功能】：第三方核证机构录入核证减排量结果并出具核证结论
+     * 【对应前端页面】：views/auditor/ProjectReview.vue (/auditor/project/review)
+     * 【对应前端API】：api/carbonNeutral.ts -> verifyProject()
+     * 【可见UI操作】：核查员录入实际核定减排量、核证机构信息并点击【提交核证结论】
+     */
+/**
+     * 【业务功能】：企业使用/注销项目签发的碳信用抵消自身的超额碳排放
+     * 【对应前端页面】：views/enterprise/CarbonNeutralDetail.vue
+     * 【对应前端API】：api/carbonNeutral.ts -> useCredits()
+     * 【可见UI操作】：在“碳信用抵消”区块输入拟核销抵扣的碳信用额度并确认抵销
+     */
+/**
+     * 【业务功能】：录入或追加项目监测期实测数据（实测发电量、造林存活率、生物质利用量等）
+     * 【对应前端页面】：views/enterprise/CarbonNeutralDetail.vue
+     * 【对应前端API】：api/carbonNeutral.ts -> updateMonitoring()
+     * 【可见UI操作】：在“监测数据记录”区块点击【追加监测数据】录入并保存
+     */
+/**
+     * 【业务功能】：申请官方机构进行项目最终认证与减排量（碳信用）签发
+     * 【对应前端页面】：views/enterprise/CarbonNeutralDetail.vue
+     * 【对应前端API】：api/carbonNeutral.ts -> applyCertification()
+     * 【可见UI操作】：核证合格后，点击【申请签发碳信用】按钮
+     */
+/**
+     * 【业务功能】：官方主管机构完成最终认证，向项目签发正式减排量资产证书
+     * 【对应前端页面】：views/auditor/ProjectReview.vue, views/admin/CertificateManage.vue
+     * 【对应前端API】：api/carbonNeutral.ts -> completeCertification()
+     * 【可见UI操作】：点击【完成最终认证签发】按钮
+     */
+/**
+     * 【业务功能】：非正常终止或废止碳中和项目（不可抗力或未达标）
+     * 【对应前端页面】：views/enterprise/CarbonNeutralDetail.vue
+     * 【对应前端API】：api/carbonNeutral.ts -> terminateProject()
+     * 【可见UI操作】：点击【终止项目】按钮，填写终止原因并确认
+     */
+/**
+     * 【业务功能】：查询待第三方核证机构处理的碳中和项目工单池
+     * 【对应前端页面】：views/auditor/ProjectReview.vue (/auditor/project/review)
+     * 【对应前端API】：api/carbonNeutral.ts -> getPendingVerification()
+     * 【可见UI操作】：审核员进入“项目核证”页面加载待审任务列表
+     */
+
+===== CreditScoreController =====
+/**
+ * ==============================================================================
+ * 【业务模块】：05. 企业双碳履约信用评级与风控拦截 (Credit Score & Risk Management)
+ * 【服务角色】：企业用户 (ENTERPRISE)、审核员 (REVIEWER)、系统管理员 (ADMIN)
+ * 【对应前端页面与路由】：
+ *   - 信誉评分页面: views/enterprise/CreditScore.vue -> 路由: /enterprise/credit/score
+ *   - 企业综合大屏: views/enterprise/CompanyDashboard.vue -> 路由: /enterprise/company/dashboard
+ *   - 项目核查扣分: views/auditor/ProjectReview.vue -> 路由: /auditor/project/review
+ *   - 准入与黑名单: views/admin/CertificateManage.vue -> 路由: /admin/certificates
+ *   - 交易风控拦截: views/enterprise/TradingMarket.vue, TradingP2P.vue
+ * 【调用前端 API 模块】：src/api/credit.ts
+ * ==============================================================================
+ */
+/**
+     * 【业务功能】：查询当前企业的信誉分值、信用评级（AAA~D）与履约维度雷达数据
+     * 【对应前端页面】：views/enterprise/CreditScore.vue (/enterprise/credit/score), CompanyDashboard.vue
+     * 【对应前端API】：api/credit.ts -> getMyScore()
+     * 【可见UI操作】：进入信誉评分页面展示综合得分卡片、评级标签及雷达图
+     */
+/**
+     * 【业务功能】：分页查询当前企业自身的信誉奖惩变更事件流水（扣分/加分原因及分值）
+     * 【对应前端页面】：views/enterprise/CreditScore.vue (/enterprise/credit/score)
+     * 【对应前端API】：api/credit.ts -> getScoreHistory()
+     * 【可见UI操作】：信誉历史事件表格加载，支持按事件类型筛选违约扣分或守约加分
+     */
+/**
+     * 【业务功能】：查询全市场企业信誉排名榜单
+     * 【对应前端页面】：views/enterprise/CreditScore.vue (/enterprise/credit/score), TradingP2P.vue, CertificateManage.vue
+     * 【对应前端API】：api/credit.ts -> getScoreRanking()
+     * 【可见UI操作】：信誉大厅右侧“行业信用排行榜”列表展示
+     */
+/**
+     * 【业务功能】：查询指定企业的信誉积分与信用等级信息
+     * 【对应前端页面】：views/auditor/AuditList.vue, views/enterprise/TradingP2P.vue
+     * 【对应前端API】：api/credit.ts -> getEnterpriseScore()
+     * 【可见UI操作】：查看交易对手或被审核企业的信用画像
+     */
+/**
+     * 【业务功能】：查询指定企业的历史信誉奖惩事件记录
+     * 【对应前端页面】：views/auditor/ProjectReview.vue, views/third-party/Monitor.vue
+     * 【对应前端API】：api/credit.ts -> getEnterpriseCreditHistory()
+     * 【可见UI操作】：审核员或监管员审查企业历史违约扣分记录
+     */
+/**
+     * 【业务功能】：审核员或监管方对弄虚作假、逾期未履约企业执行违规扣减信誉积分处罚
+     * 【对应前端页面】：views/auditor/ProjectReview.vue (/auditor/project/review), views/third-party/Monitor.vue
+     * 【对应前端API】：api/credit.ts -> deductPoints()
+     * 【可见UI操作】：项目核证审核驳回时，勾选“同步扣减企业信誉分”并填报扣除分值
+     */
+/**
+     * 【业务功能】：对按时履约、核算规范或有突出碳中和贡献的企业给予奖励加分
+     * 【对应前端页面】：views/admin/SystemCarbon.vue, views/admin/CertificateManage.vue
+     * 【对应前端API】：api/credit.ts -> addBonus()
+     * 【可见UI操作】：管理员在企业管理或证书管理页面点击【信用奖励加分】弹窗操作
+     */
+/**
+     * 【业务功能】：基于企业履约率与历史行为重新计算并评定信用等级
+     * 【对应前端页面】：views/enterprise/CreditScore.vue (/enterprise/credit/score)
+     * 【对应前端API】：api/credit.ts -> evaluateLevel()
+     * 【可见UI操作】：点击【重新评估信用等级】按钮手动触发评定
+     */
+/**
+     * 【业务功能】：获取当前被列入交易受限名单的企业列表（信用分低于警戒阈值）
+     * 【对应前端页面】：views/admin/CertificateManage.vue (/admin/certificates)
+     * 【对应前端API】：api/credit.ts -> getRestrictedEnterprises()
+     * 【可见UI操作】：证书管理页面切换至“交易受限名单”Tab加载列表
+     */
+/**
+     * 【业务功能】：获取账户被完全冻结的企业清单（严重失信企业）
+     * 【对应前端页面】：views/admin/CertificateManage.vue (/admin/certificates), views/admin/SystemUsers.vue
+     * 【对应前端API】：api/credit.ts -> getFrozenEnterprises()
+     * 【可见UI操作】：查看黑名单冻结企业列表
+     */
+/**
+     * 【业务功能】：碳交易前置风控拦截校验（检查企业信誉等级是否允许挂牌与撮合）
+     * 【对应前端页面】：views/enterprise/TradingMarket.vue, views/enterprise/TradingP2P.vue
+     * 【对应前端API】：api/credit.ts -> checkTradePermission()
+     * 【可见UI操作】：在提交买卖订单前调用防风控穿透，拦截低信誉企业
+     */
+
+===== DigitalSignatureController =====
+/**
+ * ==============================================================================
+ * 【业务模块】：08. 密码学信任基石与防篡改数字签名 (Digital Signature & Cryptography)
+ * 【服务角色】：企业用户 (ENTERPRISE)、审核员 (REVIEWER)、系统管理员 (ADMIN)、第三方监管 (THIRD_PARTY)
+ * 【对应前端页面与路由】：
+ *   - 个人中心证书管理: views/enterprise/UserProfile.vue -> 路由: /enterprise/user/profile
+ *   - 碳核算填报自动签名: views/enterprise/CarbonUpload.vue -> 路由: /enterprise/carbon/upload
+ *   - 核查员在线验签: views/auditor/AuditList.vue -> 路由: /auditor/audit/list
+ * 【调用前端 API 模块】：src/api/signature.ts
+ * ==============================================================================
+ */
+/**
+     * 【业务功能】：为当前用户生成专属 RSA-2048 非对称密钥对（私钥受AES保护存储，公钥指纹展示）
+     * 【对应前端页面】：views/enterprise/UserProfile.vue (/enterprise/user/profile)
+     * 【对应前端API】：api/signature.ts -> generateKeyPair()
+     * 【可见UI操作】：在“数字签名证书”卡片点击【重新生成密钥对】按钮
+     */
+/**
+     * 【业务功能】：获取当前用户的 RSA 密钥对元数据、公钥与就绪状态（不返回私钥明文）
+     * 【对应前端页面】：views/enterprise/UserProfile.vue, views/enterprise/CarbonUpload.vue
+     * 【对应前端API】：api/signature.ts -> getKeyPair()
+     * 【可见UI操作】：填报页面加载时探测企业证书就绪状态（显示就绪绿标）
+     */
+/**
+     * 【业务功能】：撤销并销毁当前用户的密钥对（密钥注销/轮换）
+     * 【对应前端页面】：views/enterprise/UserProfile.vue (/enterprise/user/profile)
+     * 【对应前端API】：api/signature.ts -> deleteKeyPair()
+     * 【可见UI操作】：在证书管理卡片点击【吊销/作废密钥】按钮并确认
+     */
+/**
+     * 【业务功能】：使用企业私钥对碳报告原始摘要数据生成 SHA256withRSA 数字签名
+     * 【对应前端页面】：views/enterprise/CarbonUpload.vue (/enterprise/carbon/upload)
+     * 【对应前端API】：api/signature.ts -> signData()
+     * 【可见UI操作】：点击【提交审核】时系统静默调用私钥对报告进行电子防伪签名
+     */
+/**
+     * 【业务功能】：使用申报企业公钥校验碳报告签名真实性（防篡改检测）
+     * 【对应前端页面】：views/auditor/AuditList.vue (/auditor/audit/list)
+     * 【对应前端API】：api/signature.ts -> verifySignature()
+     * 【可见UI操作】：核查员打开报告审核抽屉，点击【验证数字签名】按钮，展示验签通过状态
+     */
+/**
+     * 【业务功能】：使用审核员公钥加密企业商业机密数据（非对称加密传输）
+     * 【对应前端页面】：views/enterprise/CarbonUpload.vue
+     * 【对应前端API】：api/signature.ts -> encryptData()
+     * 【可见UI操作】：上传敏感凭证时加密封包
+     */
+/**
+     * 【业务功能】：审核员/企业使用自身私钥解密受保护的数据明文
+     * 【对应前端页面】：views/auditor/AuditList.vue
+     * 【对应前端API】：api/signature.ts -> decryptData()
+     * 【可见UI操作】：核查员查阅敏感凭据时调用解密
+     */
+
+===== DoubleAuctionController =====
+/**
+ * ==============================================================================
+ * 【业务模块】：12. 碳配额双向连续竞价拍卖撮合引擎 (Double Auction Market)
+ * 【服务角色】：企业用户 (ENTERPRISE)、系统管理员 (ADMIN)
+ * 【对应前端页面与路由】：
+ *   - 双向拍卖交易大厅: views/enterprise/TradingMarket.vue -> 路由: /enterprise/trading/market
+ *   - 订单管理页面: views/enterprise/OrdersManage.vue -> 路由: /enterprise/orders/manage
+ *   - 企业数据综合大屏: views/enterprise/CompanyDashboard.vue -> 路由: /enterprise/company/dashboard
+ * 【调用前端 API 模块】：src/api/auction.ts
+ * ==============================================================================
+ */
+/**
+     * 【业务功能】：企业提交碳配额双向竞价买入挂单（买盘申报价与申购量）
+     * 【对应前端页面】：views/enterprise/TradingMarket.vue (/enterprise/trading/market)
+     * 【对应前端API】：api/auction.ts -> submitBuyOrder()
+     * 【可见UI操作】：在“买入配额”面板输入最高买入限价与买入吨数后，点击【确认提交买单】按钮
+     */
+/**
+     * 【业务功能】：企业提交碳配额双向竞价卖出挂单（卖盘出让价与出让量）
+     * 【对应前端页面】：views/enterprise/TradingMarket.vue (/enterprise/trading/market)
+     * 【对应前端API】：api/auction.ts -> submitSellOrder()
+     * 【可见UI操作】：在“卖出配额”面板输入最低出让限价与出让吨数后，点击【确认提交卖单】按钮
+     */
+/**
+     * 【业务功能】：管理员或撮合定时器触发双向拍卖撮合算法执行（K-Double Auction 机制出清）
+     * 【对应前端页面】：views/enterprise/TradingMarket.vue (或后台撮合定时任务)
+     * 【对应前端API】：api/auction.ts -> executeMatching()
+     * 【可见UI操作】：点击【执行撮合】按钮手动出清或由撮合守护线程自动触发
+     */
+/**
+     * 【业务功能】：查询当前拍卖市场的公开订单簿（买一至买五、卖一至卖五盘口深度）
+     * 【对应前端页面】：views/enterprise/TradingMarket.vue (/enterprise/trading/market)
+     * 【对应前端API】：api/auction.ts -> getAuctionOrders()
+     * 【可见UI操作】：大厅实时渲染红绿盘口买卖档位深度图表与公开订单簿队列
+     */
+/**
+     * 【业务功能】：查询当前登录企业提交的拍卖委托挂单列表与成交状态
+     * 【对应前端页面】：views/enterprise/TradingMarket.vue (我的挂单Tab), views/enterprise/OrdersManage.vue
+     * 【对应前端API】：api/auction.ts -> getMyOrders()
+     * 【可见UI操作】：查看本人当前进行中与已出清的历史拍卖报单
+     */
+/**
+     * 【业务功能】：查询拍卖市场的历史撮合成交明细流水（出清价格、撮合成交量、成交时间）
+     * 【对应前端页面】：views/enterprise/TradingMarket.vue (成交历史Tab)
+     * 【对应前端API】：api/auction.ts -> getMatchResults()
+     * 【可见UI操作】：查看拍卖市场近期撮合成功的成交流水记录
+     */
+
+===== EmissionController =====
+/**
+ * ==============================================================================
+ * 【业务模块】：13. 企业碳排放能效评级码与时序AI预测 (Emission Rating & Forecasting)
+ * 【服务角色】：企业用户 (ENTERPRISE)、系统管理员 (ADMIN)
+ * 【对应前端页面与路由】：
+ *   - 排放数据与行业对标: views/enterprise/EmissionData.vue -> 路由: /enterprise/emission/data
+ *   - 企业综合数据看板: views/enterprise/CompanyDashboard.vue -> 路由: /enterprise/company/dashboard
+ * 【调用前端 API 模块】：src/api/emission.ts
+ * ==============================================================================
+ */
+/**
+     * 【业务功能】：获取当前登录企业用户的碳效评级记录（碳效码 A~E 等级）
+     * 【对应前端页面】：views/enterprise/EmissionData.vue (/enterprise/emission/data), views/enterprise/CompanyDashboard.vue
+     * 【对应前端API】：api/emission.ts -> getMyRating()
+     * 【可见UI操作】：进入排放数据页面自动加载碳效码等级勋章与各项能效得分
+     */
+/**
+     * 【业务功能】：获取指定企业历年碳排放评级记录与对标数据
+     * 【对应前端页面】：views/enterprise/EmissionData.vue, views/third-party/Monitor.vue
+     * 【对应前端API】：api/emission.ts -> getEnterpriseRatings()
+     * 【可见UI操作】：查看同行业其他对标企业的历史评级记录
+     */
+/**
+     * 【业务功能】：根据企业年度碳排放数据与经济产值评定生成碳效等级记录
+     * 【对应前端页面】：views/enterprise/EmissionData.vue
+     * 【对应前端API】：api/emission.ts -> createRating()
+     * 【可见UI操作】：系统评级服务或管理端评定企业碳效等级
+     */
+/**
+     * 【业务功能】：获取指定自然年份的行业碳排放强度与能效排行榜单
+     * 【对应前端页面】：views/enterprise/EmissionData.vue (/enterprise/emission/data)
+     * 【对应前端API】：api/emission.ts -> getIndustryRankings()
+     * 【可见UI操作】：切换年份下拉框，展示行业内部排放对标排名表格
+     */
+/**
+     * 【业务功能】：基于企业历史排碳时序数据，使用机器学习预测模型预测未来周期排放量
+     * 【对应前端页面】：views/enterprise/EmissionData.vue (/enterprise/emission/data)
+     * 【对应前端API】：api/emission.ts -> predictEmission()
+     * 【可见UI操作】：在“未来排放趋势预测”卡片选择预测月数后，点击【执行排放量预测】按钮
+     */
+
+===== EnterpriseController =====
+/**
+ * ==============================================================================
+ * 【业务模块】：17. 控排企业主体档案与法定配额资产 (Enterprise Account & Quota)
+ * 【服务角色】：企业用户 (ENTERPRISE)、系统管理员 (ADMIN)
+ * 【对应前端页面与路由】：
+ *   - 企业档案管理: views/enterprise/EnterpriseInfo.vue -> 路由: /enterprise/info
+ *   - 企业综合大屏: views/enterprise/CompanyDashboard.vue -> 路由: /enterprise/company/dashboard
+ *   - 个人中心准入证书: views/enterprise/UserProfile.vue -> 路由: /enterprise/user/profile
+ *   - P2P与拍卖大厅: views/enterprise/TradingP2P.vue, TradingMarket.vue
+ * 【调用前端 API 模块】：src/api/enterprise.ts
+ * ==============================================================================
+ */
+/**
+     * 【业务功能】：企业用户查看自身的市场准入证书列表与生效资质
+     * 【对应前端页面】：views/enterprise/UserProfile.vue (/enterprise/user/profile), CompanyDashboard.vue
+     * 【对应前端API】：api/enterprise.ts -> getMyEnterpriseAdmission()
+     * 【可见UI操作】：个人中心/企业主页展示准入证书卡片及审核状态（有效/吊销）
+     */
+/**
+     * 【业务功能】：获取当前登录企业的主体工商档案与资质信息
+     * 【对应前端页面】：views/enterprise/EnterpriseInfo.vue (/enterprise/info), CompanyDashboard.vue
+     * 【对应前端API】：api/enterprise.ts -> getEnterpriseInfo()
+     * 【可见UI操作】：进入企业信息页面或综合大屏自动加载企业名称、行业、统一社会信用代码等
+     */
+/**
+     * 【业务功能】：查询当前企业的法定碳配额资产账户（总配额、可用配额、已履约配额与使用率）
+     * 【对应前端页面】：views/enterprise/CompanyDashboard.vue, views/enterprise/EnterpriseInfo.vue
+     * 【对应前端API】：api/enterprise.ts -> getQuotaInfo()
+     * 【可见UI操作】：综合看板上方核心资产卡片与配额使用率环形进度条渲染
+     */
+/**
+     * 【业务功能】：修改企业法定联系人与应急联系电话
+     * 【对应前端页面】：views/enterprise/EnterpriseInfo.vue (/enterprise/info)
+     * 【对应前端API】：api/enterprise.ts -> updateContact()
+     * 【可见UI操作】：在“联系人信息”表单修改后，点击【保存联系人】按钮
+     */
+/**
+     * 【业务功能】：根据企业ID查询指定公开企业的主体档案信息
+     * 【对应前端页面】：views/enterprise/TradingP2P.vue, views/enterprise/OrdersManage.vue, views/auditor/AuditList.vue
+     * 【对应前端API】：api/enterprise.ts -> getEnterpriseById()
+     * 【可见UI操作】：在P2P转让中选择对手方，或查看交易对手/报告申报企业基本资料
+     */
+
+===== EnterpriseInferenceController =====
+/**
+ * ==============================================================================
+ * 【业务模块】：20. AI 企业排碳合规推断与异常偏离诊断 (Enterprise Inference ML Service)
+ * 【服务角色】：企业用户 (ENTERPRISE)、审核员 (REVIEWER)、第三方监管 (THIRD_PARTY)、系统管理员 (ADMIN)
+ * 【对应前端页面与路由】：
+ *   - AI企业推理页面: views/enterprise/EnterpriseInference.vue -> 路由: /enterprise/enterprise-inference
+ * 【调用前端 API 模块】：src/api/enterpriseInference.ts
+ * ==============================================================================
+ */
+/**
+     * 【业务功能】：基于机器学习孤立森林模型诊断企业历史排放偏离度、合规概率与节能诊断画像
+     * 【对应前端页面】：views/enterprise/EnterpriseInference.vue (/enterprise/enterprise-inference)
+     * 【对应前端API】：api/enterpriseInference.ts -> getEnterpriseInference()
+     * 【可见UI操作】：进入企业AI推理页面，自动基于企业ID拉取多维合规评分、风险等级与建议卡片
+     */
+
+===== FileController =====
+/**
+ * ==============================================================================
+ * 【业务模块】：07. MinIO 对象存储证据附件上传与生命周期 (File & Object Storage)
+ * 【服务角色】：企业用户 (ENTERPRISE)、系统管理员 (ADMIN)、审核员 (REVIEWER)
+ * 【对应前端页面与路由】：
+ *   - 碳核算填报附件上传: views/enterprise/CarbonUpload.vue -> 路由: /enterprise/carbon/upload
+ *   - 审核员查阅佐证原件: views/auditor/AuditList.vue -> 路由: /auditor/audit/list
+ *   - 碳中和项目材料提交: views/enterprise/CarbonNeutral.vue -> 路由: /enterprise/carbon-neutral/projects
+ * 【调用前端 API 模块】：src/api/file.ts
+ * ==============================================================================
+ */
+/**
+     * 【业务功能】：上传单个碳排放监测报告、化验单凭据或证书文件至 MinIO 对象存储
+     * 【对应前端页面】：views/enterprise/CarbonUpload.vue (/enterprise/carbon/upload), CarbonNeutral.vue
+     * 【对应前端API】：api/file.ts -> uploadFile()
+     * 【可见UI操作】：点击或拖拽文件到“上传凭证材料”区域触发上传
+     */
+/**
+     * 【业务功能】：批量上传多份核查佐证附件或图片凭据
+     * 【对应前端页面】：CarbonUpload.vue, CarbonNeutralDetail.vue
+     * 【对应前端API】：api/file.ts -> batchUploadFiles()
+     * 【可见UI操作】：多选文件上传时批量并发执行
+     */
+/**
+     * 【业务功能】：安全下载已上传至 MinIO 的证据原件二进制流
+     * 【对应前端页面】：views/auditor/AuditList.vue, CarbonUpload.vue
+     * 【对应前端API】：api/file.ts -> downloadFile()
+     * 【可见UI操作】：点击附件列表中的【下载原件】图标
+     */
+/**
+     * 【业务功能】：从对象存储中删除指定的作废文件
+     * 【对应前端页面】：views/enterprise/CarbonUpload.vue
+     * 【对应前端API】：api/file.ts -> deleteFile()
+     * 【可见UI操作】：上传列表中点击单个文件右侧的【删除】图标
+     */
+/**
+     * 【业务功能】：批量删除多个作废的凭证文件
+     * 【对应前端页面】：views/enterprise/CarbonUpload.vue, views/enterprise/CarbonNeutral.vue
+     * 【对应前端API】：api/file.ts -> batchDeleteFiles()
+     * 【可见UI操作】：重置表单或批量清空上传附件列表
+     */
+/**
+     * 【业务功能】：获取文件元数据（大小、哈希校验码、MIME 类型）
+     * 【对应前端页面】：views/auditor/AuditList.vue
+     * 【对应前端API】：api/file.ts -> getFileInfo()
+     * 【可见UI操作】：审核员审查附件完整性时校验文件指纹
+     */
+/**
+     * 【业务功能】：检查指定对象文件是否存在于 MinIO 存储桶中
+     * 【对应前端页面】：views/enterprise/CarbonUpload.vue, views/auditor/AuditList.vue
+     * 【对应前端API】：api/file.ts -> fileExists()
+     * 【可见UI操作】：预览前探测文件有效性
+     */
+/**
+     * 【业务功能】：获取带时效安全保护的直接下载/在线预览预签名 URL
+     * 【对应前端页面】：views/auditor/AuditList.vue, views/enterprise/CarbonUpload.vue
+     * 【对应前端API】：api/file.ts -> getPresignedUrl()
+     * 【可见UI操作】：点击附件进行在线预览（图片/PDF）
+     */
+/**
+     * 【业务功能】：获取前端直传 MinIO 的预签名安全 PUT URL
+     * 【对应前端页面】：大文件分片直传场景
+     * 【对应前端API】：api/file.ts -> getPresignedUploadUrl()
+     * 【可见UI操作】：直传通道初始化
+     */
+/**
+     * 【业务功能】：分页列出指定目录前缀下的所有归档文件
+     * 【对应前端页面】：文件归档列表
+     * 【对应前端API】：api/file.ts -> listFiles()
+     * 【可见UI操作】：浏览凭证库
+     */
+/**
+     * 【业务功能】：在对象存储桶内部复制或归档文件
+     * 【对应前端页面】：报告存证归档
+     * 【对应前端API】：api/file.ts -> copyFile()
+     * 【可见UI操作】：归档触发
+     */
+
+===== MarketPredictionController =====
+/**
+ * ==============================================================================
+ * 【业务模块】：19. 碳市场量化AI预测与宏观行情推演 (Carbon Market AI Forecasting)
+ * 【服务角色】：企业用户 (ENTERPRISE)、系统管理员 (ADMIN)
+ * 【对应前端页面与路由】：
+ *   - AI市场预测页面: views/enterprise/MarketPrediction.vue -> 路由: /enterprise/market-prediction
+ * 【调用前端 API 模块】：src/api/marketPrediction.ts
+ * ==============================================================================
+ */
+/**
+     * 【业务功能】：基于 Prophet / 时间序列算法预测未来周期碳市场整体交易活跃度与大盘走势
+     * 【对应前端页面】：views/enterprise/MarketPrediction.vue (/enterprise/market-prediction)
+     * 【对应前端API】：api/marketPrediction.ts -> getMarketTrend()
+     * 【可见UI操作】：在“市场行情趋势预测”面板选择预测周期（7/30/90/180天），图表自动更新
+     */
+/**
+     * 【业务功能】：基于 XGBoost 回归模型预测未来碳配额成交均价走势与置信区间波动带
+     * 【对应前端页面】：views/enterprise/MarketPrediction.vue (/enterprise/market-prediction)
+     * 【对应前端API】：api/marketPrediction.ts -> getMarketPrice()
+     * 【可见UI操作】：在“配额价格预测”面板查看未来 30 天预测价格曲线与高低价格区间
+     */
+/**
+     * 【业务功能】：预测未来周期全市场碳配额买入需求与卖出供应的供需缺口平衡指数
+     * 【对应前端页面】：views/enterprise/MarketPrediction.vue (/enterprise/market-prediction)
+     * 【对应前端API】：api/marketPrediction.ts -> getSupplyDemand()
+     * 【可见UI操作】：在“供需平衡分析”卡片查看配额缺口/盈余指数柱状图
+     */
+
+===== NotificationController =====
+/**
+ * ==============================================================================
+ * 【业务模块】：21. 站内信业务通知与实时消息中心 (Notification Center)
+ * 【服务角色】：全系统角色（企业 ENTERPRISE、审核员 REVIEWER、第三方监管 THIRD_PARTY、管理员 ADMIN）
+ * 【对应前端页面与路由】：
+ *   - 顶部导航通知铃铛: components/NotificationBell.vue (全局 layout/index.vue)
+ * 【调用前端 API 模块】：src/api/notification.ts
+ * ==============================================================================
+ */
+/**
+     * 【业务功能】：分页查询当前登录用户的站内信通知列表（审核结果、成交确认、违约告警等）
+     * 【对应前端页面】：components/NotificationBell.vue (顶部通知下拉弹窗)
+     * 【对应前端API】：api/notification.ts -> getNotifications()
+     * 【可见UI操作】：点击页面顶部右上角【铃铛图标】展开通知抽屉或气泡列表
+     */
+/**
+     * 【业务功能】：获取当前用户的未读业务通知数量
+     * 【对应前端页面】：components/NotificationBell.vue
+     * 【对应前端API】：api/notification.ts -> getUnreadCount()
+     * 【可见UI操作】：顶部导航栏通知铃铛右上角的红色未读数角标 (Badge) 渲染
+     */
+/**
+     * 【业务功能】：将指定单条业务通知标记为已读状态
+     * 【对应前端页面】：components/NotificationBell.vue
+     * 【对应前端API】：api/notification.ts -> markAsRead()
+     * 【可见UI操作】：点击某条通知消息进行查阅，或点击右侧小圆点标记已读
+     */
+/**
+     * 【业务功能】：一键将当前用户的所有未读消息标记为已读
+     * 【对应前端页面】：components/NotificationBell.vue
+     * 【对应前端API】：api/notification.ts -> markAllAsRead()
+     * 【可见UI操作】：点击通知弹窗右上角的【全部标为已读】按钮
+     */
+
+===== ReviewerController =====
+/**
+ * ==============================================================================
+ * 【业务模块】：10. 第三方专业核查员工作台与资质管理 (Reviewer Workbench)
+ * 【服务角色】：专业核查员 (REVIEWER)
+ * 【对应前端页面与路由】：
+ *   - 碳排放审核列表: views/auditor/AuditList.vue -> 路由: /auditor/audit/list
+ *   - 审核历史归档: views/auditor/ReviewHistory.vue -> 路由: /auditor/review/history
+ * 【调用前端 API 模块】：src/api/reviewer.ts
+ * ==============================================================================
+ */
+/**
+     * 【业务功能】：审核员查询自身的专业执业资格证书（Reviewer Qualification）及生效状态
+     * 【对应前端页面】：views/auditor/ReviewHistory.vue, views/auditor/AuditList.vue
+     * 【对应前端API】：api/reviewer.ts -> getMyReviewerQualification()
+     * 【可见UI操作】：查看个人执业执照有效期与授权核查行业领域
+     */
+/**
+     * 【业务功能】：获取当前登录核查员的个人执业档案、所属机构与擅长行业
+     * 【对应前端页面】：views/auditor/AuditList.vue (/auditor/audit/list), ReviewHistory.vue
+     * 【对应前端API】：api/reviewer.ts -> getReviewerInfo()
+     * 【可见UI操作】：审核员工作台顶部核查员身份信息条展示
+     */
+/**
+     * 【业务功能】：查询待当前核查员初审的排队碳核算报告任务池
+     * 【对应前端页面】：views/auditor/AuditList.vue (/auditor/audit/list)
+     * 【对应前端API】：api/reviewer.ts -> getPendingReports()
+     * 【可见UI操作】：进入审核工作台，加载“待初审报告”表格，支持企业筛选与排序
+     */
+/**
+     * 【业务功能】：查询核查员个人经办的历史审核报告归档记录与评审决议
+     * 【对应前端页面】：views/auditor/ReviewHistory.vue (/auditor/review/history)
+     * 【对应前端API】：api/reviewer.ts -> getReviewHistory()
+     * 【可见UI操作】：进入审核历史页面，表格展示已通过或已驳回的历史工单记录
+     */
+/**
+     * 【业务功能】：统计核查员的工作量与绩效指标（已审报告数、初审通过率、平均审核时长）
+     * 【对应前端页面】：views/auditor/AuditList.vue (/auditor/audit/list)
+     * 【对应前端API】：api/reviewer.ts -> getStatistics()
+     * 【可见UI操作】：审核页面顶部统计卡片（已审核总数、待办任务数、通过率等）
+     */
+
+===== SearchController =====
+/**
+ * ==============================================================================
+ * 【业务模块】：14. 全站多维数据综合搜索与市场大盘总览 (Search & Market Overview)
+ * 【服务角色】：全系统认证用户（企业 ENTERPRISE、审核员 REVIEWER、第三方监管 THIRD_PARTY、管理员 ADMIN）
+ * 【对应前端页面与路由】：
+ *   - 官网首页大盘: views/OfficialHome.vue -> 路由: /official-home
+ *   - 企业综合看板: views/enterprise/CompanyDashboard.vue -> 路由: /enterprise/company/dashboard
+ *   - 市场大盘与搜索: views/enterprise/TradingMarket.vue, OrdersManage.vue
+ * 【调用前端 API 模块】：src/api/search.ts
+ * ==============================================================================
+ */
+/**
+     * 【业务功能】：多条件组合全文检索碳核算报告（支持关键字、企业ID与状态综合模糊匹配）
+     * 【对应前端页面】：views/admin/SystemCarbon.vue, views/third-party/Monitor.vue
+     * 【对应前端API】：api/search.ts -> searchReports()
+     * 【可见UI操作】：输入全局关键词检索相关历史报告
+     */
+/**
+     * 【业务功能】：多维度组合检索全市场碳交易流水记录（支持买卖双方、交易类型、成交状态过滤）
+     * 【对应前端页面】：views/enterprise/OrdersManage.vue, views/enterprise/TradingMarket.vue
+     * 【对应前端API】：api/search.ts -> searchTrades()
+     * 【可见UI操作】：搜索市场历史成交委托与履约明细
+     */
+/**
+     * 【业务功能】：获取碳交易市场全网宏观大盘统计数据（全网累计交易量、成交均价、累计核证减排量）
+     * 【对应前端页面】：views/OfficialHome.vue (/official-home), views/enterprise/CompanyDashboard.vue
+     * 【对应前端API】：api/search.ts -> getMarketOverview()
+     * 【可见UI操作】：进入官网首页或企业综合看板，加载全网大盘实时概览卡片
+     */
+
+===== ThirdPartyController =====
+/**
+ * ==============================================================================
+ * 【业务模块】：15. 第三方监管部门穿透式监控与监管工作台 (Third Party Supervision)
+ * 【服务角色】：第三方监管机构 (THIRD_PARTY)
+ * 【对应前端页面与路由】：
+ *   - 监管面板: views/third-party/Monitor.vue -> 路由: /third-party/monitor
+ * 【调用前端 API 模块】：src/api/thirdParty.ts
+ * ==============================================================================
+ */
+/**
+     * 【业务功能】：获取当前第三方认证/监管机构的主体基本档案与资质信息
+     * 【对应前端页面】：views/third-party/Monitor.vue (/third-party/monitor)
+     * 【对应前端API】：api/thirdParty.ts -> getOrgInfo()
+     * 【可见UI操作】：监管看板“机构档案”卡片展示机构全称、统一代码与联系方式
+     */
+/**
+     * 【业务功能】：监管方视角穿透式查询辖区内企业碳核算报告列表（支持按企业ID、状态、时间范围多维检索）
+     * 【对应前端页面】：views/third-party/Monitor.vue (/third-party/monitor)
+     * 【对应前端API】：api/thirdParty.ts -> getCarbonReports()
+     * 【可见UI操作】：监管看板下方“全网企业排碳报告全量审计表”分页加载与检索
+     */
+/**
+     * 【业务功能】：监管视角宏观业务统计数据（辖区已核算企业数、审核合规达标率、累计排碳监控总量）
+     * 【对应前端页面】：views/third-party/Monitor.vue (/third-party/monitor)
+     * 【对应前端API】：api/thirdParty.ts -> getStatistics()
+     * 【可见UI操作】：监管大盘顶部核心宏观统计卡片（合规率、监测企业数、总排量等）
+     */
+/**
+     * 【业务功能】：修改第三方监管机构的联系人与应急联络电话
+     * 【对应前端页面】：views/third-party/Monitor.vue (/third-party/monitor)
+     * 【对应前端API】：api/thirdParty.ts -> updateContact()
+     * 【可见UI操作】：在“机构联系人”表单修改后点击【保存联系人】按钮
+     */
+
+===== TradeController =====
+/**
+ * ==============================================================================
+ * 【业务模块】：04. 碳配额交易与协议转让引擎 (Carbon Trading & P2P)
+ * 【服务角色】：企业用户 (ENTERPRISE)、系统管理员 (ADMIN)、第三方监管 (THIRD_PARTY)
+ * 【对应前端页面与路由】：
+ *   - P2P定向转让: views/enterprise/TradingP2P.vue -> 路由: /enterprise/trading/p2p
+ *   - 订单管理页面: views/enterprise/OrdersManage.vue -> 路由: /enterprise/orders/manage
+ *   - 企业综合大屏: views/enterprise/CompanyDashboard.vue -> 路由: /enterprise/company/dashboard
+ * 【调用前端 API 模块】：src/api/trade.ts
+ * ==============================================================================
+ */
+/**
+     * 【业务功能】：发起点对点（P2P）定向碳配额协商转让委托
+     * 【对应前端页面】：views/enterprise/TradingP2P.vue (/enterprise/trading/p2p)
+     * 【对应前端API】：api/trade.ts -> createP2PTrade()
+     * 【可见UI操作】：输入目标买方企业ID、转让配额数量与单价后，点击【发起定向转让】按钮
+     */
+/**
+     * 【业务功能】：发起公开市场挂牌拍卖订单
+     * 【对应前端页面】：views/enterprise/TradingMarket.vue (/enterprise/trading/market)
+     * 【对应前端API】：api/trade.ts -> createAuctionTrade()
+     * 【可见UI操作】：在交易市场点击【挂牌出让】或【挂牌求购】按钮
+     */
+/**
+     * 【业务功能】：交易对手方确认成交，触发原子化配额划转与碳币资金结算
+     * 【对应前端页面】：views/enterprise/TradingP2P.vue (/enterprise/trading/p2p), views/enterprise/OrdersManage.vue
+     * 【对应前端API】：api/trade.ts -> confirmTrade()
+     * 【可见UI操作】：买方企业在收到的待确认转让订单卡片上点击【确认承接/支付】
+     */
+/**
+     * 【业务功能】：撤销未成交或待对方确认的碳交易订单
+     * 【对应前端页面】：views/enterprise/OrdersManage.vue (/enterprise/orders/manage), views/enterprise/TradingP2P.vue
+     * 【对应前端API】：api/trade.ts -> cancelTrade()
+     * 【可见UI操作】：在活动订单列表中点击【撤单】按钮，确认后释放锁定的配额或资金
+     */
+/**
+     * 【业务功能】：根据交易ID查询单笔交易详情与清算日志
+     * 【对应前端页面】：views/enterprise/OrdersManage.vue 订单详情弹窗
+     * 【对应前端API】：api/trade.ts -> getTrade()
+     * 【可见UI操作】：点击订单行中的【查看明细】链接
+     */
+/**
+     * 【业务功能】：管理端/监管端分页查询公开碳交易市场订单与履约记录
+     * 【对应前端页面】：views/admin/DataStatistics.vue, views/third-party/Monitor.vue
+     * 【对应前端API】：api/trade.ts -> listTrades()
+     * 【可见UI操作】：查看全网碳交易流水列表
+     */
+/**
+     * 【业务功能】：企业用户查询自身参与的交易订单（买方/卖方，支持编号、对手方、时间段多维筛选）
+     * 【对应前端页面】：views/enterprise/OrdersManage.vue, views/enterprise/CompanyDashboard.vue
+     * 【对应前端API】：api/trade.ts -> getMyTrades()
+     * 【可见UI操作】：订单管理页面按交易状态、交易类型（P2P/拍卖）筛选列表
+     */
+
+===== UserController =====
+/**
+ * ==============================================================================
+ * 【业务模块】：02. 用户中心与个人资料安全管理 (User Profile & Account)
+ * 【服务角色】：全系统角色（企业、审核员、第三方监管、管理员）
+ * 【对应前端页面与路由】：
+ *   - 个人中心页面: views/enterprise/UserProfile.vue -> 路由: /enterprise/user/profile
+ *   - 全局会话活跃度统计: layout/index.vue (停留时长定时打点)
+ *   - 注册查重: views/Login.vue (/login)
+ * 【调用前端 API 模块】：src/api/user.ts
+ * ==============================================================================
+ */
+/**
+     * 【业务功能】：获取当前登录用户的完整个人资料、企业关联信息与权限
+     * 【对应前端页面】：views/enterprise/UserProfile.vue (/enterprise/user/profile)
+     * 【对应前端API】：api/user.ts -> getProfile()
+     * 【可见UI操作】：进入个人中心页面，自动加载并填充个人资料表单与安全设置状态
+     */
+/**
+     * 【业务功能】：根据用户ID查询指定用户的公开基本信息
+     * 【对应前端页面】：系统管理用户详情、各端审计人查看弹窗
+     * 【对应前端API】：api/user.ts -> getUserById()
+     * 【可见UI操作】：查看审核员或用户详情时触发
+     */
+/**
+     * 【业务功能】：修改当前用户的个人资料（姓名、联系方式、头像等）
+     * 【对应前端页面】：views/enterprise/UserProfile.vue (/enterprise/user/profile)
+     * 【对应前端API】：api/user.ts -> updateProfile()
+     * 【可见UI操作】：在“基本资料”表单编辑姓名、手机号等后，点击【保存修改】按钮
+     */
+/**
+     * 【业务功能】：用户安全修改登录密码
+     * 【对应前端页面】：views/enterprise/UserProfile.vue (/enterprise/user/profile)
+     * 【对应前端API】：api/user.ts -> changePassword()
+     * 【可见UI操作】：在“安全设置”面板录入原密码与新密码后，点击【确认修改密码】按钮
+     */
+/**
+     * 【业务功能】：校验用户名是否已被注册占用（注册实时查重）
+     * 【对应前端页面】：views/Login.vue (/login 注册Tab)
+     * 【对应前端API】：api/user.ts -> checkUsername()
+     * 【可见UI操作】：用户名输入框失焦后触发异步查重，若占用显示红色提示
+     */
+/**
+     * 【业务功能】：校验邮箱是否已被绑定占用
+     * 【对应前端页面】：views/Login.vue (/login 注册Tab), UserProfile.vue
+     * 【对应前端API】：api/user.ts -> checkEmail()
+     * 【可见UI操作】：邮箱输入框失焦后触发异步查重
+     */
+/**
+     * 【业务功能】：定时上报用户当前页面会话停留活跃时长
+     * 【对应前端页面】：全局布局 layout/index.vue, UserProfile.vue
+     * 【对应前端API】：api/user.ts -> reportStayTime()
+     * 【可见UI操作】：前端心跳定时器静默上报当前在线停留秒数
+     */
+/**
+     * 【业务功能】：查询当前用户的累计系统在线停留时长与活跃度指标
+     * 【对应前端页面】：views/enterprise/UserProfile.vue (/enterprise/user/profile)
+     * 【对应前端API】：api/user.ts -> getStayTimeStats()
+     * 【可见UI操作】：个人中心卡片展示用户累计在线时长（时/分/秒）
+     */
+
+===== WebVitalsController =====
+/**
+ * ==============================================================================
+ * 【业务模块】：22. 前端核心性能观测与体验指标打点 (Frontend Performance & Core Web Vitals)
+ * 【服务角色】：全系统前端性能监控与遥测观测
+ * 【对应前端页面与路由】：
+ *   - 全局性能打点: main.ts / 性能探针上报 (LCP, FID, CLS, FCP, TTFB, INP)
+ * 【调用前端 API 模块】：全局遥测上报 -> POST /web-vitals/report
+ * ==============================================================================
+ */
+/**
+     * 【业务功能】：接收前端上报的核心体验性能指标数据（页面加载延迟、交互响应度、布局偏移）
+     * 【对应前端页面】：全系统任意路由页面加载与交互时由浏览器性能观测器静默上报
+     * 【可见UI操作】：前端页面无感打点，用于监控保障系统交互流畅度与渲染稳定性
+     */

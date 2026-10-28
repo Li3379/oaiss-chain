@@ -1,0 +1,14 @@
+import { spawn } from 'node:child_process';
+const EXE='D:/Program File/Pencil/resources/app.asar.unpacked/out/mcp-server-windows-x64.exe';
+const child=spawn(EXE,['--app','desktop'],{stdio:['pipe','pipe','pipe']});
+let buf='';const pending=new Map();
+child.stdout.on('data',d=>{buf+=d.toString();let i;while((i=buf.indexOf('\n'))>=0){const l=buf.slice(0,i).trim();buf=buf.slice(i+1);if(!l)continue;try{const m=JSON.parse(l);if(m.id&&pending.has(m.id)){pending.get(m.id)(m);pending.delete(m.id);}}catch{}}});
+const req=(m,p,id)=>new Promise(r=>{pending.set(id,r);child.stdin.write(JSON.stringify({jsonrpc:'2.0',id,method:m,params:p})+'\n')});
+let id=1;
+await req('initialize',{protocolVersion:'2024-11-05',capabilities:{},clientInfo:{name:'x',version:'1'}},id++);
+child.stdin.write(JSON.stringify({jsonrpc:'2.0',method:'notifications/initialized'})+'\n');
+const r=await req('tools/call',{name:'batch_get',arguments:{filePath:'pencli/UI_Desgin.pen',readDepth:0}},id++);
+const txt=(r.result?.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('\n');
+const arr=JSON.parse(txt.slice(txt.indexOf('[')));
+arr.forEach(n=>console.log([n.id,n.x,n.y,n.width+'x'+n.height,n.name].join(' | ')));
+child.kill();process.exit(0);

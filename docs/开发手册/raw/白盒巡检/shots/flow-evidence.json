@@ -1,0 +1,30 @@
+[
+  [
+    "login.formLabels",
+    "[\"账号\",\"密码\",\"验证码\"]"
+  ],
+  [
+    "login.captchaImgCount",
+    1
+  ],
+  [
+    "carbonUpload.tourVisible(when done flag set)",
+    0
+  ],
+  [
+    "carbonUpload.rowCountBefore",
+    10
+  ],
+  [
+    "createBtnVisible",
+    true
+  ],
+  [
+    "carbonUpload.rowCountAfterCreate",
+    10
+  ],
+  [
+    "carbonUpload.toast",
+    "[]"
+  ]
+]

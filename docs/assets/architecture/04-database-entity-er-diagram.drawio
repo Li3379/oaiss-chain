@@ -1,0 +1,115 @@
+<mxfile host="Electron" modified="2026-10-13T06:00:00.000Z" agent="Mozilla/5.0" version="21.0.0" type="device">
+  <diagram id="diagram_er" name="数据库核心业务实体 ER 逻辑关系模型图">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" background="#FFFFFF">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- Frame -->
+        <mxCell id="frame_title" value="package [DataModel] OAISS-CHAIN [数据库 24 张核心实体 ER 逻辑关系模型图]&#xa;EA12 Data Modeling Profile · IE Crow's Foot Notation · Flyway V1~V13" style="shape=folder;fontStyle=1;tabWidth=580;tabHeight=40;tabPosition=left;html=1;boundedLbl=1;fillColor=#FAFAFA;strokeColor=#94A3B8;fontColor=#1E293B;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="1560" height="1060" as="geometry" />
+        </mxCell>
+
+        <!-- 域 1: 身份权限域 -->
+        <mxCell id="dom_auth" value="【身份权限与审计域】" style="shape=folder;fontStyle=1;tabWidth=160;tabHeight=25;tabPosition=left;html=1;boundedLbl=1;fillColor=#F8FAFC;strokeColor=#94A3B8;fontColor=#334155;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="80" y="100" width="460" height="420" as="geometry" />
+        </mxCell>
+        <mxCell id="tbl_user" value="«table»&#xa;&lt;b&gt;user (用户主表)&lt;/b&gt;&#xa;----------------------------&#xa;+ id : bigint [PK]&#xa;----------------------------&#xa;+ username : varchar(64)&#xa;+ password : varchar(128)&#xa;+ real_name : varchar(64)&#xa;+ status : int&#xa;+ email : varchar(128)&#xa;+ phone : varchar(32)" style="shape=table;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#475569;fontColor=#0F172A;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="100" y="140" width="200" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="tbl_user_type" value="«table»&#xa;&lt;b&gt;user_type_list (角色关联)&lt;/b&gt;&#xa;----------------------------&#xa;+ id : bigint [PK]&#xa;----------------------------&#xa;+ user_id : bigint [FK]&#xa;+ user_type_id : int&#xa;+ assigned_at : datetime" style="shape=table;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#475569;fontColor=#0F172A;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="320" y="140" width="200" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="tbl_perm" value="«table»&#xa;&lt;b&gt;entry_permission (权限字典)&lt;/b&gt;&#xa;----------------------------&#xa;+ id : bigint [PK]&#xa;----------------------------&#xa;+ permission_name : varchar&#xa;+ permission_code : varchar&#xa;+ path : varchar(128)" style="shape=table;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#475569;fontColor=#0F172A;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="320" y="340" width="200" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="tbl_account_perm" value="«table»&#xa;&lt;b&gt;account_permission_list&lt;/b&gt;&#xa;----------------------------&#xa;+ id : bigint [PK]&#xa;----------------------------&#xa;+ user_id : bigint [FK]&#xa;+ permission_id : bigint [FK]&#xa;+ granted_at : datetime" style="shape=table;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#475569;fontColor=#0F172A;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="100" y="340" width="200" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- 域 2: 企业主体与资质域 -->
+        <mxCell id="dom_ent" value="【企业主体与资质证书域】" style="shape=folder;fontStyle=1;tabWidth=180;tabHeight=25;tabPosition=left;html=1;boundedLbl=1;fillColor=#F8FAFC;strokeColor=#94A3B8;fontColor=#334155;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="580" y="100" width="460" height="420" as="geometry" />
+        </mxCell>
+        <mxCell id="tbl_enterprise" value="«table»&#xa;&lt;b&gt;enterprise (企业主体)&lt;/b&gt;&#xa;----------------------------&#xa;+ id : bigint [PK]&#xa;----------------------------&#xa;+ user_id : bigint [FK]&#xa;+ enterprise_name : varchar&#xa;+ credit_code : varchar(32)&#xa;+ industry_type : varchar&#xa;+ legal_person : varchar" style="shape=table;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#475569;fontColor=#0F172A;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="600" y="140" width="200" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="tbl_cert" value="«table»&#xa;&lt;b&gt;certificate (数字证书)&lt;/b&gt;&#xa;----------------------------&#xa;+ id : bigint [PK]&#xa;----------------------------&#xa;+ enterprise_id : bigint [FK]&#xa;+ cert_sn : varchar(64)&#xa;+ public_key_fp : varchar&#xa;+ valid_until : datetime" style="shape=table;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#475569;fontColor=#0F172A;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="820" y="140" width="200" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="tbl_admission" value="«table»&#xa;&lt;b&gt;enterprise_admission (准入)&lt;/b&gt;&#xa;----------------------------&#xa;+ id : bigint [PK]&#xa;----------------------------&#xa;+ enterprise_id : bigint [FK]&#xa;+ audit_status : int&#xa;+ reason : text&#xa;+ audited_at : datetime" style="shape=table;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#475569;fontColor=#0F172A;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="820" y="340" width="200" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="tbl_reviewer" value="«table»&#xa;&lt;b&gt;reviewer / third_party_org&lt;/b&gt;&#xa;----------------------------&#xa;+ id : bigint [PK]&#xa;----------------------------&#xa;+ user_id : bigint [FK]&#xa;+ org_name : varchar(128)&#xa;+ qualification_lvl : varchar&#xa;+ status : int" style="shape=table;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#475569;fontColor=#0F172A;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="600" y="340" width="200" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- 域 3: 碳资产核算域 -->
+        <mxCell id="dom_carbon" value="【碳资产核算与数字签名域】" style="shape=folder;fontStyle=1;tabWidth=190;tabHeight=25;tabPosition=left;html=1;boundedLbl=1;fillColor=#F8FAFC;strokeColor=#94A3B8;fontColor=#334155;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="100" width="480" height="420" as="geometry" />
+        </mxCell>
+        <mxCell id="tbl_report" value="«table»&#xa;&lt;b&gt;carbon_report (核算报告主表)&lt;/b&gt;&#xa;---------------------------------&#xa;+ id : bigint [PK]&#xa;---------------------------------&#xa;+ enterprise_id : bigint [FK]&#xa;+ report_title : varchar(128)&#xa;+ period : varchar(32)&#xa;+ total_emissions : decimal&#xa;+ status : varchar(32)&#xa;+ rsa_signature : text&#xa;+ tx_hash : varchar(64)" style="shape=table;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#475569;fontColor=#0F172A;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1100" y="140" width="210" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="tbl_rsa" value="«table»&#xa;&lt;b&gt;rsa_key_pair (密钥托管)&lt;/b&gt;&#xa;---------------------------------&#xa;+ id : bigint [PK]&#xa;---------------------------------&#xa;+ enterprise_id : bigint [FK]&#xa;+ public_key : text&#xa;+ enc_private_key : text&#xa;+ key_status : int" style="shape=table;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#475569;fontColor=#0F172A;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1330" y="140" width="210" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="tbl_neutral" value="«table»&#xa;&lt;b&gt;carbon_neutral_project&lt;/b&gt;&#xa;---------------------------------&#xa;+ id : bigint [PK]&#xa;---------------------------------&#xa;+ enterprise_id : bigint [FK]&#xa;+ project_name : varchar(128)&#xa;+ reduction_amt : decimal&#xa;+ status : varchar(32)" style="shape=table;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#475569;fontColor=#0F172A;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1100" y="350" width="210" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="tbl_rating" value="«table»&#xa;&lt;b&gt;emission_rating (排放评级)&lt;/b&gt;&#xa;---------------------------------&#xa;+ id : bigint [PK]&#xa;---------------------------------&#xa;+ enterprise_id : bigint [FK]&#xa;+ carbon_intensity : decimal&#xa;+ rating_grade : varchar(16)&#xa;+ year : int" style="shape=table;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#475569;fontColor=#0F172A;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1330" y="350" width="210" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- 域 4: 市场拍卖撮合域 -->
+        <mxCell id="dom_trade" value="【配额市场拍卖与撮合结算域】" style="shape=folder;fontStyle=1;tabWidth=200;tabHeight=25;tabPosition=left;html=1;boundedLbl=1;fillColor=#F8FAFC;strokeColor=#94A3B8;fontColor=#334155;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="80" y="550" width="460" height="420" as="geometry" />
+        </mxCell>
+        <mxCell id="tbl_order" value="«table»&#xa;&lt;b&gt;auction_order (拍卖挂单表)&lt;/b&gt;&#xa;----------------------------&#xa;+ id : bigint [PK]&#xa;----------------------------&#xa;+ enterprise_id : bigint [FK]&#xa;+ order_type : varchar(16)&#xa;+ quota_amount : decimal&#xa;+ price : decimal(16,4)&#xa;+ status : varchar(32)&#xa;+ frozen_amount : decimal" style="shape=table;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#475569;fontColor=#0F172A;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="100" y="590" width="200" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="tbl_match" value="«table»&#xa;&lt;b&gt;matching_result (撮合出清)&lt;/b&gt;&#xa;----------------------------&#xa;+ id : bigint [PK]&#xa;----------------------------&#xa;+ buy_order_id : bigint [FK]&#xa;+ sell_order_id : bigint [FK]&#xa;+ match_price : decimal&#xa;+ match_amount : decimal&#xa;+ batch_id : varchar(64)" style="shape=table;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#475569;fontColor=#0F172A;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="320" y="590" width="200" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="tbl_tx" value="«table»&#xa;&lt;b&gt;transaction (原子结算表 DVP)&lt;/b&gt;&#xa;-------------------------------------------------------&#xa;+ id : bigint [PK]&#xa;-------------------------------------------------------&#xa;+ buy_ent_id : bigint [FK]   |   + sell_ent_id : bigint [FK]&#xa;+ matching_id : bigint [FK]   |   + total_price : decimal&#xa;+ tx_hash : varchar(64)     |   + settlement_status : varchar" style="shape=table;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#475569;fontColor=#0F172A;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="100" y="790" width="420" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- 域 5: 碳币经济与信誉评价域 -->
+        <mxCell id="dom_coin" value="【碳币账户与信誉评价域】" style="shape=folder;fontStyle=1;tabWidth=180;tabHeight=25;tabPosition=left;html=1;boundedLbl=1;fillColor=#F8FAFC;strokeColor=#94A3B8;fontColor=#334155;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="580" y="550" width="460" height="420" as="geometry" />
+        </mxCell>
+        <mxCell id="tbl_coin_acc" value="«table»&#xa;&lt;b&gt;carbon_coin_account (资金)&lt;/b&gt;&#xa;----------------------------&#xa;+ id : bigint [PK]&#xa;----------------------------&#xa;+ enterprise_id : bigint [FK]&#xa;+ balance : decimal(16,4)&#xa;+ frozen_balance : decimal&#xa;+ total_income : decimal&#xa;+ total_expense : decimal" style="shape=table;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#475569;fontColor=#0F172A;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="600" y="590" width="200" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="tbl_coin_tx" value="«table»&#xa;&lt;b&gt;carbon_coin_transaction&lt;/b&gt;&#xa;----------------------------&#xa;+ id : bigint [PK]&#xa;----------------------------&#xa;+ account_id : bigint [FK]&#xa;+ tx_type : varchar(32)&#xa;+ amount : decimal(16,4)&#xa;+ balance_after : decimal" style="shape=table;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#475569;fontColor=#0F172A;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="820" y="590" width="200" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="tbl_credit_score" value="«table»&#xa;&lt;b&gt;credit_score (信誉总表)&lt;/b&gt;&#xa;----------------------------&#xa;+ id : bigint [PK]&#xa;----------------------------&#xa;+ enterprise_id : bigint [FK]&#xa;+ current_score : int&#xa;+ credit_level : varchar(16)&#xa;+ rating_date : datetime" style="shape=table;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#475569;fontColor=#0F172A;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="600" y="790" width="200" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="tbl_credit_event" value="«table»&#xa;&lt;b&gt;credit_event (奖惩轨迹)&lt;/b&gt;&#xa;----------------------------&#xa;+ id : bigint [PK]&#xa;----------------------------&#xa;+ enterprise_id : bigint [FK]&#xa;+ event_type : varchar(32)&#xa;+ delta_points : int&#xa;+ reason : varchar(255)" style="shape=table;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#475569;fontColor=#0F172A;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="820" y="790" width="200" height="150" as="geometry" />
+        </mxCell>
+
+        <!-- 域 6: 可靠事件外箱与审计域 -->
+        <mxCell id="dom_outbox" value="【可靠事件外箱与审计运维域】" style="shape=folder;fontStyle=1;tabWidth=200;tabHeight=25;tabPosition=left;html=1;boundedLbl=1;fillColor=#F8FAFC;strokeColor=#94A3B8;fontColor=#334155;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="550" width="480" height="420" as="geometry" />
+        </mxCell>
+        <mxCell id="tbl_outbox" value="«table»&#xa;&lt;b&gt;outbox_message (外发箱)&lt;/b&gt;&#xa;---------------------------------&#xa;+ id : bigint [PK]&#xa;---------------------------------&#xa;+ aggregate_type : varchar&#xa;+ aggregate_id : varchar&#xa;+ payload : text&#xa;+ status : varchar(32)&#xa;+ retry_count : int" style="shape=table;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#475569;fontColor=#0F172A;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1100" y="590" width="210" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="tbl_op_log" value="«table»&#xa;&lt;b&gt;operation_log (敏感审计)&lt;/b&gt;&#xa;---------------------------------&#xa;+ id : bigint [PK]&#xa;---------------------------------&#xa;+ user_id : bigint [FK]&#xa;+ action : varchar(64)&#xa;+ details : text&#xa;+ ip_address : varchar(45)" style="shape=table;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#475569;fontColor=#0F172A;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1330" y="590" width="210" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="tbl_notif" value="«table»&#xa;&lt;b&gt;notification (站内消息)&lt;/b&gt;&#xa;---------------------------------&#xa;+ id : bigint [PK]&#xa;---------------------------------&#xa;+ user_id : bigint [FK]&#xa;+ title : varchar(128)&#xa;+ content : text&#xa;+ is_read : boolean" style="shape=table;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#475569;fontColor=#0F172A;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1100" y="780" width="210" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="tbl_flyway" value="«table»&#xa;&lt;b&gt;flyway_schema_history&lt;/b&gt;&#xa;---------------------------------&#xa;+ installed_rank : int [PK]&#xa;---------------------------------&#xa;+ version : varchar(50)&#xa;+ description : varchar(200)&#xa;+ success : boolean" style="shape=table;html=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#475569;fontColor=#0F172A;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1330" y="780" width="210" height="150" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

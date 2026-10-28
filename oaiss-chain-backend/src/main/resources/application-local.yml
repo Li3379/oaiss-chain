@@ -1,0 +1,35 @@
+# application-local.yml
+# 本地开发配置 - 连接Docker基础设施（MySQL 3306, Redis 6379）
+# 激活方式: spring.profiles.active=local
+# 前置条件: docker compose -f docker-compose.infra.yml up -d
+# 注意: 使用 127.0.0.1 而非 localhost 避免 Windows IPv6 解析问题
+
+spring:
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/oaiss_chain?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8&allowPublicKeyRetrieval=true
+    username: root
+    password: ${DB_PASSWORD}
+
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      password: ${REDIS_PASSWORD}
+
+minio:
+  endpoint: http://127.0.0.1:9004
+  access-key: ${MINIO_ACCESS_KEY}
+  secret-key: ${MINIO_SECRET_KEY}
+
+jwt:
+  secret: ${JWT_SECRET:}
+
+# 日志级别调整
+logging:
+  level:
+    com.oaiss.chain: DEBUG
+    org.springframework.web: DEBUG
+
+fabric:
+  peer-endpoint: 127.0.0.1:7051
+  peer-host-override: peer0.org1.example.com

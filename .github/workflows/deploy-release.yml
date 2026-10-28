@@ -1,0 +1,236 @@
+name: Deploy Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "GitHub environment containing deployment secrets"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - production
+      backend_image:
+        description: "Optional backend image override"
+        required: false
+        type: string
+      frontend_image:
+        description: "Optional frontend image override"
+        required: false
+        type: string
+      ml_service_image:
+        description: "Optional ML service image override"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate deployment secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required_names=(
+            DEPLOY_HOST
+            DEPLOY_PORT
+            DEPLOY_USER
+            DEPLOY_SSH_KEY
+            DEPLOY_TARGET_DIR
+            DEPLOY_ENV_FILE
+            FRONTEND_HEALTHCHECK_URL
+            BACKEND_HEALTHCHECK_URL
+          )
+
+          required_values=(
+            "${{ secrets.DEPLOY_HOST }}"
+            "${{ secrets.DEPLOY_PORT }}"
+            "${{ secrets.DEPLOY_USER }}"
+            "${{ secrets.DEPLOY_SSH_KEY }}"
+            "${{ secrets.DEPLOY_TARGET_DIR }}"
+            "${{ secrets.DEPLOY_ENV_FILE }}"
+            "${{ secrets.FRONTEND_HEALTHCHECK_URL }}"
+            "${{ secrets.BACKEND_HEALTHCHECK_URL }}"
+          )
+
+          for i in "${!required_names[@]}"; do
+            if [[ -z "${required_values[$i]}" ]]; then
+              echo "Missing required GitHub Environment secret: ${required_names[$i]}" >&2
+              exit 1
+            fi
+          done
+
+          registry_count=0
+          [[ -n "${{ secrets.REGISTRY_HOST }}" ]] && registry_count=$((registry_count + 1))
+          [[ -n "${{ secrets.REGISTRY_USERNAME }}" ]] && registry_count=$((registry_count + 1))
+          [[ -n "${{ secrets.REGISTRY_PASSWORD }}" ]] && registry_count=$((registry_count + 1))
+
+          if [[ "$registry_count" -ne 0 && "$registry_count" -ne 3 ]]; then
+            echo "Registry login secrets must be configured together: REGISTRY_HOST, REGISTRY_USERNAME, REGISTRY_PASSWORD" >&2
+            exit 1
+          fi
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Backup current remote release state
+        shell: bash
+        run: |
+          ssh -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "
+            set -euo pipefail
+            mkdir -p '${{ secrets.DEPLOY_TARGET_DIR }}/backups'
+            if [ -f '${{ secrets.DEPLOY_TARGET_DIR }}/oaiss-chain.env' ]; then
+              cp '${{ secrets.DEPLOY_TARGET_DIR }}/oaiss-chain.env' '${{ secrets.DEPLOY_TARGET_DIR }}/backups/oaiss-chain.env.previous'
+            fi
+            if [ -f '${{ secrets.DEPLOY_TARGET_DIR }}/docker-compose.release.yml' ]; then
+              cp '${{ secrets.DEPLOY_TARGET_DIR }}/docker-compose.release.yml' '${{ secrets.DEPLOY_TARGET_DIR }}/backups/docker-compose.release.previous.yml'
+            fi
+            if [ -f '${{ secrets.DEPLOY_TARGET_DIR }}/scripts/prod-compose.sh' ]; then
+              cp '${{ secrets.DEPLOY_TARGET_DIR }}/scripts/prod-compose.sh' '${{ secrets.DEPLOY_TARGET_DIR }}/backups/prod-compose.previous.sh'
+            fi
+          "
+
+      - name: Check remote Docker prerequisites
+        shell: bash
+        run: |
+          ssh -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "
+            set -euo pipefail
+            docker --version
+            docker compose version
+          "
+
+      - name: Prepare deployment bundle
+        shell: bash
+        run: |
+          rm -rf .deploy-bundle
+          mkdir -p .deploy-bundle/scripts
+          cp docker-compose.release.yml .deploy-bundle/
+          cp scripts/prod-compose.sh .deploy-bundle/scripts/
+
+      - name: Render environment file
+        shell: bash
+        run: |
+          cat > .deploy-bundle/oaiss-chain.env <<'EOF'
+${{ secrets.DEPLOY_ENV_FILE }}
+EOF
+          if [[ -n "${{ inputs.backend_image }}" ]]; then
+            printf '\nBACKEND_IMAGE=%s\n' "${{ inputs.backend_image }}" >> .deploy-bundle/oaiss-chain.env
+          fi
+          if [[ -n "${{ inputs.frontend_image }}" ]]; then
+            printf 'FRONTEND_IMAGE=%s\n' "${{ inputs.frontend_image }}" >> .deploy-bundle/oaiss-chain.env
+          fi
+          if [[ -n "${{ inputs.ml_service_image }}" ]]; then
+            printf 'ML_SERVICE_IMAGE=%s\n' "${{ inputs.ml_service_image }}" >> .deploy-bundle/oaiss-chain.env
+          fi
+
+      - name: Validate deployment env file locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/validate-prod-env.mjs --require-real-secrets .deploy-bundle/oaiss-chain.env
+          chmod +x scripts/prod-compose.sh
+          ./scripts/prod-compose.sh --env-file .deploy-bundle/oaiss-chain.env --compose-file docker-compose.release.yml config > /tmp/oaiss-chain-release-config.local.yaml
+
+      - name: Upload release bundle
+        shell: bash
+        run: |
+          ssh -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "mkdir -p '${{ secrets.DEPLOY_TARGET_DIR }}/scripts'"
+          scp -P "${{ secrets.DEPLOY_PORT }}" .deploy-bundle/docker-compose.release.yml \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ secrets.DEPLOY_TARGET_DIR }}/docker-compose.release.yml"
+          scp -P "${{ secrets.DEPLOY_PORT }}" .deploy-bundle/scripts/prod-compose.sh \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ secrets.DEPLOY_TARGET_DIR }}/scripts/prod-compose.sh"
+
+      - name: Upload environment file
+        shell: bash
+        run: |
+          scp -P "${{ secrets.DEPLOY_PORT }}" .deploy-bundle/oaiss-chain.env \
+            "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ secrets.DEPLOY_TARGET_DIR }}/oaiss-chain.env"
+
+      - name: Deploy release compose
+        shell: bash
+        run: |
+          ssh -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "
+            set -euo pipefail
+            cd '${{ secrets.DEPLOY_TARGET_DIR }}'
+            chmod +x scripts/prod-compose.sh
+            if [ -n '${{ secrets.REGISTRY_HOST }}' ] && [ -n '${{ secrets.REGISTRY_USERNAME }}' ] && [ -n '${{ secrets.REGISTRY_PASSWORD }}' ]; then
+              printf '%s\n' '${{ secrets.REGISTRY_PASSWORD }}' | docker login '${{ secrets.REGISTRY_HOST }}' --username '${{ secrets.REGISTRY_USERNAME }}' --password-stdin
+            fi
+            ./scripts/prod-compose.sh --env-file '${{ secrets.DEPLOY_TARGET_DIR }}/oaiss-chain.env' --compose-file '${{ secrets.DEPLOY_TARGET_DIR }}/docker-compose.release.yml' config > /tmp/oaiss-chain-release-config.yaml
+            ./scripts/prod-compose.sh --env-file '${{ secrets.DEPLOY_TARGET_DIR }}/oaiss-chain.env' --compose-file '${{ secrets.DEPLOY_TARGET_DIR }}/docker-compose.release.yml' pull
+            ./scripts/prod-compose.sh --env-file '${{ secrets.DEPLOY_TARGET_DIR }}/oaiss-chain.env' --compose-file '${{ secrets.DEPLOY_TARGET_DIR }}/docker-compose.release.yml' up -d
+            ./scripts/prod-compose.sh --env-file '${{ secrets.DEPLOY_TARGET_DIR }}/oaiss-chain.env' --compose-file '${{ secrets.DEPLOY_TARGET_DIR }}/docker-compose.release.yml' ps
+          "
+
+      - name: Verify health endpoints
+        shell: bash
+        run: |
+          ssh -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "
+            curl -fsS '${{ secrets.FRONTEND_HEALTHCHECK_URL }}'
+            curl -fsS '${{ secrets.BACKEND_HEALTHCHECK_URL }}'
+          "
+
+      - name: Collect remote diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          ssh -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "
+            set +e
+            cd '${{ secrets.DEPLOY_TARGET_DIR }}'
+            if [ -x scripts/prod-compose.sh ] && [ -f oaiss-chain.env ] && [ -f docker-compose.release.yml ]; then
+              ./scripts/prod-compose.sh --env-file '${{ secrets.DEPLOY_TARGET_DIR }}/oaiss-chain.env' --compose-file '${{ secrets.DEPLOY_TARGET_DIR }}/docker-compose.release.yml' ps || true
+              ./scripts/prod-compose.sh --env-file '${{ secrets.DEPLOY_TARGET_DIR }}/oaiss-chain.env' --compose-file '${{ secrets.DEPLOY_TARGET_DIR }}/docker-compose.release.yml' logs --tail=200 || true
+            fi
+          "
+
+      - name: Roll back to previous release on failure
+        if: failure()
+        shell: bash
+        run: |
+          ssh -p "${{ secrets.DEPLOY_PORT }}" "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" "
+            set -euo pipefail
+            cd '${{ secrets.DEPLOY_TARGET_DIR }}'
+            if [ -f backups/oaiss-chain.env.previous ] && [ -f backups/docker-compose.release.previous.yml ]; then
+              cp backups/oaiss-chain.env.previous oaiss-chain.env
+              cp backups/docker-compose.release.previous.yml docker-compose.release.yml
+              if [ -f backups/prod-compose.previous.sh ]; then
+                cp backups/prod-compose.previous.sh scripts/prod-compose.sh
+              fi
+              chmod +x scripts/prod-compose.sh
+              ./scripts/prod-compose.sh --env-file '${{ secrets.DEPLOY_TARGET_DIR }}/oaiss-chain.env' --compose-file '${{ secrets.DEPLOY_TARGET_DIR }}/docker-compose.release.yml' up -d
+              ./scripts/prod-compose.sh --env-file '${{ secrets.DEPLOY_TARGET_DIR }}/oaiss-chain.env' --compose-file '${{ secrets.DEPLOY_TARGET_DIR }}/docker-compose.release.yml' ps
+            else
+              echo 'No previous release backup available for rollback' >&2
+            fi
+          "
+
+      - name: Summarize deployment
+        run: |
+          {
+            echo "## Release Deployment"
+            echo ""
+            echo "- Environment: \`${{ inputs.environment }}\`"
+            echo "- Host: \`${{ secrets.DEPLOY_HOST }}\`"
+            echo "- Remote dir: \`${{ secrets.DEPLOY_TARGET_DIR }}\`"
+            echo "- Compose file: \`docker-compose.release.yml\`"
+            echo "- Backend override: \`${{ inputs.backend_image || 'from DEPLOY_ENV_FILE' }}\`"
+            echo "- Frontend override: \`${{ inputs.frontend_image || 'from DEPLOY_ENV_FILE' }}\`"
+            echo "- ML override: \`${{ inputs.ml_service_image || 'from DEPLOY_ENV_FILE' }}\`"
+            echo "- Registry login: \`${{ secrets.REGISTRY_HOST && 'enabled' || 'not configured' }}\`"
+            echo "- Auto rollback on failure: \`enabled\`"
+          } >> "$GITHUB_STEP_SUMMARY"

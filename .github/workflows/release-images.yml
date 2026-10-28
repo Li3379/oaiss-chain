@@ -1,0 +1,116 @@
+name: Release Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Optional image tag override. Defaults to the commit SHA."
+        required: false
+        type: string
+      push_latest:
+        description: "Also push latest tags"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.vars.outputs.image_tag }}
+      backend_image: ${{ steps.vars.outputs.backend_image }}
+      frontend_image: ${{ steps.vars.outputs.frontend_image }}
+      ml_service_image: ${{ steps.vars.outputs.ml_service_image }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set image variables
+        id: vars
+        shell: bash
+        run: |
+          owner_lc="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          repo_name="${GITHUB_REPOSITORY##*/}"
+          repo_lc="$(echo "${repo_name}" | tr '[:upper:]' '[:lower:]')"
+          image_tag="${{ inputs.image_tag }}"
+          if [[ -z "$image_tag" ]]; then
+            image_tag="${GITHUB_SHA}"
+          fi
+
+          backend_image="ghcr.io/${owner_lc}/${repo_lc}-backend"
+          frontend_image="ghcr.io/${owner_lc}/${repo_lc}-frontend"
+          ml_service_image="ghcr.io/${owner_lc}/${repo_lc}-ml-service"
+          backend_tags="${backend_image}:${image_tag}"
+          frontend_tags="${frontend_image}:${image_tag}"
+          ml_service_tags="${ml_service_image}:${image_tag}"
+
+          if [[ "${{ inputs.push_latest }}" == "true" ]]; then
+            backend_tags="${backend_tags}"$'\n'"${backend_image}:latest"
+            frontend_tags="${frontend_tags}"$'\n'"${frontend_image}:latest"
+            ml_service_tags="${ml_service_tags}"$'\n'"${ml_service_image}:latest"
+          fi
+
+          {
+            echo "image_tag=$image_tag"
+            echo "backend_image=$backend_image"
+            echo "frontend_image=$frontend_image"
+            echo "ml_service_image=$ml_service_image"
+            echo "backend_tags<<EOF"
+            echo "$backend_tags"
+            echo "EOF"
+            echo "frontend_tags<<EOF"
+            echo "$frontend_tags"
+            echo "EOF"
+            echo "ml_service_tags<<EOF"
+            echo "$ml_service_tags"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./oaiss-chain-backend
+          file: ./oaiss-chain-backend/Dockerfile
+          push: true
+          tags: ${{ steps.vars.outputs.backend_tags }}
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./oaiss-chain-frontend
+          file: ./oaiss-chain-frontend/Dockerfile
+          push: true
+          tags: ${{ steps.vars.outputs.frontend_tags }}
+
+      - name: Build and push ML service image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./oaiss-chain-ml-service
+          file: ./oaiss-chain-ml-service/Dockerfile
+          push: true
+          tags: ${{ steps.vars.outputs.ml_service_tags }}
+
+      - name: Summarize release images
+        run: |
+          {
+            echo "## Release Images"
+            echo ""
+            echo "- Image tag: \`${{ steps.vars.outputs.image_tag }}\`"
+            echo "- Backend: \`${{ steps.vars.outputs.backend_image }}:${{ steps.vars.outputs.image_tag }}\`"
+            echo "- Frontend: \`${{ steps.vars.outputs.frontend_image }}:${{ steps.vars.outputs.image_tag }}\`"
+            echo "- ML service: \`${{ steps.vars.outputs.ml_service_image }}:${{ steps.vars.outputs.image_tag }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

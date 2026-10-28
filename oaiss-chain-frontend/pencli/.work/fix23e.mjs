@@ -1,0 +1,22 @@
+import { execute } from './pen.mjs';
+const src = `
+meterCol=Insert('HODm3',{type:'frame',name:'Meters',layout:'vertical',width:280,gap:14});
+Get((n,c)=>0);
+METERX=Insert(meterCol,{type:'frame',name:'Rate',layout:'vertical',width:'fill_container',gap:7});
+Insert(METERX,{type:'text',name:'K',content:'审核通过率',fontFamily:'$fontUi',fontSize:12,fill:'$textSecondary',width:'fill_container'});
+r1=Insert(METERX,{type:'frame',name:'ValRow',layout:'horizontal',width:'fill_container',justifyContent:'space_between',alignItems:'center'});
+Insert(r1,{type:'text',name:'V',content:'76.8%',fontFamily:'$fontMono',fontSize:20,fill:'$accent'});
+Insert(r1,{type:'text',name:'N',content:'986 / 1,284 份',fontFamily:'$fontUi',fontSize:10.5,fill:'$textTertiary'});
+tk1=Insert(METERX,{type:'frame',name:'Track',layout:'horizontal',width:'fill_container',height:6,fill:'#16241E',cornerRadius:1});
+Insert(tk1,{type:'rectangle',name:'Fill',width:214,height:6,fill:'$accent',cornerRadius:1});
+METER2=Insert(meterCol,{type:'frame',name:'Pending',layout:'vertical',width:'fill_container',gap:7});
+Insert(METER2,{type:'text',name:'K',content:'待审核占比',fontFamily:'$fontUi',fontSize:12,fill:'$textSecondary',width:'fill_container'});
+r2=Insert(METER2,{type:'frame',name:'ValRow',layout:'horizontal',width:'fill_container',justifyContent:'space_between',alignItems:'center'});
+Insert(r2,{type:'text',name:'V',content:'2.9%',fontFamily:'$fontMono',fontSize:20,fill:'$stateWarn'});
+Insert(r2,{type:'text',name:'N',content:'37 / 1,284 份',fontFamily:'$fontUi',fontSize:10.5,fill:'$textTertiary'});
+tk2=Insert(METER2,{type:'frame',name:'Track',layout:'horizontal',width:'fill_container',height:6,fill:'#16241E',cornerRadius:1});
+Insert(tk2,{type:'rectangle',name:'Fill',width:8,height:6,fill:'$stateWarn',cornerRadius:1});
+Print('meters inserted');
+`;
+const r = await execute(src);
+console.log(r.ok, (r.text.split('## Print output')[1]||'').trim(), r.text.slice(0,200));

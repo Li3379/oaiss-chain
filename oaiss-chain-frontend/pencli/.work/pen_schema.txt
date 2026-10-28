@@ -1,0 +1,724 @@
+## Currently active editor
+- `/C:/Users/LiShuai/Desktop/OAISS CHAIN/oaiss-chain-frontend/pencli/UI_Desgin.pen`
+
+## Document State:
+- No nodes are selected.
+
+
+### Top-Level Nodes (1):
+
+- `bi8Au` (frame): Frame [user visible]
+
+### Reusable Components (0):
+- No reusable components found.
+
+# .pen File Schema
+
+```typescript
+/** Theme axis -> axis value. E.g. { 'device': 'phone' } */
+export interface Theme { [key: string]: string; }
+/** Dollar-prefixed variable name; binds the property to that variable. */
+export type Variable = string;
+export type NumberOrVariable = number | Variable;
+/** Hex color: #RGB, #RRGGBB, or #RRGGBBAA. */
+export type Color = string;
+export type ColorOrVariable = Color | Variable;
+export type BooleanOrVariable = boolean | Variable;
+export type StringOrVariable = string | Variable;
+export interface Layout {
+  /** Flex layout direction. 'none'=absolutely positioned children. */
+  layout?: "none" | "vertical" | "horizontal";
+  /** Main-axis gap between children. Default 0. */
+  gap?: NumberOrVariable;
+  layoutIncludeStroke?: boolean;
+  /** Inside padding. */
+  padding?: /** all sides */ NumberOrVariable | /** [vertical, horizontal] */ [NumberOrVariable, NumberOrVariable] | /** [top, right, bottom, left] */ [NumberOrVariable, NumberOrVariable, NumberOrVariable, NumberOrVariable];
+  /** Main-axis alignment. Default 'start'. */
+  justifyContent?: "start" | "center" | "end" | "space_between" | "space_around";
+  /** Cross-axis alignment. Default 'start'. */
+  alignItems?: "start" | "center" | "end";
+}
+/** Dynamic layout size:
+- fit_content: combined size of children, requires layout on the node (fallback when no children).
+- fill_container: parent size, requires layout on the parent (fallback when not in a layout or when using absolute position).
+Optional fallback in parens, e.g. 'fit_content(100)'. */
+export type SizingBehavior = string;
+/** Position relative to parent. X right, Y down. IGNORED when parent uses flex layout. */
+export interface Position { x?: number; y?: number; }
+export interface Size { width?: NumberOrVariable | SizingBehavior; height?: NumberOrVariable | SizingBehavior; }
+export type BlendMode = 'normal' | 'darken' | 'multiply' | 'linearBurn' | 'colorBurn' | 'light' | 'screen' | 'linearDodge' | 'colorDodge' | 'overlay' | 'softLight' | 'hardLight' | 'difference' | 'exclusion' | 'hue' | 'saturation' | 'color' | 'luminosity';
+export type Fill = ColorOrVariable | {
+type: "color";
+enabled?: BooleanOrVariable;
+blendMode?: BlendMode;
+/** Fill opacity can only be set via the hex alpha channel. */
+color: ColorOrVariable;
+} | {
+type: "gradient";
+enabled?: BooleanOrVariable;
+blendMode?: BlendMode;
+gradientType?: "linear" | "radial" | "angular";
+opacity?: NumberOrVariable;
+/** Normalized to bbox. Default 0.5,0.5. */
+center?: Position;
+/** Normalized to bbox. Default 1,1. Linear: height = gradient length, width ignored. Radial/Angular: ellipse diameters. */
+size?: { width?: NumberOrVariable; height?: NumberOrVariable };
+/** Degrees CCW (0° up, 90° left, 180° down). */
+rotation?: NumberOrVariable;
+colors?: { color: ColorOrVariable; position: NumberOrVariable }[];
+} | /** Image fill. URL is relative to the .pen file, e.g. `./image.jpg`. */ { type: "image"; enabled?: BooleanOrVariable; blendMode?: BlendMode; opacity?: NumberOrVariable; url?: string; mode?: "stretch" | "fill" | "fit" } | /** Shader fill. URL points to a WebGL 1.0 (#version 100) fragment shader file, relative to the .pen file, e.g. `./effect.glsl`. Uniforms are described via `@directive` annotations inside block comments in the shader source. A `vec2` uniform annotated with `@resolution` is auto-bound to the fill size in pixels. Other uniforms' user-set values are stored in `uniforms`. */ {
+type: "shader";
+enabled?: BooleanOrVariable;
+blendMode?: BlendMode;
+opacity?: NumberOrVariable;
+url: string;
+/** Override values for shader uniforms, keyed by uniform name. Uniforms annotated with `@resolution` or `@time` must not appear here. Allowed value shapes: number (float/int), boolean (bool), hex color string like `#RRGGBB[AA]` (color), array of 2-4 numbers (vec2/3/4), or a variable reference `$name` (numeric uniforms accept number variables; color uniforms accept color variables). */
+uniforms?: { [key: string]: number | boolean | string | number[] };
+} | /** Bezier-interpolated color grid, row-major. Keep edge points at default positions. */ {
+type: "mesh_gradient";
+enabled?: BooleanOrVariable;
+blendMode?: BlendMode;
+opacity?: NumberOrVariable;
+columns?: number;
+rows?: number;
+/** Color per vertex. */
+colors?: ColorOrVariable[];
+/** columns * rows points in [0,1]. */
+points?: (/** Auto-generated handles. */ [number, number] | /** Optional bezier handles (relative offsets); omitted = auto. */ { position: [number, number]; leftHandle?: [number, number]; rightHandle?: [number, number]; topHandle?: [number, number]; bottomHandle?: [number, number] })[];
+};
+export type Fills = Fill | Fill[];
+export interface CanHaveStroke {
+  stroke?: Fills;
+  /** Stroke thickness, uniform or per side. */
+  strokeWidth?: NumberOrVariable | { top?: NumberOrVariable; right?: NumberOrVariable; bottom?: NumberOrVariable; left?: NumberOrVariable };
+  strokeLinecap?: "butt" | "round" | "square";
+  strokeLinejoin?: "miter" | "bevel" | "round";
+  strokeAlignment?: "inner" | "center" | "outer";
+}
+export type Effect = /** Blurs the entire node. */ { enabled?: BooleanOrVariable; type: "blur"; radius?: NumberOrVariable } | /** Blurs the backdrop behind the node. */ { enabled?: BooleanOrVariable; type: "background_blur"; radius?: NumberOrVariable } | /** Inner or outer drop shadow. */ { type: "shadow"; enabled?: BooleanOrVariable; shadowType?: "inner" | "outer"; offset?: { x: NumberOrVariable; y: NumberOrVariable }; spread?: NumberOrVariable; blur?: NumberOrVariable; color?: ColorOrVariable; blendMode?: BlendMode };
+export type Effects = Effect | Effect[];
+export interface CanHaveEffects { effect?: Effects; }
+export interface CanHaveGraphics extends CanHaveEffects, CanHaveStroke { fill?: Fills; }
+export interface Entity extends Position {
+  /** Unique string; MUST NOT contain '/'. Auto-generated if omitted. */
+  id: string;
+  name?: string;
+  context?: string;
+  /** When true, can be duplicated via `ref` objects. Default false. */
+  reusable?: boolean;
+  theme?: Theme;
+  enabled?: BooleanOrVariable;
+  opacity?: NumberOrVariable;
+  flipX?: BooleanOrVariable;
+  flipY?: BooleanOrVariable;
+  /** Absolute position detaches the object from parent's layout and can be absolute positioned. Default auto */
+  layoutPosition?: "auto" | "absolute";
+  metadata?: { type: string; [key: string]: any };
+  /** Degrees CCW around top-left corner. */
+  rotation?: NumberOrVariable;
+}
+export interface Rectangleish extends Entity, Size, CanHaveGraphics { cornerRadius?: NumberOrVariable | [NumberOrVariable, NumberOrVariable, NumberOrVariable, NumberOrVariable]; }
+/** Position is the top-left corner. */
+export interface Rectangle extends Rectangleish { type: "rectangle"; }
+/** Defined by its bounding rectangle. */
+export interface Ellipse extends Entity, Size, CanHaveGraphics {
+  type: "ellipse";
+  /** Ring inner/outer radius ratio. 0=solid, 1=hollow. Default 0. */
+  innerRadius?: NumberOrVariable;
+  /** Arc start angle, degrees CCW from right. Default 0. */
+  startAngle?: NumberOrVariable;
+  /** Arc length from startAngle. Positive=CCW, negative=CW. Range -360..360. Default 360. */
+  sweepAngle?: NumberOrVariable;
+}
+/** Defined by its bounding rectangle. */
+export interface Polygon extends Entity, Size, CanHaveGraphics { type: "polygon"; polygonCount?: NumberOrVariable; cornerRadius?: NumberOrVariable; }
+export interface Path extends Entity, Size, CanHaveGraphics {
+  /** Default 'nonzero'. */
+  fillRule?: "nonzero" | "evenodd";
+  /** SVG path. */
+  geometry?: string;
+  /** SVG coord-space [x,y,w,h] mapping onto the node box. Default: tight bbox of geometry. */
+  viewBox?: [number, number, number, number];
+  type: "path";
+}
+export interface TextStyle {
+  fontFamily?: StringOrVariable;
+  fontSize?: NumberOrVariable;
+  fontWeight?: StringOrVariable;
+  letterSpacing?: NumberOrVariable;
+  fontStyle?: StringOrVariable;
+  underline?: BooleanOrVariable;
+  /** Multiplier of fontSize. Defaults to font's built-in. */
+  lineHeight?: NumberOrVariable;
+  textAlign?: "left" | "center" | "right" | "justify";
+  textAlignVertical?: "top" | "middle" | "bottom";
+  strikethrough?: BooleanOrVariable;
+  href?: string;
+}
+export type TextContent = StringOrVariable;
+export interface Text extends Entity, Size, CanHaveGraphics, TextStyle {
+  type: "text";
+  content?: TextContent;
+  /** Required before width/height take effect.
+'auto': grows to fit; no wrapping.
+'fixed-width': width fixed, wraps; height grows.
+'fixed-width-height': both fixed; may overflow. */
+  textGrowth?: "auto" | "fixed-width" | "fixed-width-height";
+}
+export interface CanHaveChildren { children?: Child[]; }
+/** Container to create hierarchy and layout. default layout=horizontal, width=fit_content, height=fit_content, clip=false. */
+export interface Frame extends Rectangleish, CanHaveChildren, Layout {
+  type: "frame";
+  /** Clip overflow. Default false. */
+  clip?: BooleanOrVariable;
+  placeholder?: boolean;
+  /** Marks frame as a slot for component instances. Array entries are IDs of recommended reusable child components (e.g. menu items inside a menu bar). */
+  slot?: false | string[];
+}
+export interface Group extends Entity, CanHaveChildren, CanHaveEffects { type: "group"; }
+export interface Note extends Entity, Size, TextStyle { type: "note"; content?: TextContent; }
+export interface Prompt extends Entity, Size, TextStyle { type: "prompt"; content?: TextContent; model?: StringOrVariable; }
+export interface Context extends Entity, Size, TextStyle { type: "context"; content?: TextContent; }
+/** Icon from a library. The icon is scaled to fit the width and height. */
+export interface Icon extends Entity, Size, CanHaveEffects {
+  type: "icon";
+  /** Valid: 'lucide', 'feather', 'Material Symbols Outlined', 'Material Symbols Rounded', 'Material Symbols Sharp', 'phosphor'. */
+  library?: StringOrVariable;
+  icon?: StringOrVariable;
+  /** Variable weight, 100-700; only for libraries that support it. */
+  weight?: NumberOrVariable;
+  fill?: Fills;
+}
+/** Generates nested children from JavaScript. */
+export interface Script extends Entity, Size {
+  type: "script";
+  /** Clip overflow. Default false. */
+  clip?: BooleanOrVariable;
+  /** JS file URI, relative to the .pen file. */
+  scriptUri?: string;
+  /** Input values by name. */
+  inputs?: { [key: string]: string | number | boolean | Variable };
+}
+/** Reuses another object. */
+export interface Ref extends Entity {
+  type: "ref";
+  /** ID of the referenced object. */
+  ref: string;
+  /** Customize descendant properties. */
+  descendants?: { [key: string /** ID path of the descendant. */]: {} /** Based on the presence of `type`:
+- `type` is not present = property overrides: the descendant node is updated with the listed properties.
+- `type` is present = replacement: the descendant node is fully replaced with a new node tree. */ };
+  [key: string]: any;
+}
+export type Child = Frame | Group | Rectangle | Ellipse | Path | Polygon | Text | Note | Prompt | Context | Icon | Script | Ref;
+export type IdPath = string;
+export interface Document { version: "2.14"; themes?: { [key: string /** RegEx: [^:]+ */]: string[] }; imports?: { [key: string]: string /** Value: relative URI of imported .pen file. Key: short alias. */ }; variables?: { [key: string /** RegEx: [^:]+ */]: { type: "boolean"; value: BooleanOrVariable | { value: BooleanOrVariable; theme?: Theme }[] } | { type: "color"; value: ColorOrVariable | { value: ColorOrVariable; theme?: Theme }[] } | { type: "number"; value: NumberOrVariable | { value: NumberOrVariable; theme?: Theme }[] } | { type: "string"; value: StringOrVariable | { value: StringOrVariable; theme?: Theme }[] } }; children: (Frame | Group | Rectangle | Ellipse | Polygon | Path | Text | Note | Context | Prompt | Icon | Script | Ref)[]; }
+```
+
+# General instructions when editing .pen files
+
+- Pencil is an infinite canvas design tool with nested object hierarchy.
+
+- Be very thorough with your design changes and make sure all the task's needs are met.
+- Favor copying existing content and updating the copied content later, rather than generating new content.
+- When creating new variables make sure you are not accidentally overwriting any existing design.
+- Don't have multiple screens in-progress at the same time unless you are using sub-agents. Finish one screen at a time to not leave them in a broken state.
+
+- User may ask for technical modifications like removing, moving, re-ordering, clearing, and copying objects/variables, or just ask questions. Only do what's requested and nothing more.
+- Pencil is a collaborative multiplayer environment: the document can change while you work, so the state you remember may be stale. If a node is missing or no longer matches what you expected, re-read instead of recreating it, and don't undo changes the user made in the meantime.
+
+- When adding more content to a frame make sure the frame has the right layout, or is big enough to fit the new content. Resize the frame if necessary. There is no scrolling and the entire content should always be visible on the canvas.
+
+- When placing objects directly to document root and you don't have an exact position. Always start by calling `FindEmptySpace` at the start of your `batch_design` to find an empty area for your content. Never overlap root objects. Don't just pick random coordinates unless you know exact position from the context or the user request. For multiple sequential screens, use the previous element's ID as the `nodeId` parameter in `FindEmptySpace`.
+- Place components at the top and your screens below, growing to the right and down.
+
+- When creating new screens, represent each one as a top-level frame in `document`. Use `clip: true` on screen frames to prevent content overflow.
+- Keep the document root clean: only page/screen frames, reusable component frames, and other major container frames belong directly under `document`. Never place text, icons, buttons, cards, rows, images, or decorative shapes directly in `document`.
+
+- Use `get_editor_state`, `get_variables`, and `batch_get` MCP tools with reusable nodes to understand the current document structure.
+- When the design has repeated UI, consider building those as reusable components first and then instancing them, so edits to the component propagate to every instance.
+
+- Always load `get_guideline(category: guide, ...)` in order to learn how to solve the user's design task.
+- Load `get_guideline(category: style, ...)` for design inspiration
+
+- Changes in the document are presented in real-time to the user. Make the changes in a logical order as a designer would.
+- Minimize the time between the user requests and showing something on the screen. Users don't want to wait a long time before they see the progress.
+- Use the canvas as part of your thinking. You don't need to preplan every little detail. Iteratively design using the document.
+
+- Do NOT use or think in CSS/HTML properties or behavior. Pencil uses a custom format and has its own layout, rendering, and canvas behavior. Pencil has similar concepts and naming, but it's not the same as CSS/HTML.
+- Before using any property, check the pencil schema supports it and only use the properties that are specified.
+- If a property is not present in the schema, it's not supported. Find a different way to achieve the same visual effect.
+- Do NOT use: alignItems baseline/stretch, margin, percentage size. These values are not supported and will cause an error.
+
+Verify each section immediately after you are done with it. Don't wait until the end of the whole generation.
+Create a checklist to evaluate the design after you create it. Make sure to check for the following:
+- Layout it not collapsed or broken.
+- Content is not clipped outside the frame. Resize the container frames to fit the content if necessary.
+- Color contrast on text, objects, and background is sufficient.
+- Objects are properly aligned and spaced.
+- Intention and understanding of the pencil schema matches the visuals.
+After reviewing the design, do NOT delete it to make changes. If you want to fix it, always make direct updates to the existing objects.
+
+## Style
+
+- Don't create repetitive styles and grids. Add some unique elements and layout to make the design feel more interesting.
+- Avoid wrapping every element in its own box or card. This is a common AI habit that makes designs look generic. Use a container only when it has a real structural or functional purpose.
+- Avoid excessive gradients, shadows, and rounded corners unless requested or when part of the brand identity. Be refined and intentional with effects and decorations
+- All Google fonts are available.
+
+## Objects
+
+- All object coordinates are defined relative to the parent’s top-left corner.
+- Use a coordinate system where `x` increases to the right and `y` increases downward.
+- Objects rotate counter-clockwise around the top-left corner of their bounding box.
+- Only `frame` and `group` types can have children. Shapes, text, and other nodes cannot have children.
+
+- Properties do not cascade from parents to children. Every node is independent and must have all necessary properties specified.
+- Exclude default property values unless they are overriding a non-default value inside an instance.
+
+- Avoid duplicating the same dimension value across multiple sibling elements. If several children need to match their parent's width or height, use `fill_container` on each rather than hardcoding the parent's size repeatedly.
+- Explicitly specify `width` and `height` for shapes and other nodes whose size is not otherwise determined by layout or text behavior.
+- For layout-driven nodes, prefer `fit_content` and `fill_container` when appropriate instead of hardcoded numeric sizes.
+- Set children to `fill_container` to distribute them evenly within their parent. Use the `gap` property on the parent to add gaps between children.
+
+- Use `justifyContent: "center"` and `alignItems: "center"` on the parent to center its children both vertically and horizontally.
+- For text, follow `textGrowth` rules: do not set `width` or `height` unless `textGrowth` requires them.
+- Use `textAlign` or `textAlignVertical` to align the text within the text bounding box. `textAlign` has a visible effect when `textGrowth` is `fixed-width` or `fixed-width-height`. `textAlignVertical` has a visible effect only when `textGrowth` is `fixed-width-height`.
+- Setting `textAlign` or `textAlignVertical` will not change the position of the text bounding box. Use flexbox layout to align the object.
+- Use `textGrowth` to define text wrapping and bounding box sizing. When not specified, the default value is `"auto"`.
+- Possible `textGrowth` values:
+  - `auto`: `width` and `height` are always derived from the text content, any `width` or `height` you set is ignored. Never does line wrapping, text will always be on a single line.
+  - `fixed-width`: the `width` node property MUST be specified, `height` is calculated from the text content. Does line wrapping based on the object's bounding box width.
+  - `fixed-width-height`: both `width` and `height` node property MUST be specified. Does line wrapping based on the object's bounding box width. Text content will vertically overflow.
+- Only use `fixed-width-height` when you need to override the height of the text box. Prefer `fixed-width` with `fill_container` for text that needs to adapt to the parent container size.
+- If you want to wrap lines, you HAVE TO set the `textGrowth` to either `fixed-width` or `fixed-width-height`.
+- Never guess text dimensions, always rely on text wrapping and flexbox layout to size and position text. Any dimension guess for text will result in visual bugs.
+- Use the `lineHeight` property on text as a ratio relative to the font size: `0.0` means 0%, and `1.0` means 100%. If not specified, the font’s default line height will be applied.
+
+- Text has no `fill` by default and will be invisible. You MUST set the `fill` property on text objects to make them visible. Emoji requires `fill` as well.
+- To reference a variable, use a string value with a `$` prefix (`fill: "$primary-color"`, `gap: "$spacing-small"`)
+- `width` and `height` do not support percentage or viewport CSS values. Never use values like `"70%"`, `"100%"`, `"50vh"`, or `"calc(...)"` or even `value + "%"`. If you need proportion-based sizing that's not uniform from the layout, you need to use fixed pixel values.
+- `fill` can be set on wrapping containers to add a background color, gradient, or an image.
+
+## Flexbox Layout
+
+- `layout` and `padding` is only accessible on `frame` type. Do NOT set `layout` and `padding` on other types of nodes.
+- **Prefer dynamic sizing over hardcoded values.** Use `fill_container` or `fit_content`, rather than repeating the parent's or children's pixel value. This makes designs more maintainable.
+- Always prefer flexbox layout; only use `layout: "none"` when truly necessary.
+- x and y properties are completely ignored when the node is in layout. Do NOT set x/y on a child unless the parent has layout: "none" or the node has layoutPosition: "absolute"
+- Only use explicit numerical sizes in rare cases when it cannot be inferred from the layout.
+- To align and distribute objects within a container with flexbox, wrap them in a parent object that has a `layout` property.
+- Frames always default to `horizontal` direction and `fit_content` sizing.
+- Padding affects ALL children uniformly - it creates space between the container's edges and its children.
+- To offset an individual child in flexbox, wrap it in a flexbox frame with padding.
+- Flexbox layout is single-axis only with no item wrapping. For grid-like layouts, manually create separate row frames.
+- A parent cannot be sized by its children using `fit_content` if all direct children are sized by the parent using `fill_container`. This creates circular dependency. Don't rely on the fallback value to resolve circular dependency.
+
+**Antipattern**
+```js
+// WRONG: percentage values are not supported
+Insert(parent,{type:"frame",width:"100%",height:`${100/count}%`})
+
+// WRONG: padding on text is not supported, use a wrapping frame instead
+Insert(parent,{type:"text",content:"text",fontSize:12,padding:12})
+
+// WRONG: Collapses to 0 width. Parent defaults to fit_content. Child tries to fill it.
+badParent = Insert(screen, {type: "frame", layout: "vertical"});
+Insert(badParent, {type: "text", textGrowth: "fixed-width", width: "fill_container", content: "..."});
+```
+
+## Components and Instances
+
+- Object that has `reusable` property `true` can be also called a "component" or a "symbol"
+- Components will always have a random generated ID. It's not possible to set the ID of a component.
+- Components can be used to replicate the same object tree in multiple places, to avoid repetition. This is ideal for common widgets in a design, like buttons, form fields, toggles, cards, etc.
+- To reuse a component, use the `ref` object type that points to a reusable component. `ref` objects are also called "instances".
+- Instances have a `ref` property, which identifies the mother component.
+- The `ref` property of the instance must be set to the reused component's `id`.
+- Instances can be customized by overriding objects' properties in their subtree:
+  - To override properties of the component's root object, just put the overridden properties in the `ref` object.
+  - To override properties of an object inside the component's subtree, use the `descendants` property of the `ref`. Put the overridden properties under the customized object's `id`, path, or unique name inside the `descendants` map. If a name is not unique, use the node ID/path instead. When accessing multi-level descendant nodes in the component, use paths in the `descendants` object keys to access it, DO NOT create multiple levels of `descendants` objects.
+  - To override properties of an object inside a nested instance, the object's `id` must be prefixed by the instance's `id` followed by a slash (/). This works for arbitrarily nested component instances, e.g. consider an icon component; and a button component that contains an instance of this icon; and a menu component that contains multiple instances of the button component; and a sidebar component that contains an instance of the menu component!
+  - Parts of an instance's object tree can also be replaced with completely new objects: if the `type` property is present for a particular descendant, it means that the whole subtree will be swapped out with the override. In this case, the override must be a complete object tree, not just properties! This mechanism is useful for reusable container-type objects, such as windows, tables, grids, cards, etc.
+- An instance can emulate the deletion of a nested object from its subtree by overriding its `enabled` property with `false`.
+- You cannot reference components across files. If you want to use a component from a different file you must copy it over.
+- Try to use existing components in the document instead of always making new ones.
+- Instead of duplicating the same component multiple times with small tweaks. Try to find a way to make them more generic so the instances can use them in more places.
+- Overrides will be only applied to the object it's overriding. The changes will not be inherited to all children.
+- When parsing designs, treat "component" word broadly — some components are formally defined symbols that can be references, others are ad-hoc groupings that visually or functionally behave like components, sometimes their node name is prefixed "component/"
+- When copying nodes and modifying descendants, use the `descendants` property in the Copy operation. Never use separate Update operations for descendants of copied nodes, as this will fail due to ID mismatches.
+- When modifying component instance descendants:
+  - Use `Update(instance+"/childId", {...})` to change properties
+  - Use `newNode=Replace(instance+"/childId", {...})` to replace with a new node
+  - Use `newNode=Insert()` when the parent is a regular frame
+- IMPORTANT: DO NOT try to Update a node's descendant that you just copied (Copy), since copying will recreate the descendant nodes and it will assign new IDs to those children nodes.
+- Prefer using `fit_content` or `fill_container` size instance override to resize the component instance into the new location.
+- When an instance is not inside an object using `layout`, it must be positioned by overriding its `x` and `y` properties. Do this even if the position is (0, 0). Never override just a single position axis. Always override both if you need to specify the position.
+- An object must have a specified position, or be a child of an object using horizontal or vertical layout.
+
+
+**Pattern: Insert instance, then Update descendants**
+
+```js
+card=Insert("Casf3fX",{type:"ref",ref:"abc",name:"Account Card"})
+Update(card+"/childTitleId",{content:"Account Details"})
+Update(card+"/childDescriptionId",{content:"Manage your settings"})
+```
+
+**Pattern: Insert instance, then Replace a slot**
+
+```js
+card=Insert("Casf3fX",{type:"ref",ref:"abc",name:"Account Card"})
+customContent=Replace(card+"/contentSlotId",{type:"frame",name:"Content",layout:"vertical"})
+item1=Insert(customContent,{type:"text",name:"Item 1",fontFamily:"Inter",content:"Item 1",fill:"#000000"})
+```
+
+### Text Sizing
+
+Text sizing depends on whether the parent or the text content controls the size.
+
+**Parent defines size** — parent must have flexbox layout and determines the size. Use `textGrowth:"fixed-width"` + `fill_container` (headings, descriptions, paragraphs):
+
+```js
+section=Insert(parent,{type:"frame",name:"Header",layout:"vertical",width:400,gap:12,x:200,y:200})
+Insert(section,{type:"text",name:"Title",textGrowth:"fixed-width",width:"fill_container",fontFamily:"Inter",content:"Dashboard",fontSize:24,fill:"$text-primary"})
+Insert(section,{type:"text",name:"Subtitle",textGrowth:"fixed-width",width:"fill_container",fontFamily:"Inter",content:"Manage your account settings",fontSize:14,fill:"$text-secondary"})
+```
+
+**Text defines size** — default `auto`, no width/height (button labels, tags, badges):
+
+```js
+btn=Insert(parent,{type:"frame",name:"Button",padding:12,gap:8})
+Insert(btn,{type:"text",name:"Label",fontFamily:"Inter",content:"Submit",fontSize:14,fill:"$text-primary"})
+```
+
+**Antipattern** — using pixel dimensions when layout can handle it:
+
+```js
+container=Insert(parent,{type:"frame",name:"Button",width:200,height:100,padding:12})
+// WRONG: parent has layout, use fill_container instead of pixel width
+Insert(container,{type:"text",content:"abc",textGrowth:"fixed-width",width:320,fontSize:14})
+// WRONG: missing textGrowth after specifying width
+Insert(container,{type:"text",content:"abc",width:100,fontSize:14})
+```
+
+## Using placeholders
+
+- Any new, copied, or modified root frame MUST have `placeholder: true` for the entire duration of the work on it.
+- Once you start working inside a placeholder node, finish it before unsetting the flag.
+- Remove `placeholder: true` as soon as the frame is done — don't wait until all screens are finished.
+
+## SVG Path
+- Always set an explicit `viewBox: [x, y, width, height]` on a path. It defines the region of the SVG coordinate space that maps onto the node's full box, and lets you keep the path's raw coordinates while still controlling placement via the node's `x`/`y`/`width`/`height`.
+- The viewBox region is stretched to fill the node's width/height.
+
+### Graphs
+
+Always prefer bar charts and charts that can be built with simple layout configurations that the .pen format supports.
+Don't use absolutely positioned elements over the chart, as they won't align correctly.
+Don't manually match labels to bar positions and sizes. Rely on layout to position labels and bars correctly.
+When creating donut charts, always use `fill` color with `innerRadius` size to create the donut shape.
+Line charts cannot be easily built because the layout system cannot position individual points.
+
+### Tables
+
+Tables need to use flex box layout.
+Tables follow strict hierarchy: **Table (frame) → Table Row (frame) → Table Cell (frame) → Table Cell Content**
+CRITICAL: Each cell is represented as a **frame** node and contains a cell content, which is usually text, label, button or instance of a component.
+
+**Antipattern** – Do NOT put content directly in the row, skipping the cell frame:
+
+```js
+tableRow=Insert("kdl58",{type:"frame",layout:"horizontal"})
+Insert(tableRow,{type:"text",content:"John Doe"})
+Insert(tableRow,{type:"text",content:"joe.doe@example.com"})
+```
+
+## Scripting
+
+Use `script` node types to generate content with JavaScript. Scripts are `.js` files on disk, referenced via relative uri path in `scriptUri`.
+
+- Every script must start with `/** @schema 2.11 */` (current version). Missing this tag is an error.
+- Scripts receive a `pencil` object: `pencil.width`, `pencil.height`, `pencil.input.<name>`.
+- Scripts must return an array of node objects following the `.pen` schema.
+- Declare inputs as `@input name: type [= default]`. Available types: `number`, `string`, `boolean`, `color`, `ref`, `enum`.
+- Math.random() is deterministic in scripts and can be safely used for procedural generation.
+
+```js
+/**
+ * @schema 2.11
+ * @input rows: number = 3
+ * @input gap: number = 4
+ * @input color: color = #3B82F6
+ * @input label: string = "Hello"
+ * @input filled: boolean = true
+ * @input layout: enum("grid", "stack", "scatter") = "grid"
+ * @input target: ref
+ */
+const rows = Math.max(1, Math.floor(pencil.input.rows));
+const cellH = (pencil.height - pencil.input.gap * (rows - 1)) / rows;
+
+const nodes = [];
+for (let r = 0; r < rows; r++) {
+  nodes.push({
+    type: "rectangle",
+    name: "Bar " + (r + 1),
+    x: 0,
+    y: r * (cellH + pencil.input.gap),
+    width: pencil.width,
+    height: cellH * Math.random(),
+    fill: pencil.input.color,
+  });
+}
+
+return nodes;
+```
+
+## Shaders
+
+The `shader` fill type can be used to create complex graphics effects using WebGL shaders.
+
+- Shaders are WebGL 1.0 fragment shaders (#version 100), with one addition: textureSize(sampler, lod) is available for aspect-correct texturing.
+- Supported uniform types:
+  - float, int: as numbers
+  - vec2/3/4, ivec2/3/4: as arrays of numbers or "#RRGGBB" strings for colors
+  - sampler2D: as image URL strings
+- Uniforms can be annotated with special comments:
+  - @color: marks vec3 or vec4 uniforms to use color picker controls.
+  - @default: sets the default value for the uniform.
+  - @resolution: set to the resolution of the output. e.g. can be used to normalize gl_FragCoord.
+  - @mouse: set to the mouse position in the same space as gl_FragCoord. For interactive effects.
+  - @time: set to the elapsed time in seconds. For animations.
+  - @sdf: a sampler2D set to an SDF texture of the node's shape. The r channel holds the signed distance in @resolution units (positive = inside). The gb channels hold the gradient of the distance field (direction of increasing distance), in texel space. Use gb instead of numerically differentiating the r channel!
+  - @min/@max: set the range of a uniform for better UI controls. Only applies to number uniforms.
+  - @range <min>, <max>: shorthand for @min and @max on the same line. Shows a slider in the UI.
+  - @label <text>: sets the uniform's display name in the UI. Always set the label.
+
+```glsl
+/** @resolution */
+uniform vec2 u_resolution;
+
+/**
+ * @label Size
+ * @default 32
+ */
+uniform float u_size;
+
+/**
+ * @label Primary Color
+ * @color
+ * @default #ffffff
+ */
+uniform vec3 u_color1;
+
+/**
+ * @label Secondary Color
+ * @color
+ * @default #000000
+ */
+uniform vec3 u_color2;
+
+void main() {
+  vec2 cell = floor(gl_FragCoord.xy / u_size);
+  float check = mod(cell.x + cell.y, 2.0);
+  vec3 color = mix(u_color1, u_color2, check);
+  gl_FragColor = vec4(color, 1.0);
+}
+```
+
+# batch_design documentation
+
+- The batch_design tool executes a small javascript snippet to modify the document.
+- Split work into multiple smaller `batch_design` calls focused on each section.
+
+- In case of an error, all modifications and the created globals will be reverted.
+- A list of warnings will be returned in the response message. Always Fix them in the next batch_design call.
+
+- Use normal JavaScript to generate repeated design structure: arrays, `for...of` loops, computed values, conditionals, object spreads, helper functions, and template strings are all useful.
+- Be smart about writing JavaScript to remove duplication and minimize the length of the generated code.
+- Prefer loops/spreads/helpers over long handwritten repetitive code when creating nav items, table rows, cards, metrics, menus, or similar repeated UI.
+- Do not include comments in the generated `batch_design` JavaScript snippet. Keep the input small.
+
+- You MUST set the `name` property with a human readable name on every node and child node you add. This will make the document cleaner and easier to understand. A mapping from names to ids will be returned at the end of each `batch_design` call so you can reference the created nodes in the next calls.
+
+- When creating style objects that are then spread when creating nodes. Make sure to include `type` in the style object.
+- Never set `id` when creating, copying, or replacing nodes or components. Pencil will always generate unique random IDs and override the input.
+
+- Always prefer the returned node id in `ref` property when creating instances.
+- You don't have access to the node properties after they are created.
+
+- Each `batch_design` is executed in it's own scope. Local variables are not shared between `batch_design` calls. To persist values between calls, don't use `const` or `let` when declaring variables, use `myNode = Insert(...)`.
+
+- Always split component creation into a separate batch_design in order to receive the generated node IDs.
+
+## batch_design API
+
+Only these pencil functions are supported in batch_design. Use the other MCP tools for other operations.
+
+```
+const document: string; // predefined root node
+
+Insert(parent: string, nodeData: Schema.Child): string; // insert
+Copy(path: string, parent: string, copyNodeData: Schema.Child): string; // copy
+Update(path: string, updateData: Schema.Child): void; // update
+Replace(path: string, nodeData: Schema.Child): string; // replace
+Move(path: string, parent: string | undefined, index?: number): void; // move
+Delete(path: string): void; // delete
+SetVariables(variables: Record<string, VariableDefinition>, replace?: boolean): void; // set variables/themes
+Generate(nodeId: string, type: "ai" | "stock", prompt: string): void; // generate image
+FindEmptySpace(input: { width: number; height: number; direction?: "top" | "right" | "bottom" | "left"; padding?: number; nodeId?: string }): { x: number; y: number; parentId?: string }; // find empty space
+```
+
+The `path` argument (used by `Copy`, `Update`, `Replace`, `Move`, `Delete`) is a node ID, or a slash-separated path to a node nested inside a component instance (`instanceId/childId`). Slashes are only valid for component-instance nesting, not normal layer structure, and work for any nesting depth.
+
+### Insert
+
+- Insert a new node at the end of the children array of the specified parent node.
+- An insert can only be a single node, if you want to add children to it, use the id return value in the next Insert call.
+- When working with components (reusable: true), insert their instances as refs with their properties overridden. Override descendant properties inline with the `descendants` map, or with subsequent Update operations.
+- Use the Replace to override children inside a component instance, e.g. `Replace("myInstance/childId",{type:"text",...})`
+- Returns the inserted node string ID
+
+### Copy
+
+- "path": The ID of the existing node to copy. If you want to customize some properties of the copied node, just add them next to the `path` property. If you want to customize nested nodes _under_ the copied one, use the same kind of `descendants` map that `ref` nodes use!
+
+- When copying a node and modifying its descendants, you MUST use the "descendants" property in the Copy operation itself. DO NOT use separate Update operations for descendants of copied nodes, as this will fail due to ID mismatches. The copied node and its descendants receive new IDs, so Update operations referencing the original descendant IDs will fail.
+- `descendants`: Optional, used for components. Keys may be node IDs/paths or unique descendant ids inside the referenced component. If a name matches multiple descendants, use the node ID/path instead.
+
+- Copying a reusable node creates a connected instance (a `ref` node).
+- Returns the copied node string ID
+
+### Update
+
+- Update the properties of existing nodes, without listing their children.
+- DO NOT use this to update the node's `children`, use Replace function for that.
+- This function CANNOT change the `id`, `type` or `ref` properties of any node!
+- `path`: The node to update.
+
+- `updateData": The node data to update
+
+### Replace
+
+- Replace a node with a new node. All properties including the x/y are replaced.
+- This tool is ideal for swapping out parts of a component instance with new nodes.
+- Returns the replacement node's ID as string
+- `path`: The path of the node which will be replaced
+- `nodeData`: The properties of the new node
+
+### Move
+
+- Move a node to a different location in the node tree in a .pen file.
+- `path`: The node to move.
+- `parent`: Optional. The new parent node. If omitted, the node stays under its current parent.
+- `index`: Optional new position of the moved node among its siblings. If omitted, the node is placed at the end.
+
+### Delete
+
+- Delete a node from a .pen file.
+- `path`: The node to delete.
+
+### SetVariables
+
+- Define or update the variables and themes of the .pen file. Read existing variables with the `get_variables` MCP tool first.
+- `variables`: An object keyed by variable name. Each value MUST be an object with a `type` (`"color"`, `"number"`, or `"string"`) and a `value`. Passing a bare value like `"#A3B59A"` or `16` will fail.
+- Variable names are arbitrary strings and MUST NOT begin with a dollar sign. The `$` prefix is only used when referencing a variable from a property (e.g. `fill: "$accent"`).
+- `replace` (optional, default `false`): when `false`, the variables are merged into the existing definitions. Pass `true` to completely replace the document's existing variable definitions.
+- Don't specify themes separately. If a variable uses theming, theme axes and values that aren't yet present in the document are registered automatically. For themed values, pass an array of `{value, theme}` entries.
+
+```js
+SetVariables({
+  accent: {type:"color",value:"#A3B59A"},
+  "spacing-unit": {type:"number",value:16},
+  "font-heading": {type:"string",value:"Playfair Display"},
+  background: {type:"color",value:[
+    {value:"#F8F5F0",theme:{mode:"light"}},
+    {value:"#1A1A1A",theme:{mode:"dark"}}
+  ]}
+})
+```
+
+### Generate (image)
+
+- IMPORTANT: There is NO `image` node type! Images are applied as FILLS to nodes.
+- Do not guess random URLs for image fills, always use the Generate function to get an image from a stock or AI service.
+- To display an image: first Insert a frame or rectangle, then use Generate to apply the image as a fill.
+- `nodeId`: The ID of the node to apply the image fill to.
+- `type`: Either "ai" for AI-generated images or "stock" for stock photos from Unsplash.
+- `prompt`:
+  - For "ai": a detailed descriptive prompt.
+  - For "stock": 1-3 keyword search query following Stock query rules (simple, concrete, no use-case or abstract terms).
+
+### FindEmptySpace
+
+- Finds an empty `width` x `height` area.
+- `direction` (optional, default "right"): where to search, one of "top", "right", "bottom", "left".
+- `padding` (optional, default 0): minimum distance from other elements.
+- `nodeId` (optional): anchor node used for chaining multiple screens together.
+- Returns `{x, y, parentId?}`. Insert or Copy into `parentId` (or `document` if absent) at the returned `x`/`y`.
+
+## Examples
+
+Create the reusable `Metric` component (a vertical frame with a label and a value text) in its own `batch_design`.
+
+```js
+const pos=FindEmptySpace({width:240,height:96,direction:"top", padding:80})
+metricCard=Insert(document,{type:"frame",name:"Metric",x:pos.x,y:pos.y,reusable:true,layout:"vertical",gap:4,placeholder:true})
+metricLabel=Insert(metricCard,{type:"text",name:"Label",fontFamily:"Inter",fontSize:13,fill:"$text-secondary",content:"Label"})
+metricValue=Insert(metricCard,{type:"text",name:"Value",fontFamily:"Inter",fontSize:28,fill:"$text-primary",content:"0"})
+Update(metricCard,{placeholder:false})
+```
+
+Insert a screen at the document root and fill it with a loop:
+
+```js
+const pos=FindEmptySpace({width:1440,height:1024,padding:80})
+page=Insert(document,{type:"frame",name:"Landing Page",x:pos.x,y:pos.y,layout:"vertical",width:1440,padding:40,gap:24,clip:true,placeholder:true})
+
+const navItem={type:"text",fontFamily:"Inter",fontSize:14,fill:"$text-secondary"}
+nav=Insert(page,{type:"frame",name:"Nav",gap:32,alignItems:"center",width:"fill_container"})
+for (const label of ["Home","Our Story","Visit","Journal"]) {
+  Insert(nav,{...navItem,name:label,content:label})
+}
+```
+
+Instantiate the component in a loop, keyed by the captured `metricLabel`/`metricValue` IDs:
+
+```js
+row=Insert(page,{type:"frame",name:"Metrics",gap:16,width:"fill_container"})
+for (const [label,value] of [["Orders","1,284"],["Revenue","$48.2K"],["Customers","9,431"]]) {
+  Insert(row,{type:"ref",ref:metricCard,name:label,width:"fill_container",descendants:{[metricLabel]:{content:label},[metricValue]:{content:value}}})
+}
+
+Update(page,{placeholder:false})
+```
+
+Copy an existing screen, customize its descendants in the same `Copy` call, and delete a node:
+
+```js
+const pos=FindEmptySpace({width:1440,height:1024,padding:80})
+dashboardV2=Copy("Xk9f2",document,{name:"Dashboard V2",x:pos.x,y:pos.y,placeholder:true,descendants:{"Jd6Ru":{fill:"#0F172A"},"Pc2Ny/Gh9Kf":{content:"Reports"}}})
+Update(dashboardV2,{placeholder:false})
+
+Delete("Vn4kP")
+```
+
+Define the design tokens first, then reference them with `$` when building. Themed values are passed as `{value, theme}` arrays (the `dark` axis value is registered on the fly), so `$bg`/`$text-primary` references resolve per theme automatically:
+
+```js
+SetVariables({
+  "bg":{type:"color",value:[
+    {value:"#FAFAF7",theme:{mode:"light"}},
+    {value:"#141414",theme:{mode:"dark"}}
+  ]},
+  "text-primary":{type:"color",value:[
+    {value:"#1A1A1A",theme:{mode:"light"}},
+    {value:"#F5F5F5",theme:{mode:"dark"}}
+  ]},
+  "font-body":{type:"string",value:"Inter"},
+  "gap-md":{type:"number",value:16}
+})
+
+card=Insert(document,{type:"frame",name:"Card",layout:"vertical",fill:"$bg",padding:"$gap-md",gap:"$gap-md",x:80,y:80})
+Insert(card,{type:"text",name:"Title",fontFamily:"$font-body",fontSize:20,fill:"$text-primary",content:"Tokens applied"})
+```

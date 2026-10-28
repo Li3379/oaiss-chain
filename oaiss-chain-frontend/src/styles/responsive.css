@@ -1,0 +1,21 @@
+/* Shared Responsive Breakpoints for OAISS CHAIN */
+/* Tablet: 768px-1280px | Mobile: <768px */
+
+:root {
+  --breakpoint-mobile: 768px;
+  --breakpoint-tablet: 1280px;
+  --spacing-mobile: 12px;
+  --spacing-tablet: 16px;
+  --spacing-desktop: 24px;
+}
+
+@media (max-width: 768px) {
+  .section-card { margin-bottom: var(--spacing-mobile) !important; padding: var(--spacing-mobile) !important; }
+  .page-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .search-bar { flex-direction: column; }
+  .overview-grid, .chart-grid, .stats-grid { grid-template-columns: 1fr !important; }
+}
+
+@media (max-width: 1280px) and (min-width: 769px) {
+  .overview-grid, .chart-grid { grid-template-columns: repeat(2, 1fr) !important; }
+}

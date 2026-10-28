@@ -1,0 +1,43 @@
+# Available Guidelines
+
+Call get_guidelines again with two arguments
+
+## Guides
+
+- "Code": Generating code from .pen files
+- "Design System": Composing screens with design system components
+- "Landing Page": Designing landing pages and promotional websites
+- "Mobile App": Designing mobile apps
+- "Slides": Designing presentation slides
+- "Table": Working with tables and dashboards
+- "Tailwind": Tailwind CSS v4 implementation
+- "Web App": Designing web apps
+
+## Styles
+
+- "Aerial Gravitas"
+- "Anchored Ribbon Grid"
+- "Artisan Editorial"
+- "Blueprint Technical"
+- "Centered Device Cascade"
+- "Centered Serif List"
+- "Cinematic Alternating"
+- "Cinematic Device Column"
+- "Color Block Stack"
+- "Dark Centered Platform"
+- "Editorial Landscape Stack"
+- "Editorial Scientific"
+- "Gradient Prompt Stack"
+- "Illustrated Ribbon Stack"
+- "Illustrated Warm"
+- "Inline Friendly"
+- "Modular Bento Showcase"
+- "Monumental Editorial"
+- "Narrative Illustrated"
+- "Product Data Grid"
+- "Product Demo"
+- "Saturated Code Bridge"
+- "Soft Bento"
+- "Spatial Plus"
+- "Split Inverse Showcase"
+- "Zigzag Bold Split"

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  测试专用日志配置
+  Test-only logging configuration
+
+  只输出到控制台，不落任何文件。原因：主配置 logback-spring.xml 会把日志写进
+  logs/${APP_NAME}-error.log，而集成测试会刻意触发大量错误路径（MinIO 超时、
+  文件不存在、空路径变量等）。这些测试噪声会混入生产错误日志，使真实运行期
+  异常难以辨认。
+
+  注意：Logback 在测试类路径下会优先加载本文件，因此测试运行不再触碰 logs/。
+-->
+<configuration>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %-5level %logger{40} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- WARN 起步：测试输出保持精简，真正的 ERROR 才不会被 INFO 洪流淹没 -->
+    <root level="WARN">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+</configuration>

@@ -1,0 +1,106 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'oaiss-chain-ml-service/**'
+      - 'oaiss-chain-frontend/**'
+      - 'oaiss-chain-backend/**'
+      - 'docs/**'
+      - 'scripts/**'
+      - 'DEV-GUIDE.md'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'oaiss-chain-ml-service/**'
+      - 'oaiss-chain-frontend/**'
+      - 'oaiss-chain-backend/**'
+      - 'docs/**'
+      - 'scripts/**'
+      - 'DEV-GUIDE.md'
+
+permissions:
+  contents: read
+
+jobs:
+  architecture-gates:
+    name: Doc & Architecture Gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Doc & Architecture Gates
+        run: |
+          node scripts/gates/doc-verify.mjs
+          node scripts/gates/i18n-verify.mjs
+          node scripts/role-matrix-verify.mjs
+          node scripts/gates/closure-audit.mjs
+
+  python-lint:
+    name: Python (ruff)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: oaiss-chain-ml-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Check formatting
+        run: ruff format --check .
+
+      - name: Lint
+        run: ruff check .
+
+  typescript-lint:
+    name: TypeScript (vue-tsc)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: oaiss-chain-frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: oaiss-chain-frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx vue-tsc --noEmit
+
+  java-lint:
+    name: Java (PMD + SpotBugs)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: oaiss-chain-backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Run PMD
+        run: mvn pmd:check -q || true
+
+      - name: Run SpotBugs
+        run: mvn spotbugs:check -q || true

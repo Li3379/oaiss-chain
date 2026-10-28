@@ -1,0 +1,17 @@
+{
+  "mcp": {
+    "computer-use": {
+      "type": "local",
+      "command": [
+        "C:\\Program Files\\Crow5\\crow5-cli.exe",
+        "C:\\Users\\LiShuai\\AppData\\Local\\com.crow5.desktop\\crow5\\packages\\node_modules\\@zavora-ai\\computer-use-mcp\\dist\\server.js"
+      ],
+      "environment": {
+        "BUN_BE_BUN": "1",
+        "COMPUTER_USE_PROFILE": "full",
+        "COMPUTER_USE_ACTIVE_PROFILE": "full"
+      },
+      "timeout": 30000
+    }
+  }
+}

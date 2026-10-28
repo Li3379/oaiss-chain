@@ -1,0 +1,419 @@
+[
+  {
+    "user": "enterprise001",
+    "url": "/enterprise/orders/manage",
+    "label": "订单管理",
+    "status": "ok",
+    "textLen": 1320,
+    "rows": 10,
+    "btns": [
+      "退出",
+      "查询",
+      "重置",
+      "查看详情",
+      "查看详情",
+      "查看详情",
+      "查看详情",
+      "查看详情",
+      "查看详情",
+      "查看详情",
+      "查看详情",
+      "查看详情",
+      "查看详情",
+      "全部已读"
+    ],
+    "heads": [
+      "序号",
+      "交易编号",
+      "交易类型",
+      "交易对手",
+      "数量",
+      "单价",
+      "总金额",
+      "交易状态",
+      "创建时间",
+      "操作",
+      "日",
+      "一",
+      "二",
+      "三",
+      "四",
+      "五",
+      "六",
+      "日",
+      "一",
+      "二",
+      "三",
+      "四",
+      "五",
+      "六"
+    ],
+    "tabs": [],
+    "labels": [
+      "交易编号",
+      "交易类型",
+      "日期范围"
+    ],
+    "pagTotal": "共 60 条",
+    "consoleErrors": [],
+    "req4xx": []
+  },
+  {
+    "user": "enterprise001",
+    "url": "/enterprise/trading/p2p",
+    "label": "P2P交易",
+    "status": "ok",
+    "textLen": 1237,
+    "rows": 10,
+    "btns": [
+      "退出",
+      "查询",
+      "创建P2P交易",
+      "确认",
+      "取消",
+      "确认",
+      "取消",
+      "确认",
+      "取消",
+      "全部已读"
+    ],
+    "heads": [
+      "序号",
+      "交易编号",
+      "买方名称",
+      "卖方名称",
+      "交易数量",
+      "单价",
+      "总金额",
+      "状态",
+      "创建时间",
+      "操作"
+    ],
+    "tabs": [],
+    "labels": [
+      "交易对手",
+      "身份",
+      "交易编号"
+    ],
+    "pagTotal": "共 34 条",
+    "consoleErrors": [],
+    "req4xx": []
+  },
+  {
+    "user": "enterprise001",
+    "url": "/enterprise/company/dashboard",
+    "label": "数据可视化",
+    "status": "ok",
+    "textLen": 372,
+    "rows": 0,
+    "btns": [
+      "退出",
+      "查询",
+      "全部已读"
+    ],
+    "heads": [],
+    "tabs": [],
+    "labels": [],
+    "pagTotal": "",
+    "consoleErrors": [],
+    "req4xx": []
+  },
+  {
+    "user": "enterprise001",
+    "url": "/enterprise/carbon-coin/account",
+    "label": "碳币账户",
+    "status": "ok",
+    "textLen": 1150,
+    "rows": 10,
+    "btns": [
+      "退出",
+      "转账",
+      "全部已读"
+    ],
+    "heads": [
+      "序号",
+      "交易编号",
+      "交易类型",
+      "金额",
+      "交易后余额",
+      "备注",
+      "时间"
+    ],
+    "tabs": [],
+    "labels": [],
+    "pagTotal": "共 76 条",
+    "consoleErrors": [],
+    "req4xx": []
+  },
+  {
+    "user": "enterprise001",
+    "url": "/enterprise/carbon-neutral/projects",
+    "label": "碳中和项目",
+    "status": "ok",
+    "textLen": 1327,
+    "rows": 10,
+    "btns": [
+      "退出",
+      "创建项目",
+      "申请认证",
+      "终止",
+      "详情",
+      "申请认证",
+      "终止",
+      "详情",
+      "详情",
+      "详情",
+      "详情",
+      "详情",
+      "详情",
+      "详情",
+      "详情",
+      "详情",
+      "全部已读"
+    ],
+    "heads": [
+      "序号",
+      "项目名称",
+      "项目类型",
+      "项目描述",
+      "预期减排量(吨) (tCO₂e)",
+      "状态",
+      "开始日期",
+      "结束日期",
+      "创建时间",
+      "操作"
+    ],
+    "tabs": [],
+    "labels": [],
+    "pagTotal": "共 66 条",
+    "consoleErrors": [],
+    "req4xx": []
+  },
+  {
+    "user": "enterprise001",
+    "url": "/enterprise/emission/data",
+    "label": "排放数据",
+    "status": "ok",
+    "textLen": 337,
+    "rows": 5,
+    "btns": [
+      "退出",
+      "AI预测",
+      "全部已读"
+    ],
+    "heads": [
+      "操作",
+      "评级ⓘ",
+      "总排放量(tCO2e)",
+      "行业均值(tCO2e)",
+      "评分",
+      "评级时间",
+      "排名",
+      "企业名称",
+      "总排放量(tCO2e)",
+      "评级ⓘ",
+      "评分"
+    ],
+    "tabs": [
+      "排放评级",
+      "行业排名",
+      "AI预测"
+    ],
+    "labels": [
+      "企业ID",
+      "预测月数"
+    ],
+    "pagTotal": "",
+    "consoleErrors": [],
+    "req4xx": []
+  },
+  {
+    "user": "enterprise001",
+    "url": "/enterprise/user/profile",
+    "label": "个人中心",
+    "status": "ok",
+    "textLen": 357,
+    "rows": 0,
+    "btns": [
+      "退出",
+      "保存修改",
+      "修改密码",
+      "刷新状态",
+      "删除密钥对",
+      "全部已读"
+    ],
+    "heads": [],
+    "tabs": [
+      "基本信息",
+      "修改密码"
+    ],
+    "labels": [
+      "用户名",
+      "角色",
+      "真实姓名",
+      "邮箱",
+      "手机号",
+      "公司",
+      "地址",
+      "在线停留时长",
+      "当前密码",
+      "新密码",
+      "确认密码"
+    ],
+    "pagTotal": "",
+    "consoleErrors": [],
+    "req4xx": []
+  },
+  {
+    "user": "enterprise001",
+    "url": "/enterprise/market-prediction",
+    "label": "AI市场预测",
+    "status": "ok",
+    "textLen": 1183,
+    "rows": 0,
+    "btns": [
+      "退出",
+      "7 天",
+      "30 天",
+      "90 天",
+      "180 天",
+      "重置参数",
+      "前往双向拍卖挂单",
+      "全部已读"
+    ],
+    "heads": [],
+    "tabs": [],
+    "labels": [],
+    "pagTotal": "",
+    "consoleErrors": [],
+    "req4xx": []
+  },
+  {
+    "user": "enterprise001",
+    "url": "/enterprise/enterprise-inference",
+    "label": "AI企业推理",
+    "status": "ok",
+    "textLen": 1419,
+    "rows": 0,
+    "btns": [
+      "退出",
+      "刷新",
+      "生成企业低碳体检白皮书",
+      "范围一燃烧受控度 (88)",
+      "范围二绿电清洁度 (78)",
+      "信用履约历史 (85)",
+      "报告周期规律性 (92)",
+      "碳配额流动储备 (84)",
+      "脱硫工艺受控度 (80)",
+      "前往公式测算",
+      "采购配额履约",
+      "全部已读"
+    ],
+    "heads": [],
+    "tabs": [],
+    "labels": [],
+    "pagTotal": "",
+    "consoleErrors": [],
+    "req4xx": []
+  },
+  {
+    "user": "enterprise001",
+    "url": "/enterprise/info",
+    "label": "企业信息",
+    "status": "ok",
+    "textLen": 361,
+    "rows": 0,
+    "btns": [
+      "退出",
+      "编辑联系方式",
+      "全部已读"
+    ],
+    "heads": [],
+    "tabs": [],
+    "labels": [],
+    "pagTotal": "",
+    "consoleErrors": [],
+    "req4xx": []
+  },
+  {
+    "user": "reviewer001",
+    "url": "/auditor/review/history",
+    "label": "审核历史",
+    "status": "ok",
+    "textLen": 1337,
+    "rows": 10,
+    "btns": [
+      "退出"
+    ],
+    "heads": [
+      "报告编号",
+      "企业名称",
+      "报告标题",
+      "审核结果",
+      "审核意见",
+      "审核时间"
+    ],
+    "tabs": [],
+    "labels": [],
+    "pagTotal": "共 35 条",
+    "consoleErrors": [],
+    "req4xx": []
+  },
+  {
+    "user": "admin",
+    "url": "/admin/system/carbon",
+    "label": "碳核算管理",
+    "status": "ok",
+    "textLen": 1392,
+    "rows": 10,
+    "btns": [
+      "退出",
+      "查询",
+      "全部已读"
+    ],
+    "heads": [
+      "报告编号",
+      "企业名称",
+      "报告标题",
+      "总排放量ⓘ",
+      "状态",
+      "审核员",
+      "创建时间"
+    ],
+    "tabs": [],
+    "labels": [
+      "关键词"
+    ],
+    "pagTotal": "共 89 条",
+    "consoleErrors": [],
+    "req4xx": []
+  },
+  {
+    "user": "admin",
+    "url": "/admin/system/config",
+    "label": "系统配置",
+    "status": "ok",
+    "textLen": 427,
+    "rows": 6,
+    "btns": [
+      "退出",
+      "查询",
+      "刷新",
+      "全部已读"
+    ],
+    "heads": [
+      "设置描述",
+      "设置名称",
+      "设置值",
+      "修改人"
+    ],
+    "tabs": [],
+    "labels": [
+      "设置描述",
+      "设置名称"
+    ],
+    "pagTotal": "共 6 条",
+    "consoleErrors": [],
+    "req4xx": []
+  }
+]

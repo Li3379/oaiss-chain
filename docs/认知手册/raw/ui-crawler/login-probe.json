@@ -1,0 +1,70 @@
+{
+  "enterprise001": {
+    "httpStatus": 200,
+    "code": 200,
+    "message": "操作成功",
+    "dataKeys": [
+      "accessToken",
+      "refreshToken",
+      "tokenType",
+      "expiresIn",
+      "userId",
+      "username",
+      "userType",
+      "realName"
+    ],
+    "tokenLen": 269,
+    "userType": 1
+  },
+  "reviewer001": {
+    "httpStatus": 200,
+    "code": 200,
+    "message": "操作成功",
+    "dataKeys": [
+      "accessToken",
+      "refreshToken",
+      "tokenType",
+      "expiresIn",
+      "userId",
+      "username",
+      "userType",
+      "realName"
+    ],
+    "tokenLen": 241,
+    "userType": 2
+  },
+  "thirdparty001": {
+    "httpStatus": 200,
+    "code": 200,
+    "message": "操作成功",
+    "dataKeys": [
+      "accessToken",
+      "refreshToken",
+      "tokenType",
+      "expiresIn",
+      "userId",
+      "username",
+      "userType",
+      "realName"
+    ],
+    "tokenLen": 248,
+    "userType": 3
+  },
+  "admin": {
+    "httpStatus": 200,
+    "code": 200,
+    "message": "操作成功",
+    "dataKeys": [
+      "accessToken",
+      "refreshToken",
+      "tokenType",
+      "expiresIn",
+      "userId",
+      "username",
+      "userType",
+      "realName"
+    ],
+    "tokenLen": 229,
+    "userType": 4
+  }
+}
