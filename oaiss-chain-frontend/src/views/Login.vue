@@ -303,10 +303,7 @@ const onBackToHome = () => {
 .brand-panel {
   position: relative;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 18% 20%, rgba(20, 167, 154, 0.32), transparent 44%),
-    radial-gradient(circle at 84% 82%, rgba(69, 190, 117, 0.26), transparent 42%),
-    var(--login-backdrop);
+  background: var(--color-brand-strong);
   display: flex;
 }
 
@@ -330,9 +327,8 @@ const onBackToHome = () => {
   border-radius: 12px;
   display: grid;
   place-items: center;
-  background: var(--login-accent);
-  color: #ffffff;
-  box-shadow: 0 8px 20px rgba(24, 152, 138, 0.38);
+  background: var(--color-on-inverse);
+  color: var(--color-brand-strong);
 }
 
 .brand-mark-text {
@@ -407,7 +403,7 @@ const onBackToHome = () => {
   width: 96px;
   height: 2px;
   transform: translateY(-50%);
-  background: linear-gradient(90deg, transparent, #2fd4b2 45%, #6adf85 60%, transparent);
+  background: var(--color-border);
   animation: ledger-travel 5.5s cubic-bezier(0.45, 0, 0.3, 1) infinite;
 }
 
@@ -428,7 +424,7 @@ const onBackToHome = () => {
 .form-panel {
   position: relative;
   display: flex;
-  background: linear-gradient(180deg, #ffffff 0%, #f4faf8 100%);
+  background: var(--color-surface);
 }
 
 .form-column {
@@ -470,7 +466,8 @@ const onBackToHome = () => {
   height: 14px;
   border-radius: 50%;
   background: var(--login-accent);
-  box-shadow: 0 0 0 6px rgba(35, 186, 168, 0.12);
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
   flex-shrink: 0;
 }
 
@@ -514,13 +511,12 @@ const onBackToHome = () => {
   width: 100%;
   margin-top: 8px;
   border: none;
-  background: var(--brand-gradient);
-  box-shadow: 0 10px 24px rgba(20, 163, 143, 0.32);
+  background: var(--color-accent);
   transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 .submit-btn:hover {
-  box-shadow: 0 14px 30px rgba(20, 163, 143, 0.42);
+  background: var(--color-accent);
   transform: translateY(-1px);
 }
 
