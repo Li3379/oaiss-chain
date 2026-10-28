@@ -407,41 +407,46 @@ onMounted(() => {
 }
 
 .stat-card {
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 20px;
-  color: #fff;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-top: 3px solid var(--color-border);
 }
 
+/* 顶部 3px 语义色条（不用左边框，规避"colored border-left"反模式） */
 .stat-card.total {
-  background: var(--stat-gradient-info);
+  border-top-color: var(--color-chart-1);
 }
 
 .stat-card.pending {
-  background: var(--stat-gradient-warning);
+  border-top-color: var(--color-status-warning);
 }
 
 .stat-card.approved {
-  background: var(--stat-gradient-success);
+  border-top-color: var(--color-status-success);
 }
 
 .stat-card.rejected {
-  background: var(--stat-gradient-danger);
+  border-top-color: var(--color-status-danger);
 }
 
 .stat-card.rate {
-  background: var(--stat-gradient-neutral);
+  border-top-color: var(--color-accent);
 }
 
 .stat-label {
   font-size: var(--text-base);
   margin-bottom: 8px;
-  opacity: 0.9;
+  color: var(--color-text-muted);
 }
 
 .stat-value {
   font-size: 32px;
   font-weight: 700;
   line-height: 1;
+  color: var(--color-text);
 }
 
 .pagination-row {

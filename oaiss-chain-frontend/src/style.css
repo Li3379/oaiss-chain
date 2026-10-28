@@ -123,6 +123,8 @@
   --color-on-inverse: #ffffff;
   --color-on-inverse-muted: #ecf7f4;
   --color-status-success: #45be75;
+  --color-status-warning: #b45309;
+  --color-status-danger: #c4242a;
   --color-status-success-soft: #d8f4e5;
   --color-shadow-soft: 0 14px 34px rgba(10, 34, 38, 0.08);
   --color-mint-400: #a8d8cf;
