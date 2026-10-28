@@ -331,7 +331,7 @@ onMounted(() => {
 }
 
 .section-card {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
 }
 
@@ -360,7 +360,7 @@ onMounted(() => {
 }
 
 .info-card.main-balance {
-  background: var(--brand-gradient);
+  background: var(--color-accent);
   color: white;
 }
 

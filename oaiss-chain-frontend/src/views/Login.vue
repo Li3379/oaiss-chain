@@ -442,7 +442,7 @@ const onBackToHome = () => {
   gap: 6px;
   border: none;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
   cursor: pointer;
   padding: 6px 4px;
@@ -465,7 +465,7 @@ const onBackToHome = () => {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--login-accent);
+  background: var(--color-accent);
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
   flex-shrink: 0;
@@ -474,12 +474,12 @@ const onBackToHome = () => {
 .login-header h1 {
   margin: 0;
   font-size: var(--text-2xl);
-  color: var(--text-primary);
+  color: var(--color-text);
 }
 
 .login-header p {
   margin: 8px 0 0;
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
   font-size: var(--text-base);
 }
 
@@ -494,7 +494,7 @@ const onBackToHome = () => {
   width: 110px;
   height: 40px;
   border-radius: 8px;
-  border: 1px solid var(--border-teal-soft);
+  border: 1px solid var(--color-border-soft);
   cursor: pointer;
 }
 
@@ -503,8 +503,8 @@ const onBackToHome = () => {
   align-items: center;
   justify-content: center;
   font-size: var(--text-xs);
-  color: var(--text-secondary);
-  background: var(--bg-subtle);
+  color: var(--color-text-muted);
+  background: var(--color-raised);
 }
 
 .submit-btn {
@@ -524,12 +524,12 @@ const onBackToHome = () => {
 .demo-block {
   margin-top: 26px;
   padding-top: 20px;
-  border-top: 1px solid var(--border-teal-soft);
+  border-top: 1px solid var(--color-border-soft);
 }
 
 .demo-label {
   margin: 0 0 10px;
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
 }
 

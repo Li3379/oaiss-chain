@@ -597,7 +597,7 @@ onMounted(() => {
 }
 
 .section-card {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
 }
 
@@ -609,7 +609,7 @@ onMounted(() => {
 
 .table-tip {
   margin-bottom: 10px;
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
 }
 
@@ -632,7 +632,7 @@ onMounted(() => {
   align-items: baseline;
   gap: 8px;
   font-size: var(--text-sm);
-  color: var(--text-primary);
+  color: var(--color-text);
 }
 
 .preview-total {
@@ -642,7 +642,7 @@ onMounted(() => {
 }
 
 .preview-unit {
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
   font-size: var(--text-xs);
 }
 
@@ -653,7 +653,7 @@ onMounted(() => {
 }
 
 .preview-tip--buy {
-  color: var(--teal);
+  color: var(--color-accent);
 }
 
 .preview-tip--sell {

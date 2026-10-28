@@ -301,9 +301,9 @@ async function onVerify(row: ReportRow, approved: boolean): Promise<void> {
   try {
     if (approved) {
       const confirmHtml = `
-        <div style="font-size:14px; line-height:1.6; color:var(--text-primary);">
+        <div style="font-size:14px; line-height:1.6; color:var(--color-text);">
           <p style="margin:0 0 10px;">${t('verifyList.confirmApprove')}</p>
-          <div style="padding:10px 12px; background:rgba(20, 167, 154, 0.08); border:1px solid rgba(20, 167, 154, 0.3); border-radius:8px; font-size:13px; color:var(--text-secondary);">
+          <div style="padding:10px 12px; background:rgba(20, 167, 154, 0.08); border:1px solid rgba(20, 167, 154, 0.3); border-radius:8px; font-size:13px; color:var(--color-text-muted);">
             <div style="font-weight:600; color:var(--el-color-primary); margin-bottom:4px; display:flex; align-items:center; gap:6px;">
               <svg width="14" height="14" viewBox="0 0 1024 1024" fill="currentColor" style="flex-shrink:0;"><path d="M624 352h-96c-17.7 0-32 14.3-32 32s14.3 32 32 32h96c106 0 192 86 192 192s-86 192-192 192h-96c-106 0-192-86-192-192 0-17.7-14.3-32-32-32s-32 14.3-32 32c0 141.4 114.6 256 256 256h96c141.4 0 256-114.6 256-256s-114.6-256-256-256z"/><path d="M400 672h96c17.7 0 32-14.3 32-32s-14.3-32-32-32h-96c-106 0-192-86-192-192s86-192 192-192h96c106 0 192 86 192 192 0 17.7 14.3 32 32 32s32-14.3 32-32c0-141.4-114.6-256-256-256h-96C258.6 160 144 274.6 144 416s114.6 256 256 256z"/></svg>
               <span>${t('attestation.cardTitle')}</span>
@@ -414,7 +414,7 @@ onMounted(() => {
 
 <style scoped>
 .section-card {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   margin-bottom: 14px;
 }
@@ -455,6 +455,6 @@ onMounted(() => {
 .cert-detail-title {
   font-weight: 600;
   margin-bottom: 8px;
-  color: var(--text-primary);
+  color: var(--color-text);
 }
 </style>

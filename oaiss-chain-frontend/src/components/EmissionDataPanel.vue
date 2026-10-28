@@ -152,13 +152,13 @@ const rawText = computed(() => (props.data || '').trim())
   gap: 4px;
   font-weight: 600;
   margin-bottom: 6px;
-  color: var(--text-primary);
+  color: var(--color-text);
 }
 
 .emission-panel__subtotal {
   margin-top: 6px;
   text-align: right;
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
 }
 
 .emission-panel__total strong {
@@ -174,7 +174,7 @@ const rawText = computed(() => (props.data || '').trim())
 .emission-panel__raw pre {
   white-space: pre-wrap;
   word-break: break-all;
-  background: var(--bg-subtle, var(--color-raised));
+  background: var(--color-raised);
   border-radius: 6px;
   padding: 8px;
   margin: 0;

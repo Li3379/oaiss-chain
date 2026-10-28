@@ -330,7 +330,7 @@ onMounted(() => {
               <el-button link type="primary" @click="onConfirmTrade(row)">{{ t('common.confirm') }}</el-button>
               <el-button link type="danger" @click="onCancelTrade(row)">{{ t('ordersManage.btnCancel') }}</el-button>
             </div>
-            <span v-else style="color: var(--text-secondary); font-size: var(--text-xs);">-</span>
+            <span v-else style="color: var(--color-text-muted); font-size: var(--text-xs);">-</span>
           </template>
         </el-table-column>
       </el-table>
@@ -402,7 +402,7 @@ onMounted(() => {
 }
 
 .section-card {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
 }
 
@@ -435,7 +435,7 @@ onMounted(() => {
 
 .p2p-estimate-label {
   font-size: var(--text-sm);
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
 }
 
 .p2p-estimate-val {

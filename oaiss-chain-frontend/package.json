@@ -12,7 +12,10 @@
     "test:e2e": "npx playwright test",
     "test:e2e:flow": "cross-env TEST_MODE=flow npx playwright test",
     "test:e2e:headed": "npx playwright test --headed",
-    "test:e2e:debug": "npx playwright test --debug"
+    "test:e2e:debug": "npx playwright test --debug",
+    "type-check": "vue-tsc --noEmit",
+    "style-guard": "node scripts/style-guard.mjs",
+    "verify": "npm run type-check && npm run style-guard && npm run test"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",

@@ -626,7 +626,7 @@ onMounted(() => {
                       :value="item.name"
                     >
                       <span>{{ item.name }}</span>
-                      <small style="color: var(--text-secondary); margin-left: 8px;">({{ item.factor }} {{ item.unit }})</small>
+                      <small style="color: var(--color-text-muted); margin-left: 8px;">({{ item.factor }} {{ item.unit }})</small>
                     </el-option>
                   </el-select>
                   <el-input
@@ -925,7 +925,7 @@ onMounted(() => {
 }
 
 .section-card {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
 }
 
@@ -950,7 +950,7 @@ onMounted(() => {
 
 .structured-intro {
   margin: 0 0 10px;
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
   line-height: 1.6;
 }
@@ -963,9 +963,9 @@ onMounted(() => {
 
 .scope-block {
   padding: 10px 12px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 10px;
-  background: var(--bg-elevated);
+  background: var(--color-surface-elevated);
 }
 
 .scope-head {
@@ -979,12 +979,12 @@ onMounted(() => {
 
 .scope-title {
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--color-text);
   font-size: var(--text-base);
 }
 
 .scope-subtotal {
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
 }
 
@@ -998,12 +998,12 @@ onMounted(() => {
 
 .row-times {
   text-align: center;
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
 }
 
 .scope-empty {
   margin: 4px 0 8px;
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
 }
 
@@ -1019,7 +1019,7 @@ onMounted(() => {
   padding: 10px 12px;
   border-radius: 10px;
   background: rgba(20, 167, 154, 0.08);
-  color: var(--text-primary);
+  color: var(--color-text);
   font-size: var(--text-base);
 }
 
@@ -1030,7 +1030,7 @@ onMounted(() => {
 
 .json-hint {
   margin: 8px 0 0;
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
   line-height: 1.6;
 }
@@ -1061,7 +1061,7 @@ onMounted(() => {
 .submit-confirm-text {
   margin: 0 0 14px;
   font-size: var(--text-base);
-  color: var(--text-primary);
+  color: var(--color-text);
   line-height: 1.6;
 }
 
@@ -1092,7 +1092,7 @@ onMounted(() => {
 .cert-desc {
   margin: 0 0 10px;
   font-size: var(--text-sm);
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
   line-height: 1.6;
 }
 
@@ -1100,7 +1100,7 @@ onMounted(() => {
   display: flex;
   gap: 16px;
   font-size: var(--text-sm);
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
 }
 
 .cert-meta code {

@@ -524,7 +524,7 @@ onUnmounted(() => {
 }
 
 .section-card {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
 }
 
@@ -546,13 +546,13 @@ onUnmounted(() => {
 .signature-card__title {
   font-size: var(--text-md);
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--color-text);
 }
 
 .signature-card__description {
   margin-top: 4px;
   font-size: var(--text-sm);
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
 }
 
 .signature-status-row {
@@ -564,7 +564,7 @@ onUnmounted(() => {
 
 .signature-status-row__label {
   font-size: var(--text-base);
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
 }
 
 .signature-details {
@@ -582,6 +582,6 @@ onUnmounted(() => {
 .signature-public-key__label {
   font-size: var(--text-base);
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--color-text);
 }
 </style>

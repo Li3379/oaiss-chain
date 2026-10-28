@@ -320,15 +320,15 @@ const getChartConfigs = () => {
   return [
     {
       ref: chartTradeBarRef,
-      option: buildBarOption(t('companyDashboard.chartTransactionBar'), d.tradeLabels, d.tradeCount, cssToken('--chart-series-1', 'var(--color-chart-1)')),
+      option: buildBarOption(t('companyDashboard.chartTransactionBar'), d.tradeLabels, d.tradeCount, cssToken('--color-chart-1', '#1D5FBF')),
     },
     {
       ref: chartTrendLineRef,
-      option: buildLineOption(t('companyDashboard.chartAIPrediction'), d.reportLabels, d.aiTrend, cssToken('--chart-series-2', 'var(--color-chart-2)')),
+      option: buildLineOption(t('companyDashboard.chartAIPrediction'), d.reportLabels, d.aiTrend, cssToken('--color-chart-2', '#6E93CE')),
     },
     {
       ref: chartSuggestBarRef,
-      option: buildBarOption(t('companyDashboard.chartAISuggestion'), d.reportLabels, d.aiSuggest, cssToken('--chart-series-3', 'var(--color-chart-3)')),
+      option: buildBarOption(t('companyDashboard.chartAISuggestion'), d.reportLabels, d.aiSuggest, cssToken('--color-chart-3', '#A8BFE0')),
     },
     {
       ref: chartEmissionPieRef,
@@ -340,7 +340,7 @@ const getChartConfigs = () => {
     },
     {
       ref: chartCreditLineRef,
-      option: buildLineOption(t('companyDashboard.chartCreditLine'), d.creditLabels, d.creditTrend, cssToken('--chart-series-info', 'var(--color-chart-info)')),
+      option: buildLineOption(t('companyDashboard.chartCreditLine'), d.creditLabels, d.creditTrend, cssToken('--color-chart-info', '#D3DEED')),
     },
   ]
 }
@@ -576,7 +576,7 @@ onBeforeUnmount(() => {
         <el-tag :type="admissionStatus.status === 1 ? 'success' : 'danger'">
           {{ admissionStatus.status === 1 ? t('certificateManage.active') : t('certificateManage.revoked') }}
         </el-tag>
-        <span v-if="admissionStatus.certificateNo" style="color: var(--text-secondary); font-size: var(--text-sm);">
+        <span v-if="admissionStatus.certificateNo" style="color: var(--color-text-muted); font-size: var(--text-sm);">
           {{ admissionStatus.certificateNo }}
         </span>
       </el-space>
@@ -658,7 +658,7 @@ onBeforeUnmount(() => {
 .section-card,
 .chart-card,
 .overview-card {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
 }
 
@@ -683,7 +683,7 @@ onBeforeUnmount(() => {
 }
 
 .dimension-label {
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
 }
 
@@ -704,21 +704,21 @@ onBeforeUnmount(() => {
 }
 
 .metric-label {
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
 }
 
 .metric-value {
   font-size: 30px;
   margin-top: 10px;
-  color: var(--text-brand-strong);
+  color: var(--color-brand-strong);
   font-weight: 700;
   line-height: 1;
 }
 
 .metric-unit {
   margin-top: 8px;
-  color: var(--text-brand-muted);
+  color: var(--color-brand-muted);
   font-size: var(--text-xs);
 }
 

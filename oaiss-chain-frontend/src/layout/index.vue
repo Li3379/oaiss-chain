@@ -452,13 +452,13 @@ onMounted(() => {
 
 .tour-step-title {
   margin: 0 0 8px;
-  color: var(--text-primary);
+  color: var(--color-text);
   font-size: 17px;
 }
 
 .tour-step-text {
   margin: 0;
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
   font-size: var(--text-base);
   line-height: 1.8;
 }

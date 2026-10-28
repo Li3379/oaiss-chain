@@ -821,13 +821,13 @@ onMounted(() => {
   border: 1px solid rgba(20, 167, 154, 0.2);
   border-radius: 8px;
   background: rgba(20, 167, 154, 0.05);
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
   line-height: 1.7;
 }
 
 .section-card {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
 }
 

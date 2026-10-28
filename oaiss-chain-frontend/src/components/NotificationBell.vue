@@ -159,7 +159,7 @@ function handleVisibleChange(visible: boolean) {
   align-items: center;
   padding: 10px 16px;
   font-weight: 600;
-  border-bottom: 1px solid var(--border-color, var(--color-border));
+  border-bottom: 1px solid var(--color-border);
 }
 .header-left-title {
   display: flex;
@@ -169,7 +169,7 @@ function handleVisibleChange(visible: boolean) {
 .unread-pill {
   font-size: 11px;
   background-color: var(--el-color-danger, var(--color-status-danger));
-  color: #fff;
+  color: var(--color-on-inverse);
   padding: 1px 6px;
   border-radius: 10px;
   font-weight: 500;
@@ -196,7 +196,7 @@ function handleVisibleChange(visible: boolean) {
 .notification-title {
   font-weight: 600;
   font-size: var(--text-sm, 13px);
-  color: var(--text-primary, var(--color-text));
+  color: var(--color-text);
 }
 .notification-time {
   font-size: 11px;

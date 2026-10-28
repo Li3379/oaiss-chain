@@ -38,7 +38,7 @@ defineProps({
 
 .page-title {
   margin: 0;
-  color: var(--text-primary);
+  color: var(--color-text);
   font-size: 24px;
   font-weight: 700;
   letter-spacing: 0.4px;
@@ -46,7 +46,7 @@ defineProps({
 
 .page-description {
   margin: 14px 0 0;
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
   font-size: var(--text-base);
   line-height: 1.8;
 }

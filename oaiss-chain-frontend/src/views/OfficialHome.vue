@@ -684,7 +684,7 @@ watch(
 }
 
 .brand {
-  color: var(--mint-100);
+  color: var(--color-mint-100);
   font-weight: 700;
   font-size: var(--text-xl);
   cursor: pointer;
@@ -698,14 +698,14 @@ watch(
 .nav-item {
   border: none;
   background: transparent;
-  color: var(--mint-050);
+  color: var(--color-mint-050);
   font-size: var(--text-base);
   cursor: pointer;
   padding: 6px 8px;
 }
 
 .nav-item:hover {
-  color: var(--mint-300);
+  color: var(--color-mint-300);
 }
 
 .social-links {
@@ -716,7 +716,7 @@ watch(
 .social-btn {
   border: 1px solid rgba(189, 243, 230, 0.32);
   background: rgba(255, 255, 255, 0.08);
-  color: var(--mint-200);
+  color: var(--color-mint-200);
   width: 34px;
   height: 34px;
   border-radius: 8px;
@@ -732,7 +732,7 @@ watch(
 .nav-cta-login {
   border: 1px solid rgba(189, 243, 230, 0.36);
   background: transparent;
-  color: var(--mint-100);
+  color: var(--color-mint-100);
   padding: 8px 16px;
   border-radius: 10px;
   font-size: var(--text-base);
@@ -747,8 +747,8 @@ watch(
 
 .nav-cta-primary {
   border: none;
-  background: var(--brand-gradient);
-  color: var(--text-on-dark);
+  background: var(--color-accent);
+  color: var(--color-on-inverse);
   padding: 9px 18px;
   border-radius: 10px;
   font-weight: 600;
@@ -779,7 +779,7 @@ watch(
   display: block;
   width: 100%;
   height: 2px;
-  background: var(--mint-200);
+  background: var(--color-mint-200);
   border-radius: 1px;
 }
 
@@ -808,7 +808,7 @@ watch(
   padding: 14px 24px;
   border: none;
   background: transparent;
-  color: var(--mint-050);
+  color: var(--color-mint-050);
   font-size: 15px;
   text-align: left;
   cursor: pointer;
@@ -816,7 +816,7 @@ watch(
 
 .mobile-menu-item:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: var(--mint-300);
+  color: var(--color-mint-300);
 }
 
 .hero {
@@ -859,7 +859,7 @@ watch(
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  color: var(--mint-200);
+  color: var(--color-mint-200);
   font-size: var(--text-sm);
 }
 
@@ -894,8 +894,8 @@ watch(
   align-items: center;
   gap: 8px;
   border: none;
-  background: var(--brand-gradient);
-  color: var(--text-on-dark);
+  background: var(--color-accent);
+  color: var(--color-on-inverse);
   font-size: var(--text-md);
   font-weight: 600;
   padding: 13px 26px;
@@ -920,7 +920,7 @@ watch(
   border: 1px solid rgba(202, 255, 241, 0.5);
   background: rgba(10, 58, 55, 0.35);
   backdrop-filter: blur(6px);
-  color: var(--mint-100);
+  color: var(--color-mint-100);
   font-size: var(--text-md);
   padding: 13px 26px;
   border-radius: 12px;
@@ -946,7 +946,7 @@ watch(
   background: var(--color-brand-strong);
   backdrop-filter: blur(14px);
   padding: 18px 18px 16px;
-  color: var(--mint-100);
+  color: var(--color-mint-100);
 }
 
 .twin-head {
@@ -984,7 +984,7 @@ watch(
 .twin-head-live {
   margin-left: auto;
   font-size: var(--text-xs);
-  color: var(--mint-300);
+  color: var(--color-mint-300);
   letter-spacing: 0.04em;
 }
 
@@ -1162,7 +1162,7 @@ watch(
 
 .feature-card,
 .role-card {
-  background: var(--surface-gradient);
+  background: var(--color-surface);
   border: 1px solid var(--color-on-inverse-muted);
   border-radius: 14px;
   padding: 18px;
@@ -1247,7 +1247,7 @@ watch(
   display: grid;
   place-items: center;
   background: var(--color-accent);
-  color: var(--text-on-dark);
+  color: var(--color-on-inverse);
   font-size: var(--text-lg);
 }
 
@@ -1273,7 +1273,7 @@ watch(
 }
 
 .intro-left {
-  background: var(--surface-gradient);
+  background: var(--color-surface);
   border: 1px solid var(--color-on-inverse-muted);
   border-radius: 14px;
   padding: 18px;
@@ -1469,8 +1469,8 @@ watch(
 .role-dialog-login {
   flex: 1;
   border: none;
-  background: var(--brand-gradient);
-  color: var(--text-on-dark);
+  background: var(--color-accent);
+  color: var(--color-on-inverse);
   font-size: var(--text-base);
   font-weight: 600;
   padding: 12px 18px;
@@ -1553,14 +1553,14 @@ watch(
 
 .footer a {
   display: block;
-  color: var(--mint-400);
+  color: var(--color-mint-400);
   text-decoration: none;
   margin-bottom: 8px;
   font-size: var(--text-sm);
 }
 
 .footer a:hover {
-  color: var(--mint-100);
+  color: var(--color-mint-100);
 }
 
 .footer-link {
@@ -1569,7 +1569,7 @@ watch(
   padding: 0;
   border: none;
   background: transparent;
-  color: var(--mint-400);
+  color: var(--color-mint-400);
   margin-bottom: 8px;
   font-size: var(--text-sm);
   text-align: left;
@@ -1577,7 +1577,7 @@ watch(
 }
 
 .footer-link:hover {
-  color: var(--mint-100);
+  color: var(--color-mint-100);
 }
 
 .copyright {

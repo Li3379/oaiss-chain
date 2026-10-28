@@ -416,7 +416,7 @@ onMounted(() => {
             >
               {{ t('auditList.reviewAction') }}
             </el-button>
-            <span v-else style="color: var(--text-secondary);">-</span>
+            <span v-else style="color: var(--color-text-muted);">-</span>
           </template>
         </el-table-column>
       </el-table>
@@ -535,7 +535,7 @@ onMounted(() => {
 }
 
 .section-card {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
 }
 
@@ -553,7 +553,7 @@ onMounted(() => {
 
 .identity-line,
 .identity-sub {
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
 }
 
@@ -574,7 +574,7 @@ onMounted(() => {
 
 .quick-reasons-title {
   font-size: var(--text-sm);
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
   margin-right: 8px;
 }
 

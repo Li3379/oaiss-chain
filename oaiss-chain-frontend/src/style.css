@@ -1,58 +1,11 @@
 :root {
-  --bg-page: var(--color-ground);
-  --bg-surface: var(--color-surface);
-  --bg-header: var(--color-ground);
-  --text-primary: var(--color-text);
-  --text-secondary: var(--color-text-muted);
-  --border-color: var(--color-border);
-  --teal: var(--color-accent);
-  --green: var(--color-status-success);
-  --success-soft: var(--color-status-success-soft);
-  --shadow-soft: var(--color-shadow-soft);
-
   /* 品牌与表面视觉令牌：组件内不再写裸 hex（UI/UX 规范：语义色令牌） */
-  --brand-gradient: linear-gradient(120deg, #18a99a 0%, #42c977 100%);
-  --surface-gradient: linear-gradient(180deg, #ffffff 0%, #f8fbfb 100%);
-  --text-on-dark: var(--color-on-inverse);
-
   /* 品牌绿 tint 阶梯（原散落于营销页/卡片的裸 hex） */
-  --mint-400: var(--color-mint-400);
-  --mint-300: var(--color-mint-300);
-  --mint-200: var(--color-mint-200);
-  --mint-100: var(--color-mint-100);
-  --mint-050: var(--color-mint-050);
-
   /* 图表系列色与品牌文字（ECharts 不解析 var()，组件按需运行时读取） */
-  --chart-series-1: var(--color-chart-1);
-  --chart-series-2: var(--color-chart-2);
-  --chart-series-3: var(--color-chart-3);
-  --chart-series-info: var(--color-chart-info);
-  --text-brand-strong: var(--color-brand-strong);
-  --text-brand-muted: var(--color-brand-muted);
-
   /* 深色外壳上的次要文字（统一 4 种近白漂移为 1 个语义令牌） */
-  --text-on-dark-muted: var(--color-on-inverse-muted);
   /* 统计卡语义渐变（信息/警告/成功/危险/中性） */
-  --stat-gradient-info: linear-gradient(135deg, #145f5a 0%, #1b7f76 100%);
-  --stat-gradient-warning: linear-gradient(135deg, #a97116 0%, #b57f1e 100%);
-  --stat-gradient-success: linear-gradient(135deg, #0e7a52 0%, #1b9a68 100%);
-  --stat-gradient-danger: linear-gradient(135deg, #b04843 0%, #c95c50 100%);
-  --stat-gradient-neutral: linear-gradient(135deg, #2b6e64 0%, #2e8f7f 100%);
-
   /* 应用外壳深色渐变与高亮（侧栏/顶栏/选中态） */
-  --chrome-gradient-side: linear-gradient(180deg, #0d3236 0%, #125850 62%, #198369 100%);
-  --chrome-gradient-top: linear-gradient(90deg, #17363a 0%, #1e4d49 100%);
-  --chrome-gradient-accent: linear-gradient(130deg, #34d5bf, #90f0b1);
-  --chrome-selected-gradient: linear-gradient(120deg, #d8fbef 0%, #e8f4fb 100%);
-  --chrome-selected-text: var(--color-on-selected);
-  --teal-on-dark: var(--color-accent-on-inverse);
   /* 页面级浅底与浅灰（空态/占位） */
-  --bg-subtle: var(--color-raised);
-  --bg-elevated: var(--color-surface-elevated);
-  --border-teal-soft: var(--color-border-soft);
-  --login-backdrop: linear-gradient(180deg, #163237 0%, #1f4a4d 100%);
-  --login-accent: linear-gradient(130deg, #23baa8, #6adf85);
-
   /* Type tokens — single source for in-app font sizes */
   --text-xs: 12px;
   --text-sm: 13px;
@@ -201,7 +154,7 @@ body,
 }
 
 body {
-  color: var(--text-primary);
+  color: var(--color-text);
   background: var(--color-ground);
 }
 

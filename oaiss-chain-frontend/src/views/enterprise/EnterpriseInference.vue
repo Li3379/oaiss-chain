@@ -804,7 +804,7 @@ onBeforeUnmount(() => {
 }
 
 .section-card {
-  border: 1px solid var(--border-color, var(--color-border));
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   background: var(--color-surface);
 }

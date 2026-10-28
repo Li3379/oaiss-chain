@@ -33,7 +33,7 @@ function goBack() {
   align-items: center;
   justify-content: center;
   height: 100vh;
-  background: var(--bg-subtle);
+  background: var(--color-raised);
 }
 
 .content {
@@ -43,14 +43,14 @@ function goBack() {
 .code {
   font-size: 120px;
   font-weight: 700;
-  color: var(--teal);
+  color: var(--color-accent);
   margin: 0;
   line-height: 1;
 }
 
 .desc {
   font-size: var(--text-lg);
-  color: var(--text-secondary);
+  color: var(--color-text-muted);
   margin: 20px 0 32px;
 }
 
