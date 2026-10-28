@@ -464,7 +464,7 @@ onMounted(() => {
 
 .side-menu :deep(.el-sub-menu__title),
 .side-menu :deep(.el-menu-item) {
-  color: var(--color-text-muted);
+  color: var(--color-text);
   border-radius: var(--radius-card);
   margin: 2px 10px;
   height: 44px;
