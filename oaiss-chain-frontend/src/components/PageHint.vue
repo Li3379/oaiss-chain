@@ -30,17 +30,17 @@ defineProps<{
   gap: 10px;
   margin-bottom: 16px;
   padding: 10px 16px;
-  border: 1px solid rgba(20, 167, 154, 0.24);
-  border-radius: 10px;
-  background: linear-gradient(180deg, rgba(20, 167, 154, 0.06) 0%, rgba(20, 167, 154, 0.02) 100%);
-  color: var(--text-brand-muted, #2f6268);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
   font-size: var(--text-sm);
   line-height: 1.6;
 }
 
 .page-hint__icon {
   flex-shrink: 0;
-  color: var(--el-color-primary, #14a79a);
+  color: var(--color-accent);
 }
 
 .page-hint__text {

@@ -585,9 +585,9 @@ onMounted(() => {
 }
 
 .status-tag {
-  background: var(--color-accent);
-  border: none;
-  color: var(--color-on-inverse);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
 }
 
 .avatar-icon {

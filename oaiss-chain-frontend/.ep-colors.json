@@ -1,0 +1,47 @@
+{
+  "primary": {
+    "base": "#141414",
+    "light-3": "#5A5A5A",
+    "light-5": "#8A8A8A",
+    "light-7": "#B8B8B8",
+    "light-8": "#D0D0D0",
+    "light-9": "#E8E8E8",
+    "dark-2": "#101010"
+  },
+  "success": {
+    "base": "#2E7D32",
+    "light-3": "#6DA470",
+    "light-5": "#96BE98",
+    "light-7": "#C0D8C2",
+    "light-8": "#D5E5D6",
+    "light-9": "#EAF2EA",
+    "dark-2": "#256428"
+  },
+  "warning": {
+    "base": "#B45309",
+    "light-3": "#CA8753",
+    "light-5": "#DAA984",
+    "light-7": "#E8CBB5",
+    "light-8": "#F0DDCE",
+    "light-9": "#F8EEE6",
+    "dark-2": "#904207"
+  },
+  "danger": {
+    "base": "#C4242A",
+    "light-3": "#D6666A",
+    "light-5": "#E29294",
+    "light-7": "#EDBDBF",
+    "light-8": "#F3D3D4",
+    "light-9": "#F9E9EA",
+    "dark-2": "#9D1D22"
+  },
+  "info": {
+    "base": "#6B6B6B",
+    "light-3": "#979797",
+    "light-5": "#B5B5B5",
+    "light-7": "#D3D3D3",
+    "light-8": "#E1E1E1",
+    "light-9": "#F0F0F0",
+    "dark-2": "#565656"
+  }
+}

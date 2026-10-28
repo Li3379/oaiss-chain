@@ -31,10 +31,9 @@ defineProps({
 }
 
 .page-card {
-  border: 1px solid var(--border-color);
-  border-radius: 14px;
-  background: var(--surface-gradient);
-  box-shadow: var(--shadow-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
 }
 
 .page-title {
