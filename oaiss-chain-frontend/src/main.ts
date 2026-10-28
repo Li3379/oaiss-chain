@@ -6,6 +6,7 @@ import router from './router'
 import { pinia } from './store'
 import i18n from './i18n'
 import './style.css'
+import './styles/responsive.css'
 import App from './App.vue'
 
 createApp(App).use(pinia).use(router).use(i18n).mount('#app')
