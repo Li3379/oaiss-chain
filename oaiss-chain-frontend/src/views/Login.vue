@@ -304,6 +304,8 @@ const onBackToHome = () => {
   position: relative;
   overflow: hidden;
   background: var(--color-brand-strong);
+  /* 深底品牌区：文字必须用反相色，不能继承 --color-text（它在亮色下是近黑） */
+  color: var(--color-on-inverse);
   display: flex;
 }
 
