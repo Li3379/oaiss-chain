@@ -34,6 +34,10 @@ export interface PowerGenerationCalculationRequest {
   carbonateConsumed: number | null
   desulfEmissionFactor: number | null
   desulfConversionRate: number | null
+  /** 净购入电量 AD电 (MWh) — 国标式第三项，历史上完全缺失 */
+  purchasedElectricity?: number | null
+  /** 区域电网排放因子 EF电 (tCO2/MWh) */
+  electricityEmissionFactor?: number | null
   reportingYear: number
   enterpriseName: string
 }
@@ -52,6 +56,8 @@ export interface FuelEmissionDetail {
 export interface PowerGenerationCalculationResponse {
   totalEmission: number
   combustionEmission: number
+  /** 净购入电力间接排放 (tCO2) — 国标式第三项，属范围二 */
+  purchasedElectricityEmission?: number
   desulfurizationEmission: number
   fuelDetails: FuelEmissionDetail[]
   reportingYear: string
@@ -78,6 +84,8 @@ export interface PowerGridCalculationResponse {
   totalEmission: number
   transmissionLossEmission: number
   importedEmission: number
+  /** SF6 绝缘设备泄漏排放 (tCO2e)。后端一直有计算，历史上类型缺此字段，结果面板无法展示。 */
+  sf6Emission?: number
   transmissionLoss: number
   formulaReference: string
   reportingYear: string

@@ -227,7 +227,7 @@ Technical Architecture & User Manual
 
 # 第五章 核心 API 与接口契约规范
 
-> **契约导言**：本章定义 146 个 Spring Boot REST API 端点契约、统一响应信封、全局错误码体系及 ML 微服务接口。
+> **契约导言**：本章定义 148 个 Spring Boot REST API 端点契约、统一响应信封、全局错误码体系及 ML 微服务接口。
 **表 5.1.1 章节修订与审核责任记录表**
 
 | 编号 | 变更状态 | 修订日期 | 执笔人 | 审核人 | 批准人 | 变更摘要与说明 |
@@ -238,7 +238,7 @@ Technical Architecture & User Manual
 
 ---
 
-系统后端通过 Spring Boot 统一对外发布 146 个 RESTful 接口，统一挂载在 `/api/v1` 前缀下。全局采用统一响应信封格式 ApiResponse`<T>`：
+系统后端通过 Spring Boot 统一对外发布 148 个 RESTful 接口，统一挂载在 `/api/v1` 前缀下。全局采用统一响应信封格式 ApiResponse`<T>`：
 
 ```json
 {
@@ -265,7 +265,7 @@ Technical Architecture & User Manual
 
 # 第六章 开发者快速上手与部署运维
 
-> **契约导言**：本章定义 146 个 Spring Boot REST API 端点契约、统一响应信封、全局错误码体系及 ML 微服务接口。
+> **契约导言**：本章定义 148 个 Spring Boot REST API 端点契约、统一响应信封、全局错误码体系及 ML 微服务接口。
 **表 6.1.1 章节修订与审核责任记录表**
 
 | 编号 | 变更状态 | 修订日期 | 执笔人 | 审核人 | 批准人 | 变更摘要与说明 |

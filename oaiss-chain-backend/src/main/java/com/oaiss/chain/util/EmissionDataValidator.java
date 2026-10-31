@@ -58,7 +58,22 @@ public final class EmissionDataValidator {
         }
 
         if (rootNode == null || !rootNode.isObject()) {
-            return new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO};
+            // 历史行为：任何无法识别为 JSON 对象的载荷都静默返回全 0，
+            // 于是「报告创建成功、totalEmission=0」这种最危险的组合无人察觉
+            // （真实排放被记成 0，后续评级/配额/交易全部失真）。
+            //
+            // 现在的策略是「区分合法空值 vs 结构错误」：
+            //   - 空数组 `[]` / JSON null：合法地表示「本次无排放数据」，返回全 0；
+            //   - 纯文本、畸形 JSON、标量根：这些是**填写或传输错误**，必须报错，
+            //     而不是把错误伪装成一次成功的零排放申报。
+            if (rootNode != null && rootNode.isArray() && rootNode.isEmpty()) {
+                return new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO};
+            }
+            if (rootNode != null && rootNode.isNull()) {
+                return new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO};
+            }
+            throw CarbonException.dataFormatError(
+                    "emissionData: 期望 JSON 对象（如 {\"scope1\":[...]}），实际无法解析");
         }
 
         // 深度递归遍历所有叶子节点，排查任何负数值与非法格式

@@ -25,6 +25,14 @@ public class PowerGenerationCalculationResponse {
     /** 脱硫排放量 (tCO2) */
     private BigDecimal desulfurizationEmission;
 
+    /**
+     * 净购入电力间接排放量 (tCO2)。
+     *
+     * <p>国标式第三项 {@code AD电 × EF电}。历史上该项未实现，响应也没有这个字段，
+     * 导致前端只能看到总量跳变、看不到分量贡献。</p>
+     */
+    private BigDecimal purchasedElectricityEmission;
+
     /** 各燃料排放明细 */
     private List<FuelEmissionDetail> fuelDetails;
 

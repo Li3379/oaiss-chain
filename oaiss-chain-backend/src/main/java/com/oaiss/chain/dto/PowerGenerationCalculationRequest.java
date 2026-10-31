@@ -23,11 +23,11 @@ public class PowerGenerationCalculationRequest {
     @DecimalMin(value = "0", message = "原煤消耗量不能为负")
     private BigDecimal rawCoalFc;
 
-    /** 原煤低位发热量 (GJ/t) */
+    /** 原煤低位发热量 (kJ/kg) */
     @DecimalMin(value = "0", message = "原煤低位发热量不能为负")
     private BigDecimal rawCoalNcv;
 
-    /** 原煤含碳量 (tC/GJ) */
+    /** 原煤含碳量 (tC/TJ) */
     @DecimalMin(value = "0", message = "原煤含碳量不能为负")
     private BigDecimal rawCoalCc;
 
@@ -42,11 +42,11 @@ public class PowerGenerationCalculationRequest {
     @DecimalMin(value = "0", message = "洗精煤消耗量不能为负")
     private BigDecimal cleanedCoalFc;
 
-    /** 洗精煤低位发热量 (GJ/t) */
+    /** 洗精煤低位发热量 (kJ/kg) */
     @DecimalMin(value = "0", message = "洗精煤低位发热量不能为负")
     private BigDecimal cleanedCoalNcv;
 
-    /** 洗精煤含碳量 (tC/GJ) */
+    /** 洗精煤含碳量 (tC/TJ) */
     @DecimalMin(value = "0", message = "洗精煤含碳量不能为负")
     private BigDecimal cleanedCoalCc;
 
@@ -61,11 +61,11 @@ public class PowerGenerationCalculationRequest {
     @DecimalMin(value = "0", message = "其他洗煤消耗量不能为负")
     private BigDecimal otherWashedCoalFc;
 
-    /** 其他洗煤低位发热量 (GJ/t) */
+    /** 其他洗煤低位发热量 (kJ/kg) */
     @DecimalMin(value = "0", message = "其他洗煤低位发热量不能为负")
     private BigDecimal otherWashedCoalNcv;
 
-    /** 其他洗煤含碳量 (tC/GJ) */
+    /** 其他洗煤含碳量 (tC/TJ) */
     @DecimalMin(value = "0", message = "其他洗煤含碳量不能为负")
     private BigDecimal otherWashedCoalCc;
 
@@ -80,11 +80,11 @@ public class PowerGenerationCalculationRequest {
     @DecimalMin(value = "0", message = "型煤消耗量不能为负")
     private BigDecimal briquetteFc;
 
-    /** 型煤低位发热量 (GJ/t) */
+    /** 型煤低位发热量 (kJ/kg) */
     @DecimalMin(value = "0", message = "型煤低位发热量不能为负")
     private BigDecimal briquetteNcv;
 
-    /** 型煤含碳量 (tC/GJ) */
+    /** 型煤含碳量 (tC/TJ) */
     @DecimalMin(value = "0", message = "型煤含碳量不能为负")
     private BigDecimal briquetteCc;
 
@@ -99,11 +99,11 @@ public class PowerGenerationCalculationRequest {
     @DecimalMin(value = "0", message = "其他煤消耗量不能为负")
     private BigDecimal otherCoalFc;
 
-    /** 其他煤低位发热量 (GJ/t) */
+    /** 其他煤低位发热量 (kJ/kg) */
     @DecimalMin(value = "0", message = "其他煤低位发热量不能为负")
     private BigDecimal otherCoalNcv;
 
-    /** 其他煤含碳量 (tC/GJ) */
+    /** 其他煤含碳量 (tC/TJ) */
     @DecimalMin(value = "0", message = "其他煤含碳量不能为负")
     private BigDecimal otherCoalCc;
 
@@ -126,6 +126,16 @@ public class PowerGenerationCalculationRequest {
     @DecimalMin(value = "0", message = "脱硫转化率不能为负")
     @DecimalMax(value = "1", message = "脱硫转化率不能大于1")
     private BigDecimal desulfConversionRate;
+
+    // ==================== 净购入电力（国标式第三项） ====================
+
+    /** 净购入电量 AD电 (MWh) */
+    @DecimalMin(value = "0", message = "净购入电量不能为负")
+    private BigDecimal purchasedElectricity;
+
+    /** 区域电网年平均供电排放因子 EF电 (tCO2/MWh) */
+    @DecimalMin(value = "0", message = "电网排放因子不能为负")
+    private BigDecimal electricityEmissionFactor;
 
     // ==================== 元数据 ====================
 

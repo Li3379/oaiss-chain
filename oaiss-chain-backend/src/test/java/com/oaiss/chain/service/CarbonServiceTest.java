@@ -651,18 +651,24 @@ class CarbonServiceTest {
         assertEquals(ReportStatusEnum.REJECTED.getCode(), response.getStatus());
     }
 
+    /**
+     * 畸形 emissionData 必须**拒绝创建**，而不是静默落库 totalEmission=0。
+     *
+     * <p>旧断言曾要求本用例「创建成功并 save」，把「静默归零」这个最危险的旧行为
+     * 固化成了契约——真实排放被记成 0 却显示创建成功，后续评级/配额/交易全部失真。
+     * 语义变更后该断言必须同步：应抛数据格式异常且不落库。</p>
+     */
     @Test
-    @DisplayName("create report with emission data parsing failure")
+    @DisplayName("create report rejects malformed emission data (no silent zero)")
     void testCreateReportWithMalformedEmissionData() throws Exception {
         reportRequest.setEmissionData("not-json");
         when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(testEnterprise));
         when(objectMapper.readTree("not-json")).thenThrow(new RuntimeException("parse error"));
-        when(carbonReportRepository.save(any(CarbonReport.class))).thenReturn(testReport);
 
-        CarbonReportResponse response = carbonService.createReport(currentUser, reportRequest);
-
-        assertNotNull(response);
-        verify(carbonReportRepository, times(1)).save(any(CarbonReport.class));
+        assertThrows(CarbonException.class,
+                () -> carbonService.createReport(currentUser, reportRequest),
+                "畸形载荷应抛数据格式异常");
+        verify(carbonReportRepository, never()).save(any(CarbonReport.class));
     }
 
     @Test

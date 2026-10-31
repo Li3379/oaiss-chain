@@ -140,4 +140,38 @@ class EmissionDataValidatorTest {
         BigDecimal[] zero3 = EmissionDataValidator.validateAndParse("{}", objectMapper);
         assertEquals(BigDecimal.ZERO, zero3[3]);
     }
+
+
+    /**
+     * C-06：非对象根 / 畸形 JSON 必须报错，不得静默返回全 0。
+     *
+     * <p>历史行为是静默归零，于是「报告创建成功、totalEmission=0」这种最危险的组合
+     * 无人察觉——真实排放被记成 0，后续评级/配额/交易全部失真。</p>
+     */
+    @Test
+    @DisplayName("C-06: 畸形载荷抛错而非静默归零")
+    void testMalformedPayloadThrowsInsteadOfSilentZero() {
+        // 纯文本
+        assertThrows(CarbonException.class,
+                () -> EmissionDataValidator.validateAndParse("not-a-json", objectMapper),
+                "纯文本应抛错");
+        // 标量根
+        assertThrows(CarbonException.class,
+                () -> EmissionDataValidator.validateAndParse("123", objectMapper),
+                "标量根应抛错");
+        // 非空数组根（结构错误，不是「无数据」的表达）
+        assertThrows(CarbonException.class,
+                () -> EmissionDataValidator.validateAndParse("[1,2,3]", objectMapper),
+                "非空数组根应抛错");
+    }
+
+    @Test
+    @DisplayName("C-06b: 空数组与 JSON null 仍视为合法的零排放")
+    void testEmptyArrayAndNullStillZero() {
+        BigDecimal[] emptyArr = EmissionDataValidator.validateAndParse("[]", objectMapper);
+        assertEquals(BigDecimal.ZERO, emptyArr[3]);
+
+        BigDecimal[] jsonNull = EmissionDataValidator.validateAndParse("null", objectMapper);
+        assertEquals(BigDecimal.ZERO, jsonNull[3]);
+    }
 }

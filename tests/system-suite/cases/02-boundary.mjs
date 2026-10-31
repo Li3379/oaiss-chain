@@ -87,8 +87,8 @@ export const boundaryCases = [
       enterpriseName: '火电一厂',
       reportingYear: 2026,
       rawCoalFc: 100,
-      rawCoalNcv: 26.7,
-      rawCoalCc: 0.0274,
+      rawCoalNcv: 26700,
+      rawCoalCc: 27.4,
       rawCoalOf: 0.98,
       desulfConversionRate: 1.00 // 刚好边界值 1.0
     },
@@ -106,8 +106,8 @@ export const boundaryCases = [
       enterpriseName: '火电一厂',
       reportingYear: 2026,
       rawCoalFc: 100,
-      rawCoalNcv: 26.7,
-      rawCoalCc: 0.0274,
+      rawCoalNcv: 26700,
+      rawCoalCc: 27.4,
       rawCoalOf: 0.98,
       desulfConversionRate: 1.01 // 超过 1.0 上限
     },
@@ -125,8 +125,8 @@ export const boundaryCases = [
       enterpriseName: '火电一厂',
       reportingYear: 2026,
       rawCoalFc: -100, // 负数消耗量
-      rawCoalNcv: 26.7,
-      rawCoalCc: 0.0274,
+      rawCoalNcv: 26700,
+      rawCoalCc: 27.4,
       rawCoalOf: 0.98,
       desulfConversionRate: 0.90
     },

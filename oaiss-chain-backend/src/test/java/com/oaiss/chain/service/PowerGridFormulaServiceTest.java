@@ -242,4 +242,32 @@ class PowerGridFormulaServiceTest {
         assertEquals(0, new BigDecimal("717.0000").compareTo(response.getSf6Emission()));
         assertEquals(0, new BigDecimal("1017.0000").compareTo(response.getTotalEmission()));
     }
+
+
+    /**
+     * C-05：SF6 排放必须能通过响应契约被读到。
+     *
+     * <p>后端一直有 SF6 计算，但历史上的响应类型/前端类型缺这个字段，
+     * 导致「算出来了但 UI 永远显示 0」。此用例锁定字段确实暴露。</p>
+     */
+    @Test
+    @DisplayName("C-05: SF6 排放通过响应字段暴露")
+    void testSf6EmissionExposedInResponse() {
+        PowerGridCalculationRequest request = new PowerGridCalculationRequest();
+        request.setReportingYear(2024);
+        request.setEnterpriseName("SF6 契约测试");
+        request.setTransmissionVolume(new BigDecimal("0"));
+        request.setLineLossRate(new BigDecimal("0"));
+        request.setGridEmissionFactor(new BigDecimal("0"));
+        request.setRecCapacity(new BigDecimal("20"));
+        request.setRecRecovery(new BigDecimal("0"));
+        request.setRepCapacity(new BigDecimal("10"));
+        request.setRepRecovery(new BigDecimal("0"));
+
+        PowerGridCalculationResponse response = powerGridFormulaService.calculate(request);
+
+        assertNotNull(response.getSf6Emission(), "响应必须包含 sf6Emission 字段");
+        assertEquals(0, new BigDecimal("717.0000").compareTo(response.getSf6Emission()),
+                "SF6 = (20+10) × 23.9 = 717，实际 " + response.getSf6Emission());
+    }
 }

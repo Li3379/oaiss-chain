@@ -32,14 +32,14 @@
 
 ## 目 录
 
-- [第一部分 后端 REST API 接口完整清单 (146 端点)](#第一部分-后端-rest-api-接口完整清单-146-端点)
+- [第一部分 后端 REST API 接口完整清单 (148 端点)](#第一部分-后端-rest-api-接口完整清单-148-端点)
 - [第二部分 Python ML 预测微服务算法接口](#第二部分-python-ml-预测微服务算法接口)
 
 ---
 
 ### 双碳链动系统 (OAISS CHAIN) —— 系统 API 接口参考规范
 
-# 第一部分 后端 REST API 接口完整清单 (146 端点)
+# 第一部分 后端 REST API 接口完整清单 (148 端点)
 
 <div align="center">
   <img src="../assets/architecture/01-system-hexagonal-architecture.png" width="90%" alt="图 1.0.1 系统 API 接口网关与六边形微服务交互拓扑图">
@@ -48,7 +48,7 @@
 </div>
 
 
-> **契约导言**：本章定义 146 个 Spring Boot REST API 端点契约、统一响应信封、全局错误码体系及 ML 微服务接口。
+> **契约导言**：本章定义 148 个 Spring Boot REST API 端点契约、统一响应信封、全局错误码体系及 ML 微服务接口。
 **表 1.1.1 章节修订与审核责任记录表**
 
 | 编号 | 变更状态 | 修订日期 | 执笔人 | 审核人 | 批准人 | 变更摘要与说明 |
@@ -515,9 +515,24 @@ Submit a sell order.
 
 ### POST `/auction/match`
 
-Execute order matching (price-time priority).
+Manually execute one round of order matching (price-time priority).
+
+The platform runs matching **automatically every 30 seconds** (`AuctionMatchingScheduler`); this endpoint is the admin's "don't wait for the next tick" manual trigger. It shares the same Redis distributed lock (`auction:matching`) as the scheduler, so concurrent rounds cannot double-settle.
 
 - ADMIN**
+- `409` when another matching round is already running
+
+### GET `/auction/matching-status`
+
+Query the auto-matching runtime state: enabled flag, interval, pending buy/sell order counts, and last settlement time.
+
+- ADMIN**
+
+### GET `/auction/all-results`
+
+List **platform-wide** matching results (not scoped to the caller). The enterprise-facing `GET /auction/results` returns only the caller's own deals, so counterparties are not exposed.
+
+- ADMIN** | Paginated
 
 ### GET `/auction/orders`
 
@@ -1167,7 +1182,7 @@ Receive frontend performance metrics batch (Core Web Vitals: LCP, INP, CLS, etc.
 </div>
 
 
-> **契约导言**：本章定义 146 个 Spring Boot REST API 端点契约、统一响应信封、全局错误码体系及 ML 微服务接口。
+> **契约导言**：本章定义 148 个 Spring Boot REST API 端点契约、统一响应信封、全局错误码体系及 ML 微服务接口。
 **表 2.1.1 章节修订与审核责任记录表**
 
 | 编号 | 变更状态 | 修订日期 | 执笔人 | 审核人 | 批准人 | 变更摘要与说明 |

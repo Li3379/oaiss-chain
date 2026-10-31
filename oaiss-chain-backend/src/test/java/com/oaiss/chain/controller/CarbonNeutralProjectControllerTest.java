@@ -924,7 +924,10 @@ class CarbonNeutralProjectControllerTest {
         Page<CarbonNeutralProjectResponse> page = new PageImpl<>(
                 List.of(testResponse), PageRequest.of(0, 20), 1);
 
-        when(projectService.getPendingVerificationProjects(eq(2L), eq(1), eq(20)))
+        // 控制器对「纯 ADMIN」走全局池分支（getAllPendingVerificationProjects），
+        // 因为 ADMIN 不是被指派人，按 verifierId 过滤会恒为空。adminUser 的 roles 只有
+        // ADMIN，因此这里必须 mock 全局池方法，否则返回 null → data 缺 content。
+        when(projectService.getAllPendingVerificationProjects(eq(1), eq(20)))
                 .thenReturn(page);
 
         // When & Then
@@ -935,7 +938,7 @@ class CarbonNeutralProjectControllerTest {
                 .andExpect(jsonPath("$.data.totalElements").value(1));
 
         verify(projectService, times(1))
-                .getPendingVerificationProjects(eq(2L), eq(1), eq(20));
+                .getAllPendingVerificationProjects(eq(1), eq(20));
     }
 
     @Test
@@ -946,7 +949,8 @@ class CarbonNeutralProjectControllerTest {
         Page<CarbonNeutralProjectResponse> page = new PageImpl<>(
                 List.of(), PageRequest.of(0, 20), 0);
 
-        when(projectService.getPendingVerificationProjects(eq(2L), eq(1), eq(20)))
+        // 同 testGetPendingVerificationSuccess：纯 ADMIN 走全局池分支
+        when(projectService.getAllPendingVerificationProjects(eq(1), eq(20)))
                 .thenReturn(page);
 
         // When & Then
@@ -958,6 +962,33 @@ class CarbonNeutralProjectControllerTest {
                 .andExpect(jsonPath("$.data.content").isEmpty());
 
         verify(projectService, times(1))
-                .getPendingVerificationProjects(eq(2L), eq(1), eq(20));
+                .getAllPendingVerificationProjects(eq(1), eq(20));
+    }
+
+    @Test
+    @DisplayName("纯 REVIEWER 走按 verifierId 过滤的分支")
+    void testGetPendingVerificationAsReviewerUsesVerifierFilter() throws Exception {
+        // REVIEWER 不是 ADMIN，控制器应走 getPendingVerificationProjects(verifierId, ...)
+        JwtUserDetails reviewerUser = JwtUserDetails.builder()
+                .userId(9L)
+                .username("reviewer_user")
+                .userType(2)
+                .roles(List.of("REVIEWER"))
+                .enabled(true)
+                .build();
+        setAuthentication(reviewerUser);
+
+        Page<CarbonNeutralProjectResponse> page = new PageImpl<>(
+                List.of(testResponse), PageRequest.of(0, 20), 1);
+        when(projectService.getPendingVerificationProjects(eq(9L), eq(1), eq(20)))
+                .thenReturn(page);
+
+        mockMvc.perform(get("/carbon-neutral/pending-verification"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(1));
+
+        verify(projectService, times(1))
+                .getPendingVerificationProjects(eq(9L), eq(1), eq(20));
+        verify(projectService, never()).getAllPendingVerificationProjects(any(), any());
     }
 }

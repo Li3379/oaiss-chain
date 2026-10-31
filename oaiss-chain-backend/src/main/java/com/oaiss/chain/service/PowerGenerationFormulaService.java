@@ -39,14 +39,39 @@ import java.util.List;
 @RequiredArgsConstructor
 public class PowerGenerationFormulaService {
 
+    /**
+     * CO2/C 摩尔质量比 44/12。
+     *
+     * <p>历史实现按 4 位小数截断（3.6667），相对偏差约 9×10⁻⁶，在万吨级排放上会带来
+     * 0.1 t 级别的误差。改为保留 10 位，最终结果仍按 {@link #RESULT_SCALE} 收口。</p>
+     */
     private static final BigDecimal CO2_TO_C_RATIO = new BigDecimal("44").divide(
-            new BigDecimal("12"), 4, RoundingMode.HALF_UP);
+            new BigDecimal("12"), 10, RoundingMode.HALF_UP);
     private static final int RESULT_SCALE = 4;
     private static final RoundingMode ROUNDING_MODE = RoundingMode.HALF_UP;
 
-    /** 燃料参数定义: 燃料名称, FC字段, NCV字段, CC字段, OF字段 */
+    /**
+     * 单位换算。
+     *
+     * <p><b>口径契约（务必遵守）</b>：本类对外接收的是 <b>GB/T 32150 表 1 口径</b>——
+     * 低位发热量 kJ/kg、单位热值含碳量 tC/TJ（企业化验单与 UI 提示都用这套）。
+     * 内部计算统一换算为 GJ/t 与 tC/GJ，因为国标式
+     * {@code FC(t) × NCV × CC × OF × 44/12} 在这套单位下直接相乘即得 tCO₂。</p>
+     *
+     * <p>换算只在 {@link #buildFuelParamsList} 入口做一次；私有方法只接受计算口径。</p>
+     */
+    private final UnitConversionService unitConversionService;
+
+    /**
+     * 燃料参数定义。
+     *
+     * <p>{@code ncv} 与 {@code cc} 已是<b>计算口径</b>（GJ/t、tC/GJ），
+     * 而 {@code rawNcv} / {@code rawCc} 保留用户录入的国标口径原值，
+     * 用于响应回显——避免「用户填 20908，结果里显示 20.908」的静默错位。</p>
+     */
     private record FuelParams(String name,
-                              BigDecimal fc, BigDecimal ncv, BigDecimal cc, BigDecimal of) {}
+                              BigDecimal fc, BigDecimal ncv, BigDecimal cc, BigDecimal of,
+                              BigDecimal rawNcv, BigDecimal rawCc) {}
 
     /**
      * 计算发电企业碳排放
@@ -78,11 +103,13 @@ public class PowerGenerationFormulaService {
             combustionEmission = combustionEmission.add(emission);
 
             if (fp.fc() != null && fp.fc().compareTo(BigDecimal.ZERO) > 0) {
+                // 回显用**用户录入的国标口径原值**（kJ/kg、tC/TJ），不是内部换算值。
+                // 否则用户填 20908、结果里显示 20.908，会产生 1000 倍的静默错位。
                 fuelDetails.add(FuelEmissionDetail.builder()
                         .fuelType(fp.name())
                         .fuelConsumption(fp.fc())
-                        .netCalorificValue(fp.ncv())
-                        .carbonContent(fp.cc())
+                        .netCalorificValue(fp.rawNcv())
+                        .carbonContent(fp.rawCc())
                         .oxidationRate(fp.of())
                         .emission(emission)
                         .build());
@@ -91,16 +118,24 @@ public class PowerGenerationFormulaService {
 
         BigDecimal desulfurizationEmission = calculateDesulfurizationEmission(request);
 
-        // 总排放
-        BigDecimal totalEmission = combustionEmission.add(desulfurizationEmission);
+        // 国标式第三项：净购入电力间接排放 E_net = AD电(MWh) × EF电(tCO2/MWh)。
+        // 历史实现只算「燃烧 + 脱硫」，与类注释、Controller 注释、前端 API 注释三处
+        // 都宣称「含净购入电力」相矛盾——属于整项缺失，不是小偏差。
+        BigDecimal purchasedElectricityEmission = calculatePurchasedElectricityEmission(request);
 
-        log.info("Calculation completed: combustion={}, desulfurization={}, total={}",
-                combustionEmission, desulfurizationEmission, totalEmission);
+        // 总排放
+        BigDecimal totalEmission = combustionEmission
+                .add(desulfurizationEmission)
+                .add(purchasedElectricityEmission);
+
+        log.info("Calculation completed: combustion={}, desulfurization={}, purchasedElectricity={}, total={}",
+                combustionEmission, desulfurizationEmission, purchasedElectricityEmission, totalEmission);
 
         return PowerGenerationCalculationResponse.builder()
                 .totalEmission(totalEmission)
                 .combustionEmission(combustionEmission)
                 .desulfurizationEmission(desulfurizationEmission)
+                .purchasedElectricityEmission(purchasedElectricityEmission)
                 .fuelDetails(fuelDetails)
                 .reportingYear(String.valueOf(request.getReportingYear()))
                 .enterpriseName(request.getEnterpriseName())
@@ -109,19 +144,52 @@ public class PowerGenerationFormulaService {
                 .build();
     }
 
+    /**
+     * 净购入电力间接排放：E = AD电 × EF电。
+     *
+     * <p>任一分量为空或非正时返回 0（不视为错误——纯自备电厂可以不购电）。</p>
+     */
+    private BigDecimal calculatePurchasedElectricityEmission(PowerGenerationCalculationRequest request) {
+        BigDecimal amount = request.getPurchasedElectricity();
+        BigDecimal factor = request.getElectricityEmissionFactor();
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0
+                || factor == null || factor.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+        return amount.multiply(factor).setScale(RESULT_SCALE, ROUNDING_MODE);
+    }
+
+    /**
+     * 把请求里的 5 种燃料参数组装为内部计算结果结构。
+     *
+     * <p><b>单位换算的唯一入口</b>：请求携带的是国标口径（kJ/kg、tC/TJ），
+     * 生成为计算口径（GJ/t、tC/GJ）。{@code rawNcv}/{@code rawCc} 保留原值供回显。</p>
+     */
     private List<FuelParams> buildFuelParamsList(PowerGenerationCalculationRequest request) {
         return List.of(
-                new FuelParams("原煤", request.getRawCoalFc(), request.getRawCoalNcv(),
+                fuel("原煤", request.getRawCoalFc(), request.getRawCoalNcv(),
                         request.getRawCoalCc(), request.getRawCoalOf()),
-                new FuelParams("洗精煤", request.getCleanedCoalFc(), request.getCleanedCoalNcv(),
+                fuel("洗精煤", request.getCleanedCoalFc(), request.getCleanedCoalNcv(),
                         request.getCleanedCoalCc(), request.getCleanedCoalOf()),
-                new FuelParams("其他洗煤", request.getOtherWashedCoalFc(), request.getOtherWashedCoalNcv(),
+                fuel("其他洗煤", request.getOtherWashedCoalFc(), request.getOtherWashedCoalNcv(),
                         request.getOtherWashedCoalCc(), request.getOtherWashedCoalOf()),
-                new FuelParams("型煤", request.getBriquetteFc(), request.getBriquetteNcv(),
+                fuel("型煤", request.getBriquetteFc(), request.getBriquetteNcv(),
                         request.getBriquetteCc(), request.getBriquetteOf()),
-                new FuelParams("其他煤", request.getOtherCoalFc(), request.getOtherCoalNcv(),
+                fuel("其他煤", request.getOtherCoalFc(), request.getOtherCoalNcv(),
                         request.getOtherCoalCc(), request.getOtherCoalOf())
         );
+    }
+
+    /** 组装单个燃料参数：入参国标口径 → 内部计算口径。 */
+    private FuelParams fuel(String name, BigDecimal fc, BigDecimal rawNcv, BigDecimal rawCc, BigDecimal of) {
+        return new FuelParams(
+                name,
+                fc,
+                unitConversionService.kjPerKgToGjPerT(rawNcv),
+                unitConversionService.tcPerTjToTcPerGj(rawCc),
+                of,
+                rawNcv,
+                rawCc);
     }
 
     private void validateFuelParams(List<FuelParams> fuelParamsList) {

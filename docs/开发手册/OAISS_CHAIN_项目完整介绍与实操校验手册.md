@@ -60,7 +60,7 @@
 - 第 5 章 企业角色（ENTERPRISE）：15 个页面逐项校验
 - 第 6 章 审核员角色（REVIEWER）：4 个页面逐项校验
 - 第 7 章 第三方监管角色（THIRD_PARTY）：1 个页面逐项校验
-- 第 8 章 管理员角色（ADMIN）：6 个页面逐项校验
+- 第 8 章 管理员角色（ADMIN）：5 个页面逐项校验
 - 第 9 章 三条跨角色端到端链路（最重要）
 - 第 10 章 缺陷与差异清单（含复现步骤）
 - 第 11 章 附录：端点总表 / 枚举字典 / 事实校准
@@ -96,8 +96,8 @@
 | 指标 | 当前实测值 | 旧文档宣称 | 结论 |
 |---|---|---|---|
 | 后端 Controller | **23** | 22 | 文档漂移 |
-| REST 端点 | **146** | 143 | 文档漂移 |
-| Service（主包 / ml） | **34 / 3（合计 37）** | 32 / 3（合计 35） | 文档漂移 |
+| REST 端点 | **148** | 143 | 文档漂移 |
+| Service（主包 / ml） | **35 / 3（合计 38）** | 32 / 3（合计 35） | 文档漂移 |
 | JPA 实体 | **25** | 25 | 一致 |
 | Repository | **24** | 24 | 一致 |
 | 核心枚举 | **9** | 9 | 一致 |
@@ -105,7 +105,7 @@
 | Flyway 迁移 | **13 个文件（V1–V14，跳过 V3）** | 12 个版本（V1–V13） | 文档漂移（缺 V14） |
 | 前端 API 模块 | **22**（不含 request.ts） | 22 | 一致 |
 | 前端路由 | **29 个**（含详情页 / 404） | 未明确 | — |
-| 前端 i18n 词条 | **1441 对（zh/en 严格镜像，零单侧缺失）** | 1432 对 | 文档少报 9 个 |
+| 前端 i18n 词条 | **2039 对（zh/en 严格镜像，零单侧缺失）** | 1432 对 | 已按 `i18n-verify.mjs` 实测口径校准 |
 | 后端 i18n（messages） | **78 键（zh/en 零缺失）** | 未提及 | — |
 | 业务模块编号 | **01–23**（新增 23 = Copilot 代理） | 01–22 | 文档漂移 |
 | 区块链运行时 | **mode:FABRIC, connected:true** | 「默认 Mock」 | 文档低估实现 |
@@ -137,7 +137,7 @@ OAISS CHAIN 是一套面向「双碳」（碳达峰、碳中和）的**多方可
 | 官网首页 | `http://localhost:5173/official-home` | 未登录默认落地页 |
 | 登录页 | `http://localhost:5173/login` | 四角色统一入口 |
 | 角色首页 | 企业 `/enterprise/carbon/upload`；审核员 `/auditor/audit/list`；监管 `/third-party/monitor`；管理员 `/admin/system/users` | 由 `config/menu.ts` 的 `ROLE_HOME` 决定 |
-| Swagger | `http://localhost:8080/api/v1/swagger-ui/index.html` | 在线调全部 146 端点 |
+| Swagger | `http://localhost:8080/api/v1/swagger-ui/index.html` | 在线调全部 148 端点 |
 
 ### 1.3 涉及角色与权限
 
@@ -298,7 +298,7 @@ OAISS CHAIN 是一套面向「双碳」（碳达峰、碳中和）的**多方可
 | 企业 ENTERPRISE | `enterprise001` | `admin123` | `/enterprise/carbon/upload` | 11（含 4 个分组） |
 | 审核员 REVIEWER | `reviewer001` | `admin123` | `/auditor/audit/list` | **5**（本次新增「认证管理」） |
 | 第三方监管 THIRD_PARTY | `thirdparty001` | `admin123` | `/third-party/monitor` | 1 |
-| 管理员 ADMIN | `admin` | `admin123` | `/admin/system/users` | 5 |
+| 管理员 ADMIN | `admin` | `admin123` | `/admin/system/users` | 4 |
 
 ### 3.3 涉及角色与权限（实测菜单树）
 
@@ -308,7 +308,9 @@ OAISS CHAIN 是一套面向「双碳」（碳达峰、碳中和）的**多方可
 
 **监管（1 项）**：监管中心
 
-**管理员（5 项）**：系统管理▾（用户管理、碳核算管理、系统配置）/ 数据管理 / 认证管理 / 证书管理
+**管理员（4 项）**：系统管理▾（用户管理、碳核算管理、系统配置）/ 数据管理 / 证书管理
+
+> **单入口说明（2026-10-28）**：管理员端原有的「认证列表」(`/admin/verify/list`) 与审核员的「上链补救」(`/auditor/verify/list`) 渲染同一组件、执行同一动作，属功能重复，已随菜单与路由一并取消。上链补救统一由审核员承担；管理员如需兜底，直接访问 `/auditor/verify/list` 即可（该路由 `meta.roles` 含 `ADMIN`），无需第二条路由。
 
 > **权限边界要点（务必讲准）**
 > - 企业：**能造数据、改数据、发交易、管自己密钥**；不能自审、不能给自己签证书。
@@ -340,7 +342,7 @@ OAISS CHAIN 是一套面向「双碳」（碳达峰、碳中和）的**多方可
 
 ### 3.7 预期结果
 
-- 步骤 2：菜单项数应分别为 11 / 5 / 1 / 5；审核员侧应看到「认证管理」。
+- 步骤 2：菜单项数应分别为 11 / 5 / 1 / 4；审核员侧应看到「认证管理」，管理员侧**不应**再有「认证管理」。
 - 步骤 3：应被**重定向回该角色首页**（而不是 403 白屏），因为前端路由守卫拦截。
 - 步骤 4：可正常打开「上链补救」页面，标题显示「上链补救」，因为该路由 `meta.roles` 含 `REVIEWER`。
 
@@ -1483,14 +1485,14 @@ REVIEWER（`GET /carbon-neutral/pending-verification` 与 `POST /carbon-neutral/
 3. 观察表格中「状态」列出现哪些状态（应能看到「已上链」「已驳回」「草稿」等）。
 4. 勾选一条「待上链补救（审核通过）」记录，点【批量上链补救】。
 5. 观察该行状态变化与顶部「待上链补救」计数变化。
-6. 直接用 `admin` 账号访问 `/admin/verify/list`，对比两个页面是否同一组件。
+6. 用 `admin` 账号登录后，确认侧边栏**没有**「认证管理」；再手动访问 `/auditor/verify/list`，确认管理员兜底入口仍可打开。
 
 #### 预期结果
 
 - 步骤 2：实测 0 / 3 / 4 / healthy（数值随数据变化）。
 - 步骤 3：状态列含「已上链」「已驳回」「草稿」等。
 - 步骤 4-5：补救成功后该行状态变为「已上链」，「待上链补救」计数减少，「已上链报告」计数增加。
-- 步骤 6：两页**共用同一组件** `views/admin/VerifyList.vue`，仅路由与标题不同；管理员页标题为「认证列表」，按钮文案同为「批量上链补救」。
+- 步骤 6：管理员侧边栏无「认证管理」（原 `/admin/verify/list` 已随 2026-10-28 单入口治理取消）；手动访问 `/auditor/verify/list` 可正常打开同一组件，标题为「上链补救」。**不存在第二个路由**。
 
 #### 异常与边界情况
 
@@ -1558,9 +1560,11 @@ REVIEWER（`GET /carbon-neutral/pending-verification` 与 `POST /carbon-neutral/
 
 ---
 
-## 第 8 章 管理员角色（ADMIN）：6 个页面逐项校验
+## 第 8 章 管理员角色（ADMIN）：5 个页面逐项校验
 
-> **侧边栏（5 项）**：系统管理▾（用户管理、碳核算管理、系统配置）/ 数据管理 / 认证管理 / 证书管理
+> **侧边栏（4 项）**：系统管理▾（用户管理、碳核算管理、系统配置）/ 数据管理 / 证书管理
+>
+> **变更（2026-10-28）**：原第 5 项「认证管理」(`/admin/verify/list`) 已取消——它与审核员的「上链补救」渲染同一组件、执行同一动作，属功能重复。上链补救统一归审核员；管理员兜底时直接访问 `/auditor/verify/list`。
 
 ### 8.1 用户管理 `/admin/system/users`
 
@@ -1752,47 +1756,42 @@ ADMIN。
 
 ---
 
-### 8.5 认证管理 `/admin/verify/list`
+### 8.5 认证管理（已取消 · 2026-10-28）
 
 #### 功能概述
 
-管理员的「认证列表」，与审核员的「上链补救」**共用同一组件**（`views/admin/VerifyList.vue`），承担批量上链补救职责。
+管理员端原有一个「认证列表」(`/admin/verify/list`)，它与审核员的「上链补救」(`/auditor/verify/list`) **渲染同一组件** `views/admin/VerifyList.vue`，按钮、表格、动作完全一致，属功能重复。**本次已随侧边栏菜单项与路由记录一并删除**，上链补救统一由审核员承担。
 
 #### 入口页面 / 路径
 
-`/admin/verify/list`（侧边栏「认证管理」）
+- **已删除**：`/admin/verify/list`（原侧边栏「认证管理」）
+- **唯一入口**：`/auditor/verify/list`（审核员「认证管理」，页面标题「上链补救」），详见 §6.4
+- **管理员兜底**：直接用 `admin` 登录后访问 `/auditor/verify/list`。该路由 `meta.roles = [ROLE.REVIEWER, ROLE.ADMIN]`，管理员可直接打开，**不需要也不存在第二条路由**。
 
 #### 涉及角色与权限
 
-`hasRole('ADMIN')`（路由 `meta.roles = [ROLE.ADMIN]`）。注意与审核员路由 `/auditor/verify/list` 是**两个路由、同一组件**。
-
-#### 关键数据与依赖
-
-- 按钮（实测）：查询 / 批量上链补救 / 查看
-- 表头（实测）：序号 / 报告编号 / 企业名称 / 核算周期 / 总排放量(吨) / 状态 / 提交时间 / 操作
-- 接口：同 6.4（`GET /carbon/reports`、`POST /carbon/certify`、`POST /carbon/certify/batch`）
-
-#### 术语解释
-
-- 同 6.4（幂等补救、批量补救）。
+`/auditor/verify/list` 由 `REVIEWER` 与 `ADMIN` 共享（路由 `meta.roles = [ROLE.REVIEWER, ROLE.ADMIN]`）；后端 `POST /carbon/certify` 与 `/certify/batch` 的授权为 `hasRole('REVIEWER') or hasRole('ADMIN')`。职责定位：**审核员为一等补救责任人，管理员为运维兜底**。
 
 #### 实操校验步骤
 
-1. 用 `admin` 登录，进入 `/admin/verify/list`。
-2. 对比页面标题与审核员侧 `/auditor/verify/list` 的差异。
-3. 勾选记录点【批量上链补救】。
-4. 观察状态与顶部统计（若有）。
+1. 用 `admin` 登录，观察侧边栏：**不应**出现「认证管理」，只剩系统管理▾ / 数据管理 / 证书管理。
+2. 地址栏手动输入 `/admin/verify/list`，应被路由守卫重定向回管理员首页（该路由已不存在，落到 404/重定向）。
+3. 地址栏输入 `/auditor/verify/list`，应正常打开「上链补救」页。
+4. 对比侧边栏菜单项数：审核员 5 项、管理员 4 项。
 
 #### 预期结果
 
-- 步骤 2：管理员页标题为「认证列表」，审核员页标题为「上链补救」；按钮与表格结构一致。
-- 步骤 3-4：补救成功，状态变为「已上链」。
+- 步骤 1：管理员侧边栏 4 项，无「认证管理」。
+- 步骤 2：`/admin/verify/list` 不再可达（路由已删除）。
+- 步骤 3：管理员可通过 `/auditor/verify/list` 正常执行上链补救，功能与审核员侧完全一致。
+- 步骤 4：11 / 5 / 1 / 4。
 
 #### 异常与边界情况
 
 | 现象 | 说明 |
 |---|---|
-| 两页内容几乎一样 | 属**同一组件的双入口**设计。从信息架构看，管理员与审核员都能补救上链，权限边界略重叠，建议在文档中明确「审核员为一等补救责任人，管理员为兜底」 |
+| 旧书签 `/admin/verify/list` 打不开 | 预期行为。该路由已删除，请改用 `/auditor/verify/list` |
+| 管理员与审核员重复操作同一条报告 | `certifyReport` 是**幂等**的，重复调用不会重复加分或重复上链；但流程上仍应约定「审核员先做，管理员仅在审核员缺位时兜底」 |
 
 ---
 
@@ -2194,9 +2193,9 @@ ENTERPRISE（创建/提交/查看）+ REVIEWER（审核，触发自动上链）�
 
 ## 第 11 章 附录
 
-### 11.1 端点总表（146 个 / 23 个 Controller，实测自动扫描）
+### 11.1 端点总表（148 个 / 23 个 Controller，实测自动扫描）
 
-> 扫描口径：正则匹配 `@(Get|Post|Put|Delete|Patch)Mapping`。完整原始清单见 `docs/开发手册/raw/_endpoints.txt`。
+> 扫描口径：正则匹配 `@(Get|Post|Put|Delete|Patch)Mapping`。`docs/开发手册/raw/_endpoints.txt` 为归档快照（146 条，早于 `matching-status` / `all-results` 两个查询端点），下表已按当前代码补全为 148 条。
 
 | Controller | 基础路径 | 端点数 |
 |---|---|---|
@@ -2210,7 +2209,7 @@ ENTERPRISE（创建/提交/查看）+ REVIEWER（审核，触发自动上链）�
 | CopilotController | `/copilot` | 3 |
 | CreditScoreController | `/credit` | 11 |
 | DigitalSignatureController | `/signature` | 7 |
-| DoubleAuctionController | `/auction` | 6 |
+| DoubleAuctionController | `/auction` | 8 |
 | EmissionController | `/emission` | 5 |
 | EnterpriseController | `/enterprise` | 5 |
 | EnterpriseInferenceController | `/predict/enterprise` | 1 |
@@ -2223,7 +2222,7 @@ ENTERPRISE（创建/提交/查看）+ REVIEWER（审核，触发自动上链）�
 | TradeController | `/trade` | 7 |
 | UserController | `/user` | 8 |
 | WebVitalsController | `/web-vitals` | 1 |
-| **合计** | | **146** |
+| **合计** | | **148** |
 
 ### 11.2 分模块端点明细
 
@@ -2340,11 +2339,13 @@ ENTERPRISE（创建/提交/查看）+ REVIEWER（审核，触发自动上链）�
 - `POST "/encrypt"`
 - `POST "/decrypt"`
 
-**DoubleAuctionController** — base `/auction`（6 个）
+**DoubleAuctionController** — base `/auction`（8 个）
 
 - `POST "/buy"`
 - `POST "/sell"`
 - `POST "/match"`
+- `GET "/matching-status"`
+- `GET "/all-results"`
 - `GET "/orders"`
 - `GET "/my-orders"`
 - `GET "/results"`
@@ -2449,22 +2450,22 @@ ENTERPRISE（创建/提交/查看）+ REVIEWER（审核，触发自动上链）�
 | **UserTypeEnum**（用户类型） | `1`=企业用户 / `2`=审核员 / `3`=第三方监管 / `4`=系统管理员 |
 | **ReportStatusEnum**（碳报告状态） | `0`=草稿 / `1`=已提交 / `2`=审核中 / `3`=审核通过 / `4`=审核拒绝 / `5`=已上链 |
 | **TradeTypeEnum**（交易类型） | `1`=拍卖交易 / `2`=P2P交易 / `3`=配额分配 |
-| **TradeStatusEnum**（交易状态） | `0`=待处理 / `1`=处理中 / `2`=已完成 / `3`=已取消 / `4`=失败 |
+| **TradeStatusEnum**（交易状态） | `0`=待处理 / `1`=处理中 / `2`=已完成 / `3`=已取消 / `4`=失败（枚举预留，生产代码从不写入，仅单测构造过） |
 | **AuctionOrderStatusEnum**（挂单状态） | `0`=待匹配 / `1`=部分匹配 / `2`=完全匹配 / `3`=已取消 |
-| **MatchingStatusEnum**（撮合状态） | `0`=待结算 / `1`=已结算 / `2`=失败 |
+| **MatchingStatusEnum**（撮合状态） | `0`=待结算 / `1`=已结算 / `2`=失败（枚举预留，生产代码从不写入） |
 | **CreditEventTypeEnum**（信用事件） | `1`=数据造假(扣20) / `2`=迟交报告(扣5) / `3`=轻微违规(扣10) / `4`=严重违规(扣30) / `5`=良好行为奖励(加5) |
 | **CreditLevelEnum**（信用等级） | 无数字码，按等级字符串（实测出现 `EXCELLENT`） |
 | **QualificationStatusEnum**（资质状态） | `1`=有效 / `2`=已吊销 |
 
-> 说明：`ReportStatusEnum` 的 `2`（审核中）在当前主流程中未作为持久态出现——审核是「提交后待审 → 直接通过/拒绝」的一步决策，`2` 可能为预留态。
+> 说明：`ReportStatusEnum` 的 `2`（审核中）在当前主流程中未作为持久态出现——`CarbonService.reviewReport()` 直接从 `SUBMITTED(1)` 落到 `APPROVED(3)`（随后自动上链则置 `ON_CHAIN(5)`）或 `REJECTED(4)`（`CarbonService.java:166-178`），`2` 属枚举预留值，代码从不写入。
 
 ### 11.4 事实校准表（实测 vs 文档宣称）
 
 | 指标 | 文档宣称 | 实测 | 结论 |
 |---|---|---|---|
 | Controller | 22 | 23 | 漂移 |
-| REST 端点 | 143 | 146 | 漂移 |
-| Service 主包 | 32 | 34 | 漂移 |
+| REST 端点 | 143 | 148 | 漂移 |
+| Service 主包 | 32 | 35 | 漂移 |
 | Service ml | 3 | 3 | 一致 |
 | Entity | 25 | 25 | 一致 |
 | Repository | 24 | 24 | 一致 |
@@ -2472,7 +2473,7 @@ ENTERPRISE（创建/提交/查看）+ REVIEWER（审核，触发自动上链）�
 | 数据库表 | 25（含退场） | 建 25 / 现存 24 | 表述含糊 |
 | Flyway | V1–V13（12 个） | V1–V14（13 个，跳过 V3） | 漂移（缺 V14） |
 | 前端 API 模块 | 22 | 22 | 一致 |
-| 前端 i18n | 1432 对 | 1441 对 | 少报 9 个 |
+| 前端 i18n | 1432 对 | 2039 对 | 已按 `i18n-verify.mjs` 实测口径校准（本轮前端迭代后词条增长） |
 | Fabric 模式 | 默认 Mock | `mode:FABRIC, connected:true` | 文档低估 |
 | 签名算法 | RSA 2048 + AES-256-GCM | RSA + 国密 SM2 双轨策略 | 文档漏报 |
 
@@ -2480,7 +2481,7 @@ ENTERPRISE（创建/提交/查看）+ REVIEWER（审核，触发自动上链）�
 
 | 路径 | 内容 |
 |---|---|
-| `docs/开发手册/raw/_endpoints.txt` | 146 个端点全量扫描结果 |
+| `docs/开发手册/raw/_endpoints.txt` | 归档快照：146 个端点全量扫描结果（早于 +2 撮合查询端点；当前 148 个，以 `DEV-GUIDE.md` §11 为准） |
 | `docs/开发手册/raw/白盒巡检/shots/` | 32 张实测截图（命名：角色-页面.png / x-页面.png） |
 | `docs/开发手册/raw/白盒巡检/shots/extended-capture.json` | 13 个页面的结构化抽取（按钮/表头/页签/表单label/分页总数/4xx 请求） |
 | `docs/开发手册/raw/白盒巡检/shots/ui-capture.json` | 首批 13 个页面的同结构记录 |
