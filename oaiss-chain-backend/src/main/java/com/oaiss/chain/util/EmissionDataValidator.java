@@ -114,6 +114,37 @@ public final class EmissionDataValidator {
     }
 
     /**
+     * 单独取出**过程排放**三项：脱硫 / 输配电线损 / SF6 泄漏。
+     *
+     * <p>用途：链上快照需要把这三项独立存证。总量 {@code totalEmission} 是含过程排放的，
+     * 但快照原本只有三个 scope 字段，于是链上核对时必然出现
+     * 「总量 ≠ 范围一 + 二 + 三」而无法解释差额来自哪里。</p>
+     *
+     * @return {@code [desulf, transmissionLoss, sf6]}，缺失或非法值均为 0
+     */
+    public static BigDecimal[] parseProcessEmissions(String emissionData, ObjectMapper objectMapper) {
+        if (emissionData == null || emissionData.isBlank()) {
+            return new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO};
+        }
+        try {
+            JsonNode root = (objectMapper != null)
+                    ? objectMapper.readTree(emissionData)
+                    : new ObjectMapper().readTree(emissionData);
+            if (root == null || !root.isObject()) {
+                return new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO};
+            }
+            return new BigDecimal[]{
+                    parsePositiveOrZero(root.get("desulf")),
+                    parsePositiveOrZero(root.get("transmissionLoss")),
+                    parsePositiveOrZero(root.get("sf6"))
+            };
+        } catch (Exception e) {
+            // 解析失败不能影响上链主流程：过程排放缺失时链上留空，而不是让整笔存证失败。
+            return new BigDecimal[]{BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO};
+        }
+    }
+
+    /**
      * 递归遍历 JSON 节点，断言不存在任何负数
      */
     private static void assertNoNegativeValues(JsonNode node, String path) {

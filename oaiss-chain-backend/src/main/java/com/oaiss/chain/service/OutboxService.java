@@ -1,10 +1,15 @@
 package com.oaiss.chain.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.oaiss.chain.annotation.DistributedLock;
+import com.oaiss.chain.dto.CarbonReportSnapshot;
+import com.oaiss.chain.entity.CarbonReport;
 import com.oaiss.chain.entity.OutboxMessage;
+import com.oaiss.chain.enums.ReportStatusEnum;
 import com.oaiss.chain.repository.CarbonReportRepository;
 import com.oaiss.chain.repository.OutboxMessageRepository;
 import com.oaiss.chain.repository.TransactionRepository;
+import com.oaiss.chain.util.EmissionDataValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -12,8 +17,10 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -41,6 +48,8 @@ public class OutboxService {
     private final BlockchainServicePort blockchainService;
     private final CarbonReportRepository carbonReportRepository;
     private final TransactionRepository transactionRepository;
+    /** v2 快照需要从 emissionData 原文明细里取出过程排放三项 */
+    private final ObjectMapper objectMapper;
 
     /**
      * 在业务本地事务中保存待上链发件箱消息
@@ -80,12 +89,12 @@ public class OutboxService {
         try {
             String txHash;
             if (AGGREGATE_REPORT.equalsIgnoreCase(message.getAggregateType())) {
-                txHash = blockchainService.commitReportToChain(message.getAggregateId(), message.getPayload());
-                carbonReportRepository.findById(message.getAggregateId()).ifPresent(report -> {
-                    report.setBlockchainTxHash(txHash);
-                    report.setOnChainAt(LocalDateTime.now());
-                    carbonReportRepository.save(report);
-                });
+                // 报告分支必须与主链路走同一个 v2 快照入口。
+                // 原先这里调 v1 `commitReportToChain(payload)`：它只把 payload 原文上链，
+                // 链上拿不到企业归属、周期、总量与签名——补救写进来的存证和正常上链的存证
+                // 是两种不同结构，事后无法统一核验。同时它不校验报告状态，
+                // 任何人触发就能把草稿「存证」上链。
+                txHash = commitReportViaSnapshot(message.getAggregateId());
             } else if (AGGREGATE_TRADE.equalsIgnoreCase(message.getAggregateType())) {
                 txHash = blockchainService.commitTradeToChain(message.getAggregateId(), message.getPayload());
                 transactionRepository.findById(message.getAggregateId()).ifPresent(trade -> {
@@ -147,5 +156,58 @@ public class OutboxService {
                 log.error("[OUTBOX-SCHEDULER] Error processing message id={}: {}", msg.getId(), e.getMessage());
             }
         }
+    }
+
+    /**
+     * 按 v2 快照口径上链报告，并回写哈希。
+     *
+     * <p>与 {@code CarbonService#applyApprovedReportSideEffects} 保持同一存证结构；
+     * 报告不存在或不是权威状态（已通过 / 已上链）时拒绝，避免把草稿或已驳回内容写到链上。</p>
+     */
+    private String commitReportViaSnapshot(Long reportId) {
+        CarbonReport report = carbonReportRepository.findById(reportId)
+                .orElseThrow(() -> new IllegalArgumentException("报告不存在: " + reportId));
+
+        Integer status = report.getStatus();
+        if (!ReportStatusEnum.authoritativeCodes().contains(status)) {
+            throw new IllegalStateException(
+                    "报告状态不允许上链: " + status + "（仅接受审核通过/已上链）");
+        }
+        if (report.getBlockchainTxHash() != null && !report.getBlockchainTxHash().isBlank()) {
+            // 已有 txHash：说明此前已成功上链，不能重复提交（链码本身也会因 state 已存在而报错）。
+            log.info("[OUTBOX] Report {} already on chain, skip duplicate commit", reportId);
+            return report.getBlockchainTxHash();
+        }
+
+        BigDecimal[] process = EmissionDataValidator.parseProcessEmissions(
+                report.getEmissionData(), objectMapper);
+        CarbonReportSnapshot snapshot = CarbonReportSnapshot.builder()
+                .reportId(report.getId())
+                .reportNo(report.getReportNo())
+                .enterpriseId(report.getEnterpriseId())
+                .accountingPeriod(report.getAccountingPeriod())
+                .totalEmission(stringify(report.getTotalEmission()))
+                .scope1Emission(stringify(report.getScope1Emission()))
+                .scope2Emission(stringify(report.getScope2Emission()))
+                .scope3Emission(stringify(report.getScope3Emission()))
+                .desulfEmission(stringify(process[0]))
+                .transmissionLossEmission(stringify(process[1]))
+                .sf6Emission(stringify(process[2]))
+                .signature(report.getSignatureData())
+                .data(report.getEmissionData())
+                .build();
+
+        String txHash = blockchainService.commitReportSnapshot(snapshot);
+        report.setBlockchainTxHash(txHash);
+        report.setOnChainAt(LocalDateTime.now());
+        if (Objects.equals(report.getStatus(), ReportStatusEnum.APPROVED.getCode())) {
+            report.setStatus(ReportStatusEnum.ON_CHAIN.getCode());
+        }
+        carbonReportRepository.save(report);
+        return txHash;
+    }
+
+    private static String stringify(BigDecimal value) {
+        return value == null ? "" : value.toPlainString();
     }
 }

@@ -27,9 +27,13 @@ import java.util.List;
 @RequiredArgsConstructor
 public class EmissionRatingService {
 
-    /** 权威报告状态：已通过 (3) 与已上链 (5)。 */
+    /**
+     * 权威报告状态：已通过与已上链。
+     *
+     * <p>定义点在 {@link com.oaiss.chain.enums.ReportStatusEnum#authoritativeCodes()}。</p>
+     */
     private static final java.util.List<Integer> AUTHORITATIVE_STATUSES =
-            java.util.List.of(3, 5);
+            com.oaiss.chain.enums.ReportStatusEnum.authoritativeCodes();
 
 
     private final EmissionRatingRepository ratingRepository;
@@ -88,16 +92,28 @@ public class EmissionRatingService {
 
         log.info("Recalculating yearly rating: enterprise={}, year={}, reports={}, total={}",
                 enterpriseId, periodPrefix, yearly.size(), yearlyTotal);
-        return rateEnterprise(enterpriseId, periodPrefix, yearlyTotal, null, ratedBy);
+        return rateEnterprise(enterpriseId, periodPrefix, yearlyTotal, null, ratedBy, yearly.size());
     }
 
     /**
-     * 生成企业年度碳排放评级
+     * 生成企业年度碳排放评级（无来源份数，保留给「单份报告直接评级」的旧调用方）。
      */
     @Transactional
     public EmissionRating rateEnterprise(Long enterpriseId, String year,
                                           BigDecimal totalEmission, BigDecimal revenue,
                                           Long ratedBy) {
+        return rateEnterprise(enterpriseId, year, totalEmission, revenue, ratedBy, null);
+    }
+
+    /**
+     * 生成企业年度碳排放评级。
+     *
+     * @param sourceReportCount 本次汇总所依据的报告份数；null 表示调用方未提供来源
+     */
+    @Transactional
+    public EmissionRating rateEnterprise(Long enterpriseId, String year,
+                                          BigDecimal totalEmission, BigDecimal revenue,
+                                          Long ratedBy, Integer sourceReportCount) {
         String level = calculateLevel(totalEmission);
         int score = calculateScore(totalEmission);
         BigDecimal intensity = revenue != null && revenue.compareTo(BigDecimal.ZERO) > 0
@@ -113,6 +129,9 @@ public class EmissionRatingService {
                     existing.setRatingLevel(level);
                     existing.setRatingScore(score);
                     existing.setRatedBy(ratedBy);
+                    if (sourceReportCount != null) {
+                        existing.setSourceReportCount(sourceReportCount);
+                    }
                     return existing;
                 })
                 .orElseGet(() -> EmissionRating.builder()
@@ -123,6 +142,7 @@ public class EmissionRatingService {
                         .ratingLevel(level)
                         .ratingScore(score)
                         .ratedBy(ratedBy)
+                        .sourceReportCount(sourceReportCount)
                         .build());
 
         return ratingRepository.save(rating);

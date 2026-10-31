@@ -540,6 +540,9 @@ const syncToUploadDraft = (type: 'powerGeneration' | 'powerGrid') => {
     period = `${gridForm.value.reportingYear}-Q4`
     total = Number(gridResult.value.totalEmission) || 0
     method = 'GB/T 32150-2015 电网企业9参数国标公式'
+    // 国标净电量式下「净供电量 × 电网排放因子」取代了旧的线损模型，
+    // 但 emissionData 的键仍是 `transmissionLoss`——历史报告都这么存，
+    // 改键会让存量报告的构成清单与新报告口径分裂。语义由 i18n 文案改写说明。
     emissionData = {
       scope1: 0,
       scope2: Number(gridResult.value.importedEmission) || 0,
@@ -1038,12 +1041,14 @@ onMounted(() => {
           :closable="false"
           show-icon
           class="result-alert"
-          :title="`本次电网排放核算总量为 ${formatNumber(gridResult.totalEmission)} tCO2e（输配电线损 ${formatNumber(gridResult.transmissionLossEmission)} + 外购电力 ${formatNumber(gridResult.importedEmission)} + SF6 泄漏 ${formatNumber(gridResult.sf6Emission || 0)}）`"
+          :title="`本次电网排放核算总量为 ${formatNumber(gridResult.totalEmission)} tCO2e（净电量对应排放 ${formatNumber(gridResult.transmissionLossEmission)} + SF6 泄漏 ${formatNumber(gridResult.sf6Emission || 0)}）`"
         />
         <el-descriptions :column="2" border>
           <el-descriptions-item :label="t('carbonFormula.totalEmission')">{{ formatNumber(gridResult.totalEmission) }} tCO2e</el-descriptions-item>
           <el-descriptions-item :label="t('carbonFormula.transmissionLossEmission')">{{ formatNumber(gridResult.transmissionLossEmission) }} tCO2e</el-descriptions-item>
-          <el-descriptions-item :label="t('carbonFormula.importedEmission')">{{ formatNumber(gridResult.importedEmission) }} tCO2e</el-descriptions-item>
+          <!-- 国标净电量式下购入电力不再单独计排放（已含在净电量里），
+               该字段恒为 0，保留一行是为了与历史报告字段对齐、避免用户以为漏算。 -->
+          <el-descriptions-item v-if="Number(gridResult.importedEmission) > 0" :label="t('carbonFormula.importedEmission')">{{ formatNumber(gridResult.importedEmission) }} tCO2e</el-descriptions-item>
           <el-descriptions-item :label="t('carbonFormula.sf6Emission')">{{ formatNumber(gridResult.sf6Emission || 0) }} tCO2e</el-descriptions-item>
           <el-descriptions-item :label="t('carbonFormula.transmissionLoss')">{{ formatNumber(gridResult.transmissionLoss) }} MWh</el-descriptions-item>
           <el-descriptions-item :label="t('carbonFormula.formulaReference')">{{ gridResult.formulaReference }}</el-descriptions-item>

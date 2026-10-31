@@ -120,12 +120,16 @@ public class FabricBlockchainService implements BlockchainServicePort {
             byte[] result = carbonContract.submitTransaction(
                     "CreateCarbonReportV2",
                     String.valueOf(snapshot.getReportId()),
+                    nullSafe(snapshot.getReportNo()),
                     String.valueOf(snapshot.getEnterpriseId()),
                     nullSafe(snapshot.getAccountingPeriod()),
                     nullSafe(snapshot.getTotalEmission()),
                     nullSafe(snapshot.getScope1Emission()),
                     nullSafe(snapshot.getScope2Emission()),
                     nullSafe(snapshot.getScope3Emission()),
+                    nullSafe(snapshot.getDesulfEmission()),
+                    nullSafe(snapshot.getTransmissionLossEmission()),
+                    nullSafe(snapshot.getSf6Emission()),
                     nullSafe(snapshot.getSignature()),
                     nullSafe(snapshot.getData())
             );

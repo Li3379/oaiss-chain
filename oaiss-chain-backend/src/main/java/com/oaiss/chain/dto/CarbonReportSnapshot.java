@@ -37,6 +37,15 @@ public class CarbonReportSnapshot {
     /** 范围三排放量 */
     private String scope3Emission;
 
+    /** 脱硫过程排放量（发电企业） */
+    private String desulfEmission;
+
+    /** 输配电线损排放量（电网企业） */
+    private String transmissionLossEmission;
+
+    /** SF6 绝缘设备泄漏排放量（电网企业） */
+    private String sf6Emission;
+
     /** 企业数字签名（RSA，覆盖 emissionData 原文） */
     private String signature;
 

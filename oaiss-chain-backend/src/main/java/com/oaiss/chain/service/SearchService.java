@@ -47,9 +47,13 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class SearchService {
 
-    /** 权威报告状态：已通过 (3) 与已上链 (5)，用于平台统计口径（D11）。 */
+    /**
+     * 权威报告状态：已通过与已上链，用于平台统计口径（D11）。
+     *
+     * <p>定义点在 {@link ReportStatusEnum#authoritativeCodes()}，禁止在此处重新写字面量。</p>
+     */
     private static final java.util.List<Integer> AUTHORITATIVE_STATUSES =
-            java.util.List.of(3, 5);
+            com.oaiss.chain.enums.ReportStatusEnum.authoritativeCodes();
 
 
     /** 匿名别名前缀（前端据前缀即可判定该名称已被脱敏） */

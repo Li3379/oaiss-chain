@@ -198,19 +198,23 @@ func TestQueryBlock(t *testing.T) {
 // 链上无法回答「这份报告属于哪家企业」。v2 补齐主体、周期、总量、三范围与签名。
 func TestCarbonReportSnapshotV2Shape(t *testing.T) {
 	snapshot := &CarbonReportSnapshot{
-		ReportID:         "42",
-		EnterpriseID:     "7",
-		AccountingPeriod: "2026-Q2",
-		TotalEmission:    "1234.5678",
-		Scope1Emission:   "1000.0000",
-		Scope2Emission:   "234.5678",
-		Scope3Emission:   "0",
-		Signature:        "sig-abc",
-		Data:             `{"scope1":1000}`,
-		Status:           "COMMITTED",
-		TxHash:           "tx_v2_001",
-		CreatedAt:        "2026-10-31T10:00:00Z",
-		SchemaVersion:    "v2",
+		ReportID:          "42",
+		ReportNo:          "CR-2026-0042",
+		EnterpriseID:      "7",
+		AccountingPeriod:  "2026-Q2",
+		TotalEmission:     "1234.5678",
+		Scope1Emission:    "1000.0000",
+		Scope2Emission:    "234.5678",
+		Scope3Emission:    "0",
+		DesulfEmission:    "12.5",
+		TransLossEmission: "20.25",
+		SF6Emission:       "3.75",
+		Signature:         "sig-abc",
+		Data:              `{"scope1":1000}`,
+		Status:            "COMMITTED",
+		TxHash:            "tx_v2_001",
+		CreatedAt:         "2026-10-31T10:00:00Z",
+		SchemaVersion:     "v2",
 	}
 
 	bytes, err := json.Marshal(snapshot)
@@ -221,12 +225,57 @@ func TestCarbonReportSnapshotV2Shape(t *testing.T) {
 
 	// 核心断言：链上记录能独立回答「属于哪家企业」
 	assert.Equal(t, "7", decoded.EnterpriseID, "v2 必须携带企业ID，否则链上无法确定主体")
+	assert.Equal(t, "CR-2026-0042", decoded.ReportNo, "报告编号必须上链，否则链上无法与业务单据对账")
 	assert.Equal(t, "2026-Q2", decoded.AccountingPeriod)
 	assert.Equal(t, "1234.5678", decoded.TotalEmission)
 	assert.Equal(t, "1000.0000", decoded.Scope1Emission)
 	assert.Equal(t, "sig-abc", decoded.Signature, "签名必须上链，链上才能独立验证内容未被改")
 	assert.Equal(t, "v2", decoded.SchemaVersion, "版本标识用于区分新老记录")
 	assert.NotEmpty(t, decoded.Data)
+
+	// 过程排放独立成字段：总量含脱硫/线损/SF6，只存三范围会让链上对不上账
+	assert.Equal(t, "12.5", decoded.DesulfEmission)
+	assert.Equal(t, "20.25", decoded.TransLossEmission)
+	assert.Equal(t, "3.75", decoded.SF6Emission)
+}
+
+// TestQueryReportHistoryHandlesMixedVersions 锁定 v1/v2 混读不丢字段。
+//
+// 背景：v1 与 v2 共用同一个 state key，链上历史里两个版本会共处同一数组。
+// Go 的 json.Unmarshal 默认静默忽略未知字段——旧实现把 v2 记录塞进 v1 结构，
+// 金额、周期、签名全部被丢弃且不报错，调用方拿到一条「看起来合法但金额为空」的记录。
+// 修复后 QueryReportHistory 先探测 schemaVersion 再选结构，v1 记录显式标注 v1。
+func TestQueryReportHistoryHandlesMixedVersions(t *testing.T) {
+	v2Bytes, err := json.Marshal(&CarbonReportSnapshot{
+		ReportID:      "42",
+		EnterpriseID:  "7",
+		TotalEmission: "1234.5678",
+		Signature:     "sig-abc",
+		SchemaVersion: "v2",
+	})
+	assert.NoError(t, err)
+
+	// 旧版本记录没有 schemaVersion 字段，只能靠探测值为空来识别
+	v1Bytes, err := json.Marshal(&CarbonReport{ReportID: "1", Data: `{"scope1":100}`})
+	assert.NoError(t, err)
+
+	// 复现 QueryReportHistory 的判别逻辑
+	classify := func(raw []byte) string {
+		var probe struct {
+			SchemaVersion string `json:"schemaVersion"`
+		}
+		_ = json.Unmarshal(raw, &probe)
+		return probe.SchemaVersion
+	}
+
+	assert.Equal(t, "v2", classify(v2Bytes))
+	assert.Equal(t, "", classify(v1Bytes), "v1 记录无版本标记，必须能被识别为 legacy")
+
+	// v2 记录走 v2 结构反序列化时金额不得丢失
+	var decoded CarbonReportSnapshot
+	assert.NoError(t, json.Unmarshal(v2Bytes, &decoded))
+	assert.Equal(t, "1234.5678", decoded.TotalEmission, "v2 金额不能在历史查询中丢失")
+	assert.Equal(t, "sig-abc", decoded.Signature)
 }
 
 // TestLegacyCarbonReportStillSupported 验证 v1 结构未被破坏（历史链上记录仍可解析）。

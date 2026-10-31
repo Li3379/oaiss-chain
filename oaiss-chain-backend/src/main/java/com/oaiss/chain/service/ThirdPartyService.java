@@ -102,7 +102,7 @@ public class ThirdPartyService {
         long pendingReports = carbonReportRepository.findByStatusAndDeletedFalse(
                 1, PageRequest.of(0, 1)).getTotalElements();
         long approvedReports = carbonReportRepository.findByStatusInAndDeletedFalse(
-                java.util.Arrays.asList(3, 5), PageRequest.of(0, 1)).getTotalElements();
+                com.oaiss.chain.enums.ReportStatusEnum.authoritativeCodes(), PageRequest.of(0, 1)).getTotalElements();
         long rejectedReports = carbonReportRepository.findByStatusAndDeletedFalse(
                 4, PageRequest.of(0, 1)).getTotalElements();
 

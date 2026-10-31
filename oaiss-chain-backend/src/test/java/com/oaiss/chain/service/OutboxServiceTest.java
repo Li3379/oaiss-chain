@@ -1,5 +1,6 @@
 package com.oaiss.chain.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.oaiss.chain.entity.CarbonReport;
 import com.oaiss.chain.entity.OutboxMessage;
 import com.oaiss.chain.entity.Transaction;
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Pageable;
 
@@ -26,7 +28,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -49,6 +50,10 @@ class OutboxServiceTest {
     @Mock
     private TransactionRepository transactionRepository;
 
+    /** 真实 mapper：快照构建要从 emissionData 原文里取过程排放三项 */
+    @Spy
+    private ObjectMapper objectMapper = new ObjectMapper();
+
     @InjectMocks
     private OutboxService outboxService;
 
@@ -65,7 +70,9 @@ class OutboxServiceTest {
                 .accountingPeriod("2024")
                 .title("2024年度报告")
                 .reportType(2)
-                .emissionData("{\"totalEmission\":100}")
+                .reportNo("CR-2024-0001")
+                .emissionData("{\"totalEmission\":100,\"desulf\":5,\"transmissionLoss\":10,\"sf6\":3}")
+                .totalEmission(new java.math.BigDecimal("118"))
                 .status(3)
                 .build();
         testReport.setId(101L);
@@ -125,7 +132,7 @@ class OutboxServiceTest {
     @DisplayName("processMessage-报告存证成功回写哈希并标记SENT")
     void testProcessMessageReportSuccess() {
         when(outboxMessageRepository.findById(1L)).thenReturn(Optional.of(reportMessage));
-        when(blockchainService.commitReportToChain(eq(101L), anyString())).thenReturn("tx_report_hash_101");
+        when(blockchainService.commitReportSnapshot(any())).thenReturn("tx_report_hash_101");
         when(carbonReportRepository.findById(101L)).thenReturn(Optional.of(testReport));
         when(outboxMessageRepository.save(any(OutboxMessage.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -135,6 +142,7 @@ class OutboxServiceTest {
         assertEquals(OutboxService.STATUS_SENT, reportMessage.getStatus());
         assertNull(reportMessage.getErrorMessage());
         assertEquals("tx_report_hash_101", testReport.getBlockchainTxHash());
+        assertEquals(5, testReport.getStatus()); // 报告分支上链后应为已上链
         assertNotNull(testReport.getOnChainAt());
         verify(carbonReportRepository, times(1)).save(testReport);
         verify(outboxMessageRepository, times(1)).save(reportMessage);
@@ -162,7 +170,8 @@ class OutboxServiceTest {
     @DisplayName("processMessage-上链异常时触发指数退避重试并标记FAILED")
     void testProcessMessageRetryBackoff() {
         when(outboxMessageRepository.findById(1L)).thenReturn(Optional.of(reportMessage));
-        when(blockchainService.commitReportToChain(eq(101L), anyString()))
+        when(carbonReportRepository.findById(101L)).thenReturn(Optional.of(testReport));
+        when(blockchainService.commitReportSnapshot(any()))
                 .thenThrow(new RuntimeException("Fabric network timeout"));
         when(outboxMessageRepository.save(any(OutboxMessage.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -182,7 +191,8 @@ class OutboxServiceTest {
     void testProcessMessageMaxRetriesToDeadLetter() {
         reportMessage.setRetryCount(4); // 下一次为第5次
         when(outboxMessageRepository.findById(1L)).thenReturn(Optional.of(reportMessage));
-        when(blockchainService.commitReportToChain(eq(101L), anyString()))
+        when(carbonReportRepository.findById(101L)).thenReturn(Optional.of(testReport));
+        when(blockchainService.commitReportSnapshot(any()))
                 .thenThrow(new RuntimeException("Persistent chaincode error"));
         when(outboxMessageRepository.save(any(OutboxMessage.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -202,7 +212,7 @@ class OutboxServiceTest {
         when(outboxMessageRepository.findPendingOrRetryableMessages(any(LocalDateTime.class), any(Pageable.class)))
                 .thenReturn(List.of(reportMessage));
         when(outboxMessageRepository.findById(1L)).thenReturn(Optional.of(reportMessage));
-        when(blockchainService.commitReportToChain(eq(101L), anyString())).thenReturn("tx_recovered_hash");
+        when(blockchainService.commitReportSnapshot(any())).thenReturn("tx_recovered_hash");
         when(carbonReportRepository.findById(101L)).thenReturn(Optional.of(testReport));
         when(outboxMessageRepository.save(any(OutboxMessage.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -221,6 +231,6 @@ class OutboxServiceTest {
         outboxService.scheduleRetryPendingMessages();
 
         verify(outboxMessageRepository, times(1)).findPendingOrRetryableMessages(any(), any());
-        verify(blockchainService, never()).commitReportToChain(anyLong(), anyString());
+        verify(blockchainService, never()).commitReportSnapshot(any());
     }
 }

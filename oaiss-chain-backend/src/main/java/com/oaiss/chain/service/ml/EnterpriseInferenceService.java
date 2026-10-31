@@ -35,13 +35,15 @@ import lombok.extern.slf4j.Slf4j;
 public class EnterpriseInferenceService {
 
     /**
-     * 权威报告状态：已通过 (3) 与已上链 (5)。
+     * 权威报告状态：已通过与已上链。
      *
      * <p>AI 推理与评级只应基于审核完成的数据——草稿与已驳回代表「尚未确认真实性」，
      * 把它们计入会高估或污染企业画像（D11）。</p>
+     *
+     * <p>定义点在 {@link com.oaiss.chain.enums.ReportStatusEnum#authoritativeCodes()}。</p>
      */
     private static final java.util.List<Integer> AUTHORITATIVE_STATUSES =
-            java.util.List.of(3, 5);
+            com.oaiss.chain.enums.ReportStatusEnum.authoritativeCodes();
 
 
     private final MlServiceClient mlServiceClient;

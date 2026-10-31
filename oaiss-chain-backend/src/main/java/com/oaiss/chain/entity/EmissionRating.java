@@ -82,4 +82,16 @@ public class EmissionRating extends BaseEntity {
      */
     @Column(name = "remark", length = 1000)
     private String remark;
+
+    /**
+     * 本次评级汇总所依据的权威报告份数。
+     *
+     * <p>年度评级是「该年度所有已通过/已上链报告」的**汇总值**（D10），
+     * 而不是某一份报告的数字。没有这个字段，审计方看到等级与总量
+     * 无法回溯「这是几份报告加出来的」，评级不可复核（AC-B6）。</p>
+     *
+     * <p>存量记录为 null，表示旧口径生成、来源未知——不伪造为 1。</p>
+     */
+    @Column(name = "source_report_count")
+    private Integer sourceReportCount;
 }

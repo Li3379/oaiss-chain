@@ -76,20 +76,27 @@ func (cc *CarbonChaincode) CreateCarbonReport(ctx contractapi.TransactionContext
 //
 // v2 补齐主体、周期、总量、三范围与签名，使链上记录可以独立回答：
 // 「谁、什么时候、报了多少、内容是否被改过」。
+//
+// 过程排放（脱硫 / 线损 / SF6）单独成字段：`totalEmission` 含这三项，
+// 若只存总量与三范围，链上核对时必然出现「总量 ≠ 三范围之和」而无法解释。
 type CarbonReportSnapshot struct {
-	ReportID         string `json:"reportId"`
-	EnterpriseID     string `json:"enterpriseId"`
-	AccountingPeriod string `json:"accountingPeriod"`
-	TotalEmission    string `json:"totalEmission"`
-	Scope1Emission   string `json:"scope1Emission"`
-	Scope2Emission   string `json:"scope2Emission"`
-	Scope3Emission   string `json:"scope3Emission"`
-	Signature        string `json:"signature"`
-	Data             string `json:"data"`
-	Status           string `json:"status"`
-	TxHash           string `json:"txHash"`
-	CreatedAt        string `json:"createdAt"`
-	SchemaVersion    string `json:"schemaVersion"`
+	ReportID          string `json:"reportId"`
+	ReportNo          string `json:"reportNo"`
+	EnterpriseID      string `json:"enterpriseId"`
+	AccountingPeriod  string `json:"accountingPeriod"`
+	TotalEmission     string `json:"totalEmission"`
+	Scope1Emission    string `json:"scope1Emission"`
+	Scope2Emission    string `json:"scope2Emission"`
+	Scope3Emission    string `json:"scope3Emission"`
+	DesulfEmission    string `json:"desulfEmission"`
+	TransLossEmission string `json:"transmissionLossEmission"`
+	SF6Emission       string `json:"sf6Emission"`
+	Signature         string `json:"signature"`
+	Data              string `json:"data"`
+	Status            string `json:"status"`
+	TxHash            string `json:"txHash"`
+	CreatedAt         string `json:"createdAt"`
+	SchemaVersion     string `json:"schemaVersion"`
 }
 
 // CreateCarbonReportV2 存证完整报告快照（推荐路径）。
@@ -99,18 +106,22 @@ type CarbonReportSnapshot struct {
 func (cc *CarbonChaincode) CreateCarbonReportV2(
 	ctx contractapi.TransactionContextInterface,
 	reportID string,
+	reportNo string,
 	enterpriseID string,
 	accountingPeriod string,
 	totalEmission string,
 	scope1Emission string,
 	scope2Emission string,
 	scope3Emission string,
+	desulfEmission string,
+	transmissionLossEmission string,
+	sf6Emission string,
 	signature string,
 	reportData string,
 ) (*CarbonReportSnapshot, error) {
 	existing, err := ctx.GetStub().GetState(reportID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read state: %v", err)
+		return nil, fmt.Errorf("failed to read state: %w", err)
 	}
 	if existing != nil {
 		return nil, fmt.Errorf("report %s already exists", reportID)
@@ -120,19 +131,23 @@ func (cc *CarbonChaincode) CreateCarbonReportV2(
 	now := time.Now().Format(time.RFC3339)
 
 	snapshot := &CarbonReportSnapshot{
-		ReportID:         reportID,
-		EnterpriseID:     enterpriseID,
-		AccountingPeriod: accountingPeriod,
-		TotalEmission:    totalEmission,
-		Scope1Emission:   scope1Emission,
-		Scope2Emission:   scope2Emission,
-		Scope3Emission:   scope3Emission,
-		Signature:        signature,
-		Data:             reportData,
-		Status:           "COMMITTED",
-		TxHash:           txID,
-		CreatedAt:        now,
-		SchemaVersion:    "v2",
+		ReportID:          reportID,
+		ReportNo:          reportNo,
+		EnterpriseID:      enterpriseID,
+		AccountingPeriod:  accountingPeriod,
+		TotalEmission:     totalEmission,
+		Scope1Emission:    scope1Emission,
+		Scope2Emission:    scope2Emission,
+		Scope3Emission:    scope3Emission,
+		DesulfEmission:    desulfEmission,
+		TransLossEmission: transmissionLossEmission,
+		SF6Emission:       sf6Emission,
+		Signature:         signature,
+		Data:              reportData,
+		Status:            "COMMITTED",
+		TxHash:            txID,
+		CreatedAt:         now,
+		SchemaVersion:     "v2",
 	}
 
 	snapshotBytes, err := json.Marshal(snapshot)
@@ -188,26 +203,59 @@ func (cc *CarbonChaincode) QueryReportsByEnterprise(
 	return snapshots, nil
 }
 
-// QueryReportHistory returns the history of a carbon report
-func (cc *CarbonChaincode) QueryReportHistory(ctx contractapi.TransactionContextInterface, reportID string) ([]*CarbonReport, error) {
+// QueryReportHistory returns the history of a carbon report.
+//
+// 返回统一的 v2 结构：历史里可能同时存在 v1 与 v2 记录（两者共用同一 state key），
+// 而 Go 的 json.Unmarshal 默认**静默忽略未知字段**——把 v2 记录塞进 v1 的
+// CarbonReport 结构，金额、周期、签名、schemaVersion 会被全部丢弃且不报错，
+// 调用方拿到的是一条「看起来合法但金额为空」的记录。
+//
+// 因此这里先探测 schemaVersion 再决定用哪个结构反序列化；v1 记录显式标注
+// SchemaVersion="v1" 后按可映射字段填充，缺失项留空，让调用方能区分「老记录没有」
+// 与「解析失败」。
+func (cc *CarbonChaincode) QueryReportHistory(ctx contractapi.TransactionContextInterface, reportID string) ([]*CarbonReportSnapshot, error) {
 	resultsIterator, err := ctx.GetStub().GetHistoryForKey(reportID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get history: %v", err)
+		return nil, fmt.Errorf("failed to get history: %w", err)
 	}
 	defer resultsIterator.Close()
 
-	var history []*CarbonReport
+	var history []*CarbonReportSnapshot
 	for resultsIterator.HasNext() {
 		response, err := resultsIterator.Next()
 		if err != nil {
-			return nil, fmt.Errorf("failed to iterate history: %v", err)
+			return nil, fmt.Errorf("failed to iterate history: %w", err)
 		}
 
-		var report CarbonReport
-		if err := json.Unmarshal(response.Value, &report); err != nil {
+		// 先取一次版本标记（只解 schemaVersion，其余字段忽略）
+		var probe struct {
+			SchemaVersion string `json:"schemaVersion"`
+		}
+		_ = json.Unmarshal(response.Value, &probe)
+
+		if probe.SchemaVersion == "v2" {
+			var snap CarbonReportSnapshot
+			if err := json.Unmarshal(response.Value, &snap); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal v2 report %s: %w", reportID, err)
+			}
+			history = append(history, &snap)
 			continue
 		}
-		history = append(history, &report)
+
+		// v1：字段少，逐项映射，并显式标注版本
+		var legacy CarbonReport
+		if err := json.Unmarshal(response.Value, &legacy); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal v1 report %s: %w", reportID, err)
+		}
+		history = append(history, &CarbonReportSnapshot{
+			ReportID:      legacy.ReportID,
+			EnterpriseID:  legacy.EnterpriseID,
+			Data:          legacy.Data,
+			Status:        legacy.Status,
+			TxHash:        legacy.TxHash,
+			CreatedAt:     legacy.CreatedAt,
+			SchemaVersion: "v1",
+		})
 	}
 
 	return history, nil

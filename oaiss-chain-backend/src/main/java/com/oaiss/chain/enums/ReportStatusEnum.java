@@ -55,4 +55,16 @@ public enum ReportStatusEnum {
     public boolean isReviewable() {
         return this == SUBMITTED || this == UNDER_REVIEW;
     }
+
+    /**
+     * 「权威口径」的状态码集合：已通过 (3) 与已上链 (5)。
+     *
+     * <p>统计、AI 推理、企业年度评级、第三方核查都只应采信这两种状态的报告。
+     * 该集合此前在 4 个 service 里各写一份 {@code List.of(3, 5)}，
+     * 其中一处还是裸数字 {@code Arrays.asList(3, 5)}——任何状态语义调整都会漏改其中几处。
+     * 现在收敛到枚举，让「权威」有唯一定义点。</p>
+     */
+    public static java.util.List<Integer> authoritativeCodes() {
+        return java.util.List.of(APPROVED.getCode(), ON_CHAIN.getCode());
+    }
 }

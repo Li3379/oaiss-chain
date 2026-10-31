@@ -579,6 +579,19 @@ const openReviseDialog = async (row: CarbonReportResponse) => {
   await openEditDialog(row)
 }
 
+/**
+ * 从**详情抽屉**发起「修改重提」。
+ *
+ * 用户看完驳回意见后就在详情里，要求他关掉抽屉、回到列表、再找那一行是多余的；
+ * 这里先关抽屉再走同一套确认与预填流程（AC-B10）。
+ */
+const reviseFromDetail = async () => {
+  const row = detailData.value
+  if (!row || row.status !== 4) return
+  detailDialogVisible.value = false
+  await openReviseDialog(row)
+}
+
 const onDeleteReport = async (row: CarbonReportResponse) => {
   try {
     await ElMessageBox.confirm(t('carbonUpload.confirmDelete') + ' ' + row.reportNo + '？', t('common.confirm'), { type: 'warning' })
@@ -980,6 +993,15 @@ onMounted(() => {
       </div>
       <template #footer>
         <el-button @click="detailDialogVisible = false">{{ t('common.close') }}</el-button>
+        <!-- 被驳回的报告在详情页也要能直接改重提：用户往往是从详情看驳回意见，
+             只在列表提供入口会让「看完意见 → 去列表找那一行」成为多余一步（AC-B10）。 -->
+        <el-button
+          v-if="detailData?.status === 4"
+          type="warning"
+          plain
+          data-testid="detail-revise"
+          @click="reviseFromDetail"
+        >{{ t('carbonUpload.reviseAndResubmit') }}</el-button>
         <el-button type="success" plain :icon="DataAnalysis" :loading="aiAnalysisLoading" @click="onGenerateAiAnalysis(detailData)">
           {{ t('carbonUpload.btnAiAnalysis') }}
         </el-button>
