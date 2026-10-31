@@ -590,6 +590,8 @@ export default {
     colCreateTime: 'Created At',
     colOperation: 'Operation',
     dialogCreate: 'Create Carbon Report',
+    dialogEdit: 'Edit Carbon Report',
+    dialogSaveEdit: 'Save Changes',
     enterAccountingPeriod: 'Enter accounting period',
     enterReportTitle: 'Enter report title',
     selectReportType: 'Select report type',

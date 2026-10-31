@@ -590,6 +590,8 @@ export default {
     colCreateTime: '创建时间',
     colOperation: '操作',
     dialogCreate: '创建碳核算报告',
+    dialogEdit: '修改碳核算报告',
+    dialogSaveEdit: '保存修改',
     enterAccountingPeriod: '请输入核算周期',
     enterReportTitle: '请输入报告标题',
     selectReportType: '请选择报告类型',

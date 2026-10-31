@@ -491,6 +491,13 @@ const openAddDialog = () => {
  *
  * 仅 DRAFT / REJECTED 可进入（后端也会二次校验）。
  * emissionData 原文直接回填并切到 JSON 模式——避免把已存的 JSON 强行解析成结构化行。
+ *
+ * ## 为什么还要再取一次详情
+ *
+ * 列表行（`my-reports`）理论上带 emissionData，但它同时服务看板、统计等多处，
+ * 随时可能被裁剪字段，也可能因为列宽/分页策略只取摘要。
+ * 编辑是「覆盖写」：一旦回填到空串，用户随手保存就会把原报告数据清空（GUI-03）。
+ * 因此这里以详情接口为准，列表值只作为渲染前的兜底占位。
  */
 const openEditDialog = async (row: CarbonReportResponse) => {
   editingReportId.value = row.id
@@ -504,6 +511,22 @@ const openEditDialog = async (row: CarbonReportResponse) => {
   emissionMode.value = 'json'
   resetStructuredScopes()
   dialogVisible.value = true
+
+  // 详情兜底：列表行没有排放数据时补全，避免覆盖写把数据清空
+  if (!formModel.emissionData) {
+    try {
+      const detail = await getReport(row.id)
+      if (detail) {
+        formModel.accountingPeriod = formModel.accountingPeriod || detail.accountingPeriod || ''
+        formModel.title = formModel.title || detail.title || ''
+        formModel.calculationMethod = formModel.calculationMethod || detail.calculationMethod || ''
+        formModel.attachments = formModel.attachments || detail.attachments || ''
+        formModel.emissionData = detail.emissionData || ''
+      }
+    } catch (e) {
+      console.warn('[carbon] 加载报告详情失败，编辑将基于列表数据', e)
+    }
+  }
 }
 
 const onSubmitForm = async () => {
@@ -762,7 +785,15 @@ onMounted(() => {
             />
             <span v-else class="row-selected-placeholder" aria-hidden="true" />
             <el-button link type="primary" @click="viewDetail(row)">{{ t('carbonUpload.viewDetail') }}</el-button>
-            <el-button v-if="row.status === 0" link type="primary" @click="openSubmitConfirm(row)">{{ t('common.submit') }}</el-button>
+            <!-- 提交入口：草稿(0) 与 已驳回(4) 都可提交。
+                 后端 ReportStatusEnum.isSubmittable() 本就允许 REJECTED，
+                 早前后端写死 status===0，导致被驳回报告改完无处送审（GUI-04）。 -->
+            <el-button
+              v-if="row.status === 0 || row.status === 4"
+              link
+              type="primary"
+              @click="openSubmitConfirm(row)"
+            >{{ t('common.submit') }}</el-button>
             <!-- D13：被驳回的报告可「修改重提」，不再只能删除重建 -->
             <el-button
               v-if="row.status === 4"
@@ -789,7 +820,12 @@ onMounted(() => {
       </template>
     </DataPanel>
 
-    <el-dialog v-model="dialogVisible" :title="t('carbonUpload.dialogCreate')" width="760px" destroy-on-close>
+    <el-dialog
+      v-model="dialogVisible"
+      :title="editingReportId !== null ? t('carbonUpload.dialogEdit') : t('carbonUpload.dialogCreate')"
+      width="760px"
+      destroy-on-close
+    >
       <el-form ref="formRef" :model="formModel" :rules="formRules" label-width="120px" scroll-to-error>
         <el-form-item :label="t('carbonUpload.labelAccountingPeriod')" prop="accountingPeriod">
           <el-input v-model="formModel.accountingPeriod" :placeholder="t('carbonUpload.placeholderPeriod')" :maxlength="20" show-word-limit data-testid="create-period" />
@@ -936,7 +972,9 @@ onMounted(() => {
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false" :disabled="submitting">{{ t('common.cancel') }}</el-button>
-        <el-button type="primary" :loading="submitting" @click="onSubmitForm">{{ t('common.create') }}</el-button>
+        <el-button type="primary" :loading="submitting" @click="onSubmitForm">
+          {{ editingReportId !== null ? t('carbonUpload.dialogSaveEdit') : t('common.create') }}
+        </el-button>
       </template>
     </el-dialog>
 

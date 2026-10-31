@@ -731,21 +731,23 @@ onMounted(() => {
               </template>
               <p class="section-tip">{{ t('carbonFormula.fillTip') }}</p>
               <!-- 单据驱动：只问化验单/台帐上真实印着的数，不出现 NCV/CC/OF 术语 -->
-              <el-row :gutter="20">
+              <!-- label 必须置顶：三列布局每列仅约 222px，外层 label-width=160px
+                   会把输入框压到 42px（实测内部可编辑区仅 12px），用户看不到自己填的数字（GUI-01）。 -->
+              <el-row :gutter="20" class="fuel-row">
                 <el-col :span="8">
-                  <el-form-item>
+                  <el-form-item label-position="top">
                     <template #label><span>{{ t('carbonFormula.docFc') }}<TermTip term="fc" :text="hintWithSource('fc')" /></span></template>
                     <el-input-number v-model="pgForm[section.key].fc" :min="0" :precision="4" :controls="false" :placeholder="t('carbonFormula.fcUnit')" style="width: 100%" />
                   </el-form-item>
                 </el-col>
                 <el-col :span="8">
-                  <el-form-item>
+                  <el-form-item label-position="top">
                     <template #label><span>{{ t('carbonFormula.docCarbonPercent') }}<TermTip term="cc" :text="hintWithSource('cc')" /></span></template>
                     <el-input-number v-model="pgForm[section.key].carbonPercent" :min="0" :max="100" :precision="2" :controls="false" :placeholder="t('carbonFormula.docCarbonPercentUnit')" style="width: 100%" />
                   </el-form-item>
                 </el-col>
                 <el-col :span="8">
-                  <el-form-item>
+                  <el-form-item label-position="top">
                     <template #label><span>{{ t('carbonFormula.docNcv') }}<TermTip term="ncv" :text="hintWithSource('ncv')" /></span></template>
                     <el-input-number v-model="pgForm[section.key].ncvMeasured" :min="0" :precision="2" :controls="false" :placeholder="t('carbonFormula.ncvUnit')" style="width: 100%" />
                   </el-form-item>
