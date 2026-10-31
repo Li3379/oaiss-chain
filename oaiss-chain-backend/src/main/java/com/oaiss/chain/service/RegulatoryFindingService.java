@@ -122,6 +122,19 @@ public class RegulatoryFindingService {
     }
 
     /**
+     * 分页查询未处置线索（监管工作台主视图）。
+     */
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<RegulatoryFinding> listUnresolved(
+            Integer page, Integer size) {
+        int safePage = page == null || page < 1 ? 1 : page;
+        int safeSize = size == null || size < 1 ? 20 : Math.min(size, 200);
+        org.springframework.data.domain.Pageable pageable =
+                org.springframework.data.domain.PageRequest.of(safePage - 1, safeSize);
+        return findingRepository.findByResolvedFalseAndDeletedFalseOrderByCreatedAtDesc(pageable);
+    }
+
+    /**
      * 处置线索（标记已处置）。线索本身不改变业务状态，这里只记录监管的处理动作。
      */
     @Transactional

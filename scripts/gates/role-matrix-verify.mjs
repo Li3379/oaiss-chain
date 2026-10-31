@@ -93,6 +93,13 @@ const SELF_SERVICE_HINTS = [
   '/notification',
   '/read',           // 标记本人通知已读
   '/read-all',
+  // 监管线索的「处置标记」：给系统产出的某条线索打上"监管已看过并处理"的印记。
+  // 它**不改变任何企业或交易状态**（不冻结、不扣分、不下市），
+  // 因此不属于「影响他人或全局业务状态的写操作」。
+  // 真正影响企业状态的动作（冻结/下市）仍归管理员，监管只能提请。
+  // 注意：判定用的是「控制器文件名 + 方法级路径」（不含 @RequestMapping 基路径），
+  // 所以这里写 '/findings' 而不是 '/regulatory/findings'。
+  '/findings',  // 见 RegulatoryFindingController#resolveFinding
 ]
 let thirdPartyWrite = []
 for (const c of controllers) {

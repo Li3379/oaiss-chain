@@ -55,6 +55,31 @@ public class TradeAuditService {
     private final ApplicationEventPublisher eventPublisher;
 
     /**
+     * 分页查询审核工单。
+     *
+     * @param status            审核态；null 表示全部
+     * @param page              页码（1-based）
+     * @param size              每页大小
+     * @param enterpriseKeyword 企业名称/信用代码关键词（可选，供监管与审核员按企业检索）
+     */
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<TradeAudit> listByStatus(
+            Integer status, Integer page, Integer size, String enterpriseKeyword) {
+        int safePage = page == null || page < 1 ? 1 : page;
+        int safeSize = size == null || size < 1 ? 20 : Math.min(size, 200);
+        org.springframework.data.domain.Pageable pageable =
+                org.springframework.data.domain.PageRequest.of(safePage - 1, safeSize,
+                        org.springframework.data.domain.Sort.by(
+                                org.springframework.data.domain.Sort.Direction.ASC, "createdAt"));
+
+        // 关键词检索暂未接入（需要 join 企业表），先按状态返回，避免假装支持
+        if (status == null) {
+            return tradeAuditRepository.findAll(pageable);
+        }
+        return tradeAuditRepository.findByAuditStatusAndDeletedFalseOrderByCreatedAtAsc(status, pageable);
+    }
+
+    /**
      * 创建待审记录。由撮合路径在分流器判定需要人工审核时调用。
      *
      * @param tradeId     交易ID
