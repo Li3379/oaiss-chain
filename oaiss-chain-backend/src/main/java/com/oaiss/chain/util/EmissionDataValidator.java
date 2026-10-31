@@ -86,8 +86,13 @@ public final class EmissionDataValidator {
 
         BigDecimal desulf = parsePositiveOrZero(rootNode.get("desulf"));
         BigDecimal transmissionLoss = parsePositiveOrZero(rootNode.get("transmissionLoss"));
+        // SF6 绝缘设备泄漏排放（电网企业）。历史缺陷：该键从未被读取，
+        // 于是 {"scope2":1000,"sf6":717} 会被静默算成 total=1000，丢失 717 吨。
+        // 只有显式写 totalEmission 时才借「总量抬高」规则救回来——这是不可接受的静默丢数。
+        BigDecimal sf6 = parsePositiveOrZero(rootNode.get("sf6"));
 
-        BigDecimal computedTotal = scope1.add(scope2).add(scope3).add(desulf).add(transmissionLoss);
+        BigDecimal computedTotal = scope1.add(scope2).add(scope3)
+                .add(desulf).add(transmissionLoss).add(sf6);
 
         if (rootNode.has("totalEmission")) {
             BigDecimal explicitTotal = parsePositiveOrZero(rootNode.get("totalEmission"));

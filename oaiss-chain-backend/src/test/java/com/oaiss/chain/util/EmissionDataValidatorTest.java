@@ -174,4 +174,42 @@ class EmissionDataValidatorTest {
         BigDecimal[] jsonNull = EmissionDataValidator.validateAndParse("null", objectMapper);
         assertEquals(BigDecimal.ZERO, jsonNull[3]);
     }
+
+
+    /**
+     * D8：SF6 泄漏排放必须被解析器读取并计入总量。
+     *
+     * <p>历史缺陷：`sf6` 键从未被读取，于是 `{"scope2":1000,"sf6":717}`
+     * 会被静默算成 total=1000，丢失 717 吨 SF6 泄漏排放。
+     * 电网企业若按此结构提交，SF6 完全不进库、不进评级、不进链。</p>
+     */
+    @Test
+    @DisplayName("D8: sf6 计入总量（不写 totalEmission 也不丢）")
+    void testSf6IncludedInTotal() {
+        String payload = "{\"scope2\":1000,\"sf6\":717}";
+        BigDecimal[] r = EmissionDataValidator.validateAndParse(payload, objectMapper);
+
+        assertEquals(0, new BigDecimal("1000").compareTo(r[1]), "scope2 应为 1000");
+        assertEquals(0, new BigDecimal("1717").compareTo(r[3]),
+                "总量应为 scope2 + sf6 = 1717，实际 " + r[3]);
+    }
+
+    @Test
+    @DisplayName("D8b: sf6 与 desulf / transmissionLoss 同时存在时全部累加")
+    void testAllProcessEmissionsAccumulate() {
+        String payload = "{\"scope1\":100,\"desulf\":20,\"transmissionLoss\":30,\"sf6\":50}";
+        BigDecimal[] r = EmissionDataValidator.validateAndParse(payload, objectMapper);
+
+        assertEquals(0, new BigDecimal("200").compareTo(r[3]),
+                "总量应为 100+20+30+50=200，实际 " + r[3]);
+    }
+
+    @Test
+    @DisplayName("D8c: 无 sf6 键时行为不变（不影响存量报告）")
+    void testAbsentSf6DoesNotChangeTotal() {
+        String payload = "{\"scope1\":100,\"scope2\":200}";
+        BigDecimal[] r = EmissionDataValidator.validateAndParse(payload, objectMapper);
+
+        assertEquals(0, new BigDecimal("300").compareTo(r[3]));
+    }
 }
