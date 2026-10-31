@@ -2049,6 +2049,30 @@ export default {
     dustRemovalEfficiency: "Dust collector efficiency as a decimal (99% → 0.99). Check the nameplate or environmental acceptance report; enter 1 if unknown (standard default 100%).",
   },
 
+  /* Emission total composition (D0: let users verify how the total adds up) */
+  emissionComposition: {
+    title: 'Total composition',
+    scope1: 'Scope 1 (own fuel burning)',
+    scope2: 'Scope 2 (purchased electricity/heat)',
+    scope3: 'Scope 3 (upstream/downstream)',
+    desulf: 'Desulfurization process',
+    transmissionLoss: 'Grid transmission loss',
+    sf6: 'SF6 equipment leakage',
+    processGroup: 'Process emissions (outside the three scopes, but included in the total)',
+    unclassified: 'Unclassified remainder',
+    total: 'Total',
+    hint_scope1: 'Carbon emitted directly by boilers and vehicles',
+    hint_scope2: 'Carbon generated upstream to supply your electricity and heat',
+    hint_scope3: 'Carbon from raw materials, transport, business travel',
+    hint_desulf: 'Carbon released as desulfurization agent decomposes, based on consumption',
+    hint_transmissionLoss: 'Carbon equivalent of line losses during transmission',
+    hint_sf6: 'SF6 leaked from switchgear, computed as leakage × GWP',
+    hint_unclassified: 'Part of the total is not attributed to any item above',
+    hint_total: 'The final emission total recorded for this report',
+    gapNote: 'Note: the items above sum to {gap} tCO2e less than the report total. The difference comes from parts not itemized.',
+    expand: 'View composition',
+  },
+
   glossary: {
     tco2e: 'tCO2e = tonnes of CO2 equivalent. Different greenhouse gases are converted to one common unit so they can be compared.',
     scope1: 'Scope 1: emissions from fuel the company burns itself (boilers, vehicles).',

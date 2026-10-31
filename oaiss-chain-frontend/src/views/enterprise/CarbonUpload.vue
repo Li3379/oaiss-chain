@@ -38,6 +38,7 @@ import StatStrip from '../../components/pen/StatStrip.vue'
 import FilterBar from '../../components/pen/FilterBar.vue'
 import DataPanel from '../../components/pen/DataPanel.vue'
 import StatusTag from '../../components/StatusTag.vue'
+import EmissionComposition from '../../components/EmissionComposition.vue'
 import EmissionDataPanel from '../../components/EmissionDataPanel.vue'
 import TermTip from '../../components/TermTip.vue'
 import EmptyHint from '../../components/EmptyHint.vue'
@@ -854,6 +855,9 @@ onMounted(() => {
                 <strong data-testid="structured-total">{{ formatEmissionNumber(grandTotal) }}</strong>
                 <span>tCO2e</span>
               </div>
+
+              <!-- D0：总量构成清单——用户填完就能逐项核对总量怎么加出来的 -->
+              <EmissionComposition :data="formModel.emissionData" :authoritative-total="grandTotal" />
             </div>
 
             <template v-else>

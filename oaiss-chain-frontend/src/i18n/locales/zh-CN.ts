@@ -2049,6 +2049,30 @@ export default {
     dustRemovalEfficiency: '除尘器除尘效率，填小数（99% 填 0.99）。查设备铭牌或环保验收报告；无数据按 100% 填 1。',
   },
 
+  /* 排放总量构成清单（D0：让用户能逐项核对总量是怎么加出来的） */
+  emissionComposition: {
+    title: '总量构成',
+    scope1: '范围一（自己烧燃料）',
+    scope2: '范围二（买电买热）',
+    scope3: '范围三（上下游间接）',
+    desulf: '脱硫过程排放',
+    transmissionLoss: '输配电线损排放',
+    sf6: 'SF6 设备泄漏',
+    processGroup: '过程排放（不属于三个范围，但计入总量）',
+    unclassified: '未归类余量',
+    total: '合计',
+    hint_scope1: '锅炉、车辆烧煤烧油直接排的碳',
+    hint_scope2: '外购电力和热力在供方产生的碳',
+    hint_scope3: '原料、运输、出差等上下游环节的碳',
+    hint_desulf: '脱硫剂分解产生的碳，按消耗量算',
+    hint_transmissionLoss: '输配电过程中线损折算的碳',
+    hint_sf6: '高压开关设备泄漏的六氟化硫，按泄漏量×GWP 算',
+    hint_unclassified: '总量里还有一部分没归到上面任何一项',
+    hint_total: '本报告最终计入的排放总量',
+    gapNote: '注意：构成各项之和与报告总量相差 {gap} tCO2e，差额来自未在明细中列出的部分。',
+    expand: '查看构成',
+  },
+
   glossary: {
     tco2e: 'tCO2e = 二氧化碳当量吨。把不同温室气体按升温能力折算成同一把尺子，方便互相比较。',
     scope1: '范围一：企业自己烧燃料（锅炉、车辆）直接排出来的碳。',

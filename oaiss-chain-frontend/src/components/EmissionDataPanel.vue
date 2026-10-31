@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { formatNumber } from '../utils/format'
 import TermTip from './TermTip.vue'
+import EmissionComposition from './EmissionComposition.vue'
 
 /**
  * 排放数据结构化展示（ELI5）：把 emissionData JSON 渲染为分范围的明细表。
@@ -126,6 +127,10 @@ const rawText = computed(() => (props.data || '').trim())
           <strong>{{ formatNumber(total, '-', 4) }} tCO₂e</strong>
         </template>
       </el-alert>
+
+      <!-- D0：总量构成清单。原先面板只加三个 scope，
+           与库内 total（含脱硫/线损/SF6）对不上且无解释。 -->
+      <EmissionComposition :data="data" :authoritative-total="total" />
     </template>
 
     <div v-else-if="rawText" class="emission-panel__raw">
