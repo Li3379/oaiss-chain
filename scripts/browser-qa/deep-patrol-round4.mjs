@@ -196,11 +196,11 @@ async function runPatrol() {
     }
 
     // ----------------------------------------------------------------------
-    // 场景 4: 管理员端批量上链交互摸排 (/admin/verify/list)
+    // 场景 4: 管理员端批量上链交互摸排 (/auditor/verify/list)
     // ----------------------------------------------------------------------
     console.log('\n--- 场景 4: 管理员端认证与批量上链交互摸排 ---');
     await loginUser(page, 'admin', 'admin123');
-    await page.goto(`${BASE_URL}/admin/verify/list`, { waitUntil: 'networkidle' });
+    await page.goto(`${BASE_URL}/auditor/verify/list`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1000);
 
     // 检查多选 checkbox

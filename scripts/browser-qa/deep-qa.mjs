@@ -234,7 +234,7 @@ async function main() {
     ['/admin/system/users', 'users'],
     ['/admin/system/carbon', 'carbon'],
     ['/admin/system/config', 'config'],
-    ['/admin/verify/list', 'verify'],
+    ['/auditor/verify/list', 'verify'],
     ['/admin/certificates', 'certificates'],
     ['/admin/data/statistics', 'statistics'],
   ]);

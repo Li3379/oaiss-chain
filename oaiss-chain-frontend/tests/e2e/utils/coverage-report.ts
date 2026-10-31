@@ -10,7 +10,7 @@ export interface EndpointCoverage {
   method: string
   module: string
   testedIn: string[]
-  category: 'v1.0' | 'v1.1'
+  category: 'v1.0' | 'v1.1' | 'v1.5'
 }
 
 /**
@@ -39,6 +39,9 @@ export const CORE_ENDPOINTS: EndpointCoverage[] = [
   // Trading (v1.0)
   { endpoint: '/auction/orders', method: 'POST', module: 'auction', testedIn: ['auction-flow'], category: 'v1.0' },
   { endpoint: '/auction/match', method: 'POST', module: 'auction', testedIn: ['auction-flow'], category: 'v1.0' },
+  // v1.5.3 撮合控制台：自动撮合运行态与全平台成交明细
+  { endpoint: '/auction/matching-status', method: 'GET', module: 'auction', testedIn: ['admin-matching-console'], category: 'v1.5' },
+  { endpoint: '/auction/all-results', method: 'GET', module: 'auction', testedIn: ['admin-matching-console'], category: 'v1.5' },
   { endpoint: '/trades/p2p', method: 'POST', module: 'trade', testedIn: ['p2p-trade-flow'], category: 'v1.0' },
   { endpoint: '/trades/{id}/confirm', method: 'POST', module: 'trade', testedIn: ['p2p-trade-flow'], category: 'v1.0' },
 

@@ -247,7 +247,7 @@ test.describe('Auth Resilience: Monitoring & Recovery', () => {
 
   test.describe('Cross-Role Auth Isolation', () => {
     const rolePageMap: Record<string, string[]> = {
-      admin: ['/admin/system/users', '/admin/data/statistics', '/admin/verify/list'],
+      admin: ['/admin/system/users', '/admin/data/statistics', '/admin/certificates'],
       enterprise: ['/enterprise/carbon/upload', '/enterprise/trading/market'],
       reviewer: ['/auditor/audit/list'],
       thirdParty: ['/third-party/monitor'],

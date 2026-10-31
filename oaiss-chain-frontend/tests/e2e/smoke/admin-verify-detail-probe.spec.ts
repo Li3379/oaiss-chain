@@ -18,7 +18,7 @@ test('probe admin verify detail dialog renders scope emission values', async ({ 
   ensureOutDir()
   await loginViaApi(page, 'admin', 'admin123')
 
-  await page.goto(`${BASE_URL}/admin/verify/list`)
+  await page.goto(`${BASE_URL}/auditor/verify/list`)
   await page.waitForLoadState('domcontentloaded')
   await page.waitForTimeout(1200)
 

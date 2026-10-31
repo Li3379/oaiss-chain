@@ -128,7 +128,7 @@ async function run() {
     localStorage.setItem('oaiss_guided_tour_done', '1');
   }, token3);
 
-  await page3.goto('http://localhost:5173/admin/verify/list');
+  await page3.goto('http://localhost:5173/auditor/verify/list');
   await page3.waitForLoadState('networkidle');
 
   // 查看批量按钮初始状态

@@ -14,14 +14,15 @@ test.describe('Role: Reviewer - Smoke', () => {
     await page.goto('/auditor/audit/list')
     await page.waitForLoadState('networkidle')
     const layout = new Layout(page)
-    await layout.expectSidebar(['碳排放数据'])
+    await layout.expectSidebar(['审核材料', '项目核证', '认证管理', '搜索查询'])
+    await layout.expectRailCount(4)
   })
 
   test('user info displayed', async ({ page }) => {
     await page.goto('/auditor/audit/list')
     await page.waitForLoadState('networkidle')
     const layout = new Layout(page)
-    await layout.expectUserInfo('reviewer', '审核员')
+    await layout.expectUserInfo('reviewer001', '审核员')
   })
 
   test.describe('Audit List', () => {

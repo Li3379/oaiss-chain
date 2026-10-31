@@ -79,12 +79,18 @@ const SMOKE_ROUTES: Record<string, MockRouteConfig[]> = {
     { method: 'GET', path: '/enterprise/info*', data: { id: 1, enterpriseName: 'Enterprise 001' } },
     { method: 'GET', path: '/enterprise/admission/my*', data: [] },
     { method: 'GET', path: '/signature/keypair*', data: null },
+    // 搜索查询页（/search）首屏
+    { method: 'GET', path: '/search/reports*', data: EMPTY_PAGE },
+    { method: 'GET', path: '/search/trades*', data: EMPTY_PAGE },
   ],
   ADMIN: [
     { method: 'GET', path: '/admin/users*', data: EMPTY_PAGE },
     { method: 'GET', path: '/carbon/reports*', data: EMPTY_PAGE },
     { method: 'GET', path: '/blockchain/status*', data: { status: 'healthy', connected: true, mode: 'MOCK' } },
     { method: 'GET', path: '/admin/statistics*', data: { totalUsers: 10, totalReports: 50, totalTrades: 20 } },
+    // 搜索查询页（/search）首屏
+    { method: 'GET', path: '/search/reports*', data: EMPTY_PAGE },
+    { method: 'GET', path: '/search/trades*', data: EMPTY_PAGE },
     {
       method: 'GET',
       path: '/admin/config*',
@@ -114,11 +120,18 @@ const SMOKE_ROUTES: Record<string, MockRouteConfig[]> = {
       data: { name: 'reviewer', organization: 'QA Org', qualificationNo: 'RQ-TEST-001' },
     },
     { method: 'GET', path: '/reviewer/qualification/my*', data: [] },
+    // 搜索查询页（/search）首屏
+    { method: 'GET', path: '/search/reports*', data: EMPTY_PAGE },
+    { method: 'GET', path: '/search/trades*', data: EMPTY_PAGE },
   ],
   THIRD_PARTY: [
     { method: 'GET', path: '/user/profile*', data: { id: 5, username: 'thirdparty001', realName: 'Third Party 001', userType: 3 } },
     { method: 'GET', path: '/third-party/carbon-reports*', data: EMPTY_PAGE },
-    { method: 'GET', path: '/third-party/statistics*', data: { totalReports: 30, pendingReports: 8, approvedReports: 20, rejectedReports: 2 } },
+    { method: 'GET', path: '/third-party/statistics*', data: { totalReports: 30, pendingReports: 8, approvedReports: 20, rejectedReports: 2, totalTrades: 12, totalTradeQuantity: 1200, totalTradeAmount: 72000 } },
+    // 监管面板新增的交易流水台账 + 搜索查询页首屏
+    { method: 'GET', path: '/trade/list*', data: EMPTY_PAGE },
+    { method: 'GET', path: '/search/reports*', data: EMPTY_PAGE },
+    { method: 'GET', path: '/search/trades*', data: EMPTY_PAGE },
     {
       method: 'GET',
       path: '/third-party/org-info*',

@@ -22,7 +22,7 @@ test('probe admin verify blockchain health semantics and en-US pagination', asyn
     localStorage.setItem('locale', 'en-US')
   })
 
-  await page.goto(`${BASE_URL}/admin/verify/list`)
+  await page.goto(`${BASE_URL}/auditor/verify/list`)
   await page.waitForLoadState('domcontentloaded')
   await page.waitForTimeout(1200)
 

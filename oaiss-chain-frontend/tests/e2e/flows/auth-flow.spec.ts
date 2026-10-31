@@ -31,10 +31,10 @@ test.describe('Auth Flow', () => {
 
     test('admin can login and reach verify list', async ({ page }) => {
       await loginViaApi(page, TEST_USERS.admin.username, TEST_USERS.admin.password)
-      await page.goto('/admin/verify/list')
+      await page.goto('/auditor/verify/list')
       await page.waitForLoadState('networkidle')
 
-      await expect(page).toHaveURL(/\/admin\/verify\/list/)
+      await expect(page).toHaveURL(/\/auditor\/verify\/list/)
     })
 
     test('third-party can login and reach monitor page', async ({ page }) => {

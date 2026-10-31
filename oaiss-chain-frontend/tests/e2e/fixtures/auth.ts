@@ -44,6 +44,14 @@ export const TEST_USERS: Record<string, { username: string; password: string; ro
   thirdParty: { username: 'thirdparty001', password: TEST_PASSWORD, role: 'THIRD_PARTY' },
 }
 
+/** 角色名 → TEST_USERS 键，供 loginViaToken 优先真实登录用 */
+const ROLE_TO_TEST_USER: Record<string, string> = {
+  ENTERPRISE: 'enterprise',
+  REVIEWER: 'reviewer',
+  THIRD_PARTY: 'thirdParty',
+  ADMIN: 'admin',
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -97,6 +105,13 @@ async function persistAuth(page: Page, accessToken: string, refreshToken: string
             localStorage.setItem('token_expiry', String(payload.exp * 1000))
             sessionStorage.setItem('token_expiry', String(payload.exp * 1000))
           }
+          // 预置「新用户 3 步上手引导」已完成标记（键按 userId 隔离）。
+          // 不预置的话，每次全新上下文都会弹出全屏引导遮罩，
+          // 把页面上所有按钮盖住——表现为「元素存在但 click 超时」，
+          // 让十几个 probe 挂在与其主题完全无关的失败上。
+          if (payload.userId) {
+            localStorage.setItem(`oaiss_guided_tour_done:${payload.userId}`, '1')
+          }
         }
       } catch {
         // JWT parse failed, skip expiry extraction
@@ -124,7 +139,27 @@ export function getToken(role: string): string {
   return MOCK_TOKENS[role] || MOCK_TOKENS.ENTERPRISE
 }
 
+/**
+ * 注入登录态。
+ *
+ * 历史实现直接注入 MOCK_TOKENS 里的假签名 JWT。后端加入 JWT 签名校验后，
+ * 这些假 token 一到 `/auth/me` 等真实端点就 401，响应拦截器随即 clearTokens()
+ * 并跳登录页——于是所有依赖本函数的 smoke 用例都挂在「菜单不可见」这类表象上。
+ *
+ * 现在的策略：**优先真实登录**（用户名/密码换真 token），只有真实登录不可用时
+ * 才回退到 mock token。这样 smoke 不再依赖「后端不校验签名」这个已不成立的假设。
+ */
 export async function loginViaToken(page: Page, role: string): Promise<void> {
+  const testUser = TEST_USERS[ROLE_TO_TEST_USER[role] ?? 'enterprise']
+  if (testUser) {
+    try {
+      await loginViaApi(page, testUser.username, testUser.password)
+      return
+    } catch {
+      // 后端不可用或登录被拒：退回 mock token，让纯前端断言仍可运行
+    }
+  }
+
   const token = getToken(role)
   await page.addInitScript(
     (args) => {
@@ -134,6 +169,18 @@ export async function loginViaToken(page: Page, role: string): Promise<void> {
       localStorage.setItem('user_role', args.roleLabel)
       sessionStorage.setItem('access_token', args.token)
       sessionStorage.setItem('refresh_token', `${args.roleLabel.toLowerCase()}-refresh-token`)
+      // 同时抑制新用户引导遮罩（mock token 里也带 userId 时按 userId 存，否则存全局键）
+      try {
+        const payload = JSON.parse(atob(args.token.split('.')[1] || ''))
+        const key = payload?.userId
+          ? `oaiss_guided_tour_done:${payload.userId}`
+          : 'oaiss_guided_tour_done'
+        localStorage.setItem(key, '1')
+        sessionStorage.setItem(key, '1')
+      } catch {
+        localStorage.setItem('oaiss_guided_tour_done', '1')
+        sessionStorage.setItem('oaiss_guided_tour_done', '1')
+      }
     },
     { token, roleLabel: role },
   )

@@ -4,12 +4,12 @@ export class VerifyListPage {
   constructor(private page: Page) {}
 
   async goto(): Promise<void> {
-    await this.page.goto('/admin/verify/list')
+    await this.page.goto('/auditor/verify/list')
     await this.page.waitForLoadState('networkidle')
   }
 
   async expectLoaded(): Promise<void> {
-    await expect(this.page).toHaveURL(/\/admin\/verify\/list/)
+    await expect(this.page).toHaveURL(/\/auditor\/verify\/list/)
   }
 
   async expectTable(): Promise<void> {

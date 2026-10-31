@@ -14,7 +14,8 @@ test.describe('Role: Admin - Smoke', () => {
     await page.goto('/admin/system/users')
     await page.waitForLoadState('networkidle')
     const layout = new Layout(page)
-    await layout.expectSidebar(['系统管理', '数据管理'])
+    await layout.expectSidebar(['系统管理', '数据管理', '撮合控制台', '证书管理', '搜索查询'])
+    await layout.expectRailCount(5)
   })
 
   test('user info displayed', async ({ page }) => {

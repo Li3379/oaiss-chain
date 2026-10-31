@@ -40,7 +40,7 @@ const ROUTES_BY_ROLE = {
     { path: '/auditor/project/review', name: '项目审核' }
   ],
   admin: [
-    { path: '/admin/verify/list', name: '认证列表' },
+    { path: '/auditor/verify/list', name: '上链补救' },
     { path: '/admin/system/users', name: '用户管理' },
     { path: '/admin/system/carbon', name: '碳核算管理' },
     { path: '/admin/system/config', name: '系统配置' },

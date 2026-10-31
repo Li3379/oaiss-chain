@@ -76,7 +76,7 @@ const run = async () => {
 
   // ===== 管理员角色 =====
   await login(page, 'admin');
-  await page.goto(`${BASE}/admin/verify/list`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/auditor/verify/list`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(1000);
   await shot(page, '07-admin-verify-list.png');
   const viewBtn = page.locator('.el-table__body tr').first().locator('button:has-text("查看")');

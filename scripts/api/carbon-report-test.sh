@@ -3,7 +3,7 @@ set -euo pipefail
 
 # 加载数据库配置
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/db-config.sh"
+source "$SCRIPT_DIR/../db-config.sh"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -333,11 +333,14 @@ else
   else
     APPROVE_STATUS=$(extract_field "$APPROVE_RESP" "status")
 
-    if [[ "$APPROVE_STATUS" == "3" ]]; then
+    # 方案 A：审核通过即由系统自动上链。
+    # 自动上链成功 -> status=5 (ON_CHAIN)；上链失败 -> 停留 status=3 (APPROVED)，
+    # 由 POST /carbon/certify 幂等补救。两种都是「审核通过」的合法结果。
+    if [[ "$APPROVE_STATUS" == "3" || "$APPROVE_STATUS" == "5" ]]; then
       ok "CARB-06: Report1 approved: status=$APPROVE_STATUS"
       PASSED=$((PASSED + 1))
     else
-      fail "CARB-06: Approval result mismatch: status=$APPROVE_STATUS (expected 3)"
+      fail "CARB-06: Approval result mismatch: status=$APPROVE_STATUS (expected 3=APPROVED or 5=ON_CHAIN)"
       FAILED=$((FAILED + 1))
     fi
   fi

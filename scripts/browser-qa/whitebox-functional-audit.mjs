@@ -307,12 +307,12 @@ async function main() {
     results.pagesChecked.push('/admin/system/users');
 
     // 4.3 认证列表运维入口
-    await page.goto(`${BASE_URL}/admin/verify/list`, { waitUntil: 'networkidle', timeout: 15000 });
+    await page.goto(`${BASE_URL}/auditor/verify/list`, { waitUntil: 'networkidle', timeout: 15000 });
     await page.waitForTimeout(1000);
     const adminVerifyShot = path.join(SCREENSHOT_DIR, '12-admin-verify-list.png');
     await page.screenshot({ path: adminVerifyShot });
     results.screenshots.push('12-admin-verify-list.png');
-    results.pagesChecked.push('/admin/verify/list');
+    results.pagesChecked.push('/auditor/verify/list');
 
     await ctx.close();
     results.rolesTested.push('ADMIN');

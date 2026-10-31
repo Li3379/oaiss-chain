@@ -5,7 +5,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-WORK_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# scripts/api/ 上溯两级才是仓库根（原先只上溯一级，指向了 scripts/）
+WORK_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Source shared test helpers (provides assert_contains, assert_not_contains,
 # login_user, run_mysql, print_summary, and test counters)

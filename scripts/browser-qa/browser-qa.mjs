@@ -288,7 +288,7 @@ async function phase2_interactionTest(browser) {
       { path: '/admin/system/users', name: 'admin-users' },
       { path: '/admin/system/carbon', name: 'admin-carbon' },
       { path: '/admin/certificates', name: 'admin-certificates' },
-      { path: '/admin/verify/list', name: 'admin-verify' },
+      { path: '/auditor/verify/list', name: 'admin-verify' },
       { path: '/admin/system/config', name: 'admin-config' },
       { path: '/admin/data/statistics', name: 'admin-statistics' },
     ],

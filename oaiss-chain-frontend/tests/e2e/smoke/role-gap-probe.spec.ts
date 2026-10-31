@@ -44,7 +44,7 @@ test('probe admin verify/detail and config backend wiring', async ({ page }) => 
     }
   })
 
-  await page.goto(`${BASE_URL}/admin/verify/list`)
+  await page.goto(`${BASE_URL}/auditor/verify/list`)
   await settle(page)
 
   const verifyUrl = page.url()

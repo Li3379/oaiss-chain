@@ -27,7 +27,7 @@ const ROUTES_BY_ROLE = {
     '/enterprise/enterprise-inference', '/enterprise/carbon-formula', '/enterprise/info',
   ],
   reviewer: ['/auditor/audit/list', '/auditor/review/history', '/auditor/project/review'],
-  admin: ['/admin/verify/list', '/admin/system/users', '/admin/system/carbon',
+  admin: ['/auditor/verify/list', '/admin/system/users', '/admin/system/carbon',
     '/admin/system/config', '/admin/data/statistics', '/admin/certificates'],
   thirdParty: ['/third-party/monitor'],
 };
@@ -148,7 +148,7 @@ async function run() {
 
   // 3.3 管理员批量上链禁用态断言（browse 模式 [is disabled]）
   await login(page, 'admin');
-  await page.goto(`${BASE_URL}/admin/verify/list`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${BASE_URL}/auditor/verify/list`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(900);
   const batchBtn = page.locator('button').filter({ hasText: /批量/ }).first();
   const batchDisabled = batchBtn ? await batchBtn.isDisabled().catch(() => null) : null;

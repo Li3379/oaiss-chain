@@ -14,14 +14,15 @@ test.describe('Role: Third Party - Smoke', () => {
     await page.goto('/third-party/monitor')
     await page.waitForLoadState('networkidle')
     const layout = new Layout(page)
-    await layout.expectSidebar(['监管面板'])
+    await layout.expectSidebar(['监管中心', '搜索查询'])
+    await layout.expectRailCount(2)
   })
 
   test('user info displayed', async ({ page }) => {
     await page.goto('/third-party/monitor')
     await page.waitForLoadState('networkidle')
     const layout = new Layout(page)
-    await layout.expectUserInfo('thirdparty', '第三方监管')
+    await layout.expectUserInfo('thirdparty001', '第三方监管')
   })
 
   test.describe('Monitor Panel', () => {

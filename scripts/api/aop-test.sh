@@ -6,12 +6,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-WORK_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# 脚本位于 scripts/api/，仓库根需上溯两级（原先只上溯一级，指向了 scripts/）
+WORK_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Source shared test helpers (provides assert_contains, assert_not_contains,
 # login_user, run_mysql, print_summary, and test counters)
 source "$SCRIPT_DIR/test-helpers.sh"
-DB_PORT=3306 source "$SCRIPT_DIR/db-config.sh"
+DB_PORT=3306 source "$SCRIPT_DIR/../db-config.sh"
 
 # BASE_URL auto-detected by test-helpers.sh
 BACKEND_DIR="$WORK_DIR/oaiss-chain-backend/src/main/java/com/oaiss/chain"
@@ -61,7 +62,7 @@ stop_backend() {
 
 start_backend() {
     echo "  Starting backend..."
-    "$SCRIPT_DIR/start-backend.sh" > /tmp/oaiss-aop-backend.log 2>&1 &
+    "$SCRIPT_DIR/../start-backend.sh" > /tmp/oaiss-aop-backend.log 2>&1 &
     # Wait for backend to become available (polls login endpoint)
     local attempts=0
     while ! curl -sf http://localhost:8080/api/v1/auth/login -o /dev/null -X POST -H "Content-Type: application/json" -d '{"username":"admin","password":"admin123"}' 2>/dev/null; do

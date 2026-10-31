@@ -62,7 +62,7 @@ test.describe('Flow: Carbon Neutral Project Lifecycle', () => {
   test.describe('Admin Verification Actions', () => {
     test('admin can verify project', async ({ page }) => {
       await loginViaApi(page, TEST_USERS.admin.username, TEST_USERS.admin.password)
-      await page.goto('/admin/verify/list')
+      await page.goto('/auditor/verify/list')
       await page.waitForLoadState('networkidle')
 
       const verifyBtn = page.getByRole('button', { name: /核证|查看/ }).first()

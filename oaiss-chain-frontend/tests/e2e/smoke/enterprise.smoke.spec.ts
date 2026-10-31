@@ -19,17 +19,22 @@ test.describe('Role: Enterprise - Smoke', () => {
     await page.goto('/enterprise/carbon/upload')
     await page.waitForLoadState('networkidle')
     const layout = new Layout(page)
+    // pen 图标栏：11 个入口，可访问名用完整菜单名（短标签只在视觉层）
     await layout.expectSidebar([
       '碳核算',
       'P2P订单管理',
-      '碳交易',
+      '双向拍卖',
+      'P2P交易',
       '本公司信息',
       '信誉评分',
       '碳币账户',
       '区块链',
       '碳中和',
+      'AI智能预测',
+      '搜索查询',
       '个人中心',
     ])
+    await layout.expectRailCount(12)
   })
 
   test('user info displayed', async ({ page }) => {
@@ -74,7 +79,9 @@ test.describe('Role: Enterprise - Smoke', () => {
     test('create button exists', async ({ page }) => {
       const po = new CarbonUploadPage(page)
       await po.goto()
-      await expect(page.getByRole('button', { name: '创建' })).toBeVisible()
+      // 「创建」在本页会出现多次（页头主操作 + 面板内按钮 + 首次引导弹窗的「去创建第一份报告」），
+      // 按 strict mode 单一定位会冲突；这里只要求「至少一个可用」。
+      await expect(page.getByRole('button', { name: '创建', exact: true }).first()).toBeVisible()
     })
   })
 

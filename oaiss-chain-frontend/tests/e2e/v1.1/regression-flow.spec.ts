@@ -247,7 +247,7 @@ test.describe('Flow: v1.0 Regression Tests', () => {
 
       const pages = [
         '/admin/system/users',
-        '/admin/verify/list',
+        '/admin/certificates',
       ]
 
       for (const p of pages) {

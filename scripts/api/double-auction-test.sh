@@ -5,7 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/test-helpers.sh"
-DB_PORT=3306 source "$SCRIPT_DIR/db-config.sh"
+DB_PORT=3306 source "$SCRIPT_DIR/../db-config.sh"
 
 check_backend
 
@@ -17,6 +17,9 @@ info "Resetting auction test data..."
 exec_mysql_query "DELETE FROM matching_result; DELETE FROM auction_order;" 2>/dev/null || true
 exec_mysql_query "UPDATE enterprise SET carbon_tradable=38000, carbon_quota=50000, carbon_used=12000 WHERE user_id=2;" 2>/dev/null || true
 exec_mysql_query "UPDATE enterprise SET carbon_tradable=55000, carbon_quota=55000, carbon_used=0 WHERE user_id=3;" 2>/dev/null || true
+# 买入挂单会全额冻结意向金（qty × price），余额不足会以 4001 拒绝。
+# 这里显式把碳币余额重置到充足水位，避免依赖历史充值状态导致用例随机失败。
+exec_mysql_query "UPDATE carbon_coin_account SET balance=100000, frozen_balance=0, total_recharged=100000, total_spent=0 WHERE user_id IN (2,3);" 2>/dev/null || true
 ok "Auction data reset"
 
 # --- Setup ---
@@ -134,7 +137,8 @@ fi
 echo ""
 echo "[TRADE-13] DoubleAuctionService @Transactional..."
 TEST_ID=$((TEST_ID + 1))
-SERVICE_FILE="$SCRIPT_DIR/../oaiss-chain-backend/src/main/java/com/oaiss/chain/service/DoubleAuctionService.java"
+# scripts/api/ 上溯两级才是仓库根（原先只上溯一级，指向了 scripts/）
+SERVICE_FILE="$SCRIPT_DIR/../../oaiss-chain-backend/src/main/java/com/oaiss/chain/service/DoubleAuctionService.java"
 if [[ -f "$SERVICE_FILE" ]] && grep -q "@Transactional" "$SERVICE_FILE"; then
     echo "  [PASS] Test $TEST_ID: @Transactional annotation present"
     PASS=$((PASS + 1))
