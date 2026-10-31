@@ -1127,10 +1127,47 @@ class CarbonServiceTest {
         when(carbonReportRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(testReport));
         when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(testEnterprise));
         when(carbonReportRepository.save(any(CarbonReport.class))).thenReturn(testReport);
+        // D13：被驳回的报告重提时必须重新签名成功（编辑会让旧签名失效）
+        when(digitalSignatureService.signReport(any(), any()))
+                .thenReturn(com.oaiss.chain.dto.SignatureResult.builder()
+                        .signature("re-signed-sig").build());
 
         CarbonReportResponse response = carbonService.submitReport(currentUser, 1L);
         assertNotNull(response);
         verify(carbonReportRepository).save(any(CarbonReport.class));
+        assertEquals("re-signed-sig", testReport.getSignatureData(), "重提必须带上新签名");
+    }
+
+    /**
+     * D13 安全回归：被驳回的报告若无法重新签名，提交必须被拒绝。
+     *
+     * <p>这是堵住「编辑一次就能让带签名的报告变成无签名报告并继续走审核上链」的通道：
+     * 审核侧对「无签名」返回 null 并放行（存量兼容），所以提交侧必须守住。</p>
+     */
+    @Test
+    @DisplayName("D13安全: 被驳回报告无法重签时拒绝提交（不产出无签名报告）")
+    void testSubmitRejectedReportWithoutResignIsBlocked() {
+        testReport.setStatus(ReportStatusEnum.REJECTED.getCode());
+        testReport.setEmissionData("{\"scope1\":[],\"scope2\":[],\"scope3\":[]}");
+        ObjectMapper realMapper = new ObjectMapper();
+        try {
+            var mockNode = realMapper.readTree("{\"scope1\":[],\"scope2\":[],\"scope3\":[]}");
+            when(objectMapper.readTree(any(String.class))).thenReturn(mockNode);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        when(carbonReportRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(testReport));
+        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(testEnterprise));
+        // 签名抛异常 → 无法重签
+        when(digitalSignatureService.signReport(any(), any()))
+                .thenThrow(new RuntimeException("no usable key pair"));
+
+        CarbonException ex = assertThrows(CarbonException.class,
+                () -> carbonService.submitReport(currentUser, 1L));
+        assertTrue(ex.getMessage().contains("需重新数字签名"),
+                "错误信息应引导用户去检查密钥，实际: " + ex.getMessage());
+        verify(carbonReportRepository, never()).save(any(CarbonReport.class));
     }
 
     @Test

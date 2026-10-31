@@ -112,8 +112,24 @@ public class CarbonService {
 
         calculateEmissions(report);
         // 可信签名链：提交时用企业私钥对排放数据签名（文档契约"企业确认签名后发审核员"）。
-        // 无有效密钥对时跳过签名并放行（引导去个人中心生成），存量流程不受阻。
-        signReportIfPossible(report, currentUser.getUserId());
+        //
+        // 两种情形，处置不同：
+        //   1. 全新报告、企业从未生成密钥 → 跳过签名放行（存量兼容，审核端会显示「未签名」）；
+        //   2. 报告**曾经被编辑过**（D13）→ 旧签名已失效，必须重新签名成功才允许提交。
+        //      否则「编辑一次」就能让一份带签名的报告变成无签名报告并继续走审核上链。
+        boolean signed;
+        if (isReportEdited(report)) {
+            signed = signReportStrict(report, currentUser.getUserId());
+            if (!signed) {
+                throw CarbonException.submitFailed(
+                        "报告已被修改，需重新数字签名后才能提交；请在【个人中心-数字签名】确认密钥有效");
+            }
+        } else {
+            signed = signReportIfPossible(report, currentUser.getUserId());
+            if (!signed) {
+                log.info("Report {} submitted without signature (no usable key pair)", report.getReportNo());
+            }
+        }
         report.setStatus(ReportStatusEnum.SUBMITTED.getCode());
         report = carbonReportRepository.save(report);
 
@@ -121,14 +137,52 @@ public class CarbonService {
         return toResponse(report);
     }
 
-    private void signReportIfPossible(CarbonReport report, Long userId) {
+    /**
+     * 尝试签名；失败不抛异常、仅返回 false（存量兼容：无密钥企业仍可提交）。
+     *
+     * @return true 表示已成功写入签名
+     */
+    private boolean signReportIfPossible(CarbonReport report, Long userId) {
         try {
             com.oaiss.chain.dto.SignatureResult result = digitalSignatureService.signReport(userId, report.getEmissionData());
             report.setSignatureData(result.getSignature());
             log.info("Report {} auto-signed by user {}", report.getReportNo(), userId);
+            return true;
         } catch (Exception e) {
             log.warn("Auto-sign skipped for report {} by user {}: {}", report.getReportNo(), userId, e.getMessage());
+            return false;
         }
+    }
+
+    /**
+     * 强制签名：必须成功，否则返回 false 由调用方拒绝提交。
+     *
+     * <p>用于「报告被编辑过」的情形——编辑必然让旧签名失效，
+     * 若此时还允许无签名提交，就等于开了一条绕过数字签名的通道。</p>
+     */
+    private boolean signReportStrict(CarbonReport report, Long userId) {
+        try {
+            com.oaiss.chain.dto.SignatureResult result = digitalSignatureService.signReport(userId, report.getEmissionData());
+            report.setSignatureData(result.getSignature());
+            log.info("Report {} re-signed after edit by user {}", report.getReportNo(), userId);
+            return true;
+        } catch (Exception e) {
+            log.warn("Strict re-sign failed for edited report {}: {}", report.getReportNo(), e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 判断报告是否处于「曾被审核驳回、现被编辑重提」的路径。
+     *
+     * <p>判定依据：状态为 REJECTED。业务上被驳回即意味着用户会去修改内容，
+     * 此时必须重新签名。全新草稿（DRAFT）不走严格路径，保留无密钥企业的存量兼容。</p>
+     *
+     * <p>局限：若未来引入「草稿可编辑」，需改用显式的 edited 标记字段，
+     * 否则草稿编辑后的无签名提交仍会被放行。</p>
+     */
+    private boolean isReportEdited(CarbonReport report) {
+        return Objects.equals(report.getStatus(), ReportStatusEnum.REJECTED.getCode());
     }
 
     @Transactional
@@ -454,12 +508,35 @@ public class CarbonService {
             report.setAttachments(request.getAttachments());
         }
 
-        // 内容变了，四列必须重算；签名缓存也一并清空，提交时重新签。
+        // 内容变了，四列必须重算，旧签名必然失效（它覆盖的是旧 emissionData）。
+        //
+        // 安全要点（D13 引入的风险）：
+        // 不能简单置 null 了事——审核侧的 verifyReportSignature 对「无签名」返回 null
+        // 并放行（为兼容存量无密钥企业），于是「编辑 → 签名丢失 → 无签名过审 → 上链」
+        // 会成为一条绕过数字签名的通道。
+        //
+        // 这里改为：清空旧签名，同时在提交时必须重新签名（见 submitReport 的
+        // requireFreshSignature 判断）。企业若已无可用密钥，提交会被明确拒绝，
+        // 而不是静默产出一份无签名报告。
         calculateEmissions(report);
+
+        // 旧签名覆盖的是旧 emissionData，内容一变必然失效，先清空。
         report.setSignatureData(null);
 
+        // 立刻用企业私钥重签——**而不是**把「签名」这件事留到 submit。
+        // 理由：留到 submit 的话，一份从未签名的新草稿与一份「编辑后签名丢失」的草稿
+        // 在库里看起来完全一样，无法区分，只能靠状态猜（REJECTED 才严格）。
+        // 在编辑点就重签，能让「被编辑过的报告一定带新签名」成为库内可见事实。
+        boolean resigned = signReportStrict(report, currentUser.getUserId());
+        if (!resigned) {
+            throw CarbonException.submitFailed(
+                    "保存修改需重新数字签名，但当前账号没有可用密钥。"
+                            + "请先在【个人中心-数字签名】生成或恢复密钥后再修改报告");
+        }
+
         report = carbonReportRepository.save(report);
-        log.info("Carbon report updated: {} by user {}", report.getReportNo(), currentUser.getUsername());
+        log.info("Carbon report updated and re-signed: {} by user {}",
+                report.getReportNo(), currentUser.getUsername());
         return toResponse(report);
     }
 

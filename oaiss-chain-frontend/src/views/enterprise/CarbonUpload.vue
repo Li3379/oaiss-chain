@@ -530,8 +530,19 @@ const onSubmitForm = async () => {
     }
     dialogVisible.value = false
     await fetchData()
-  } catch {
-    ElMessage.error(t('carbonUpload.createFailed'))
+  } catch (error: unknown) {
+    // D13：修改失败的原因往往很具体（如「需重新数字签名」「状态不允许修改」），
+    // 不能统一显示成「创建失败」——用户会不知道该去做什么。
+    const backendMsg =
+      error && typeof error === 'object' && 'response' in error
+        ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+        : undefined
+    ElMessage.error(
+      backendMsg ||
+        (editingReportId.value !== null
+          ? t('carbonUpload.reviseFailed')
+          : t('carbonUpload.createFailed')),
+    )
   } finally {
     submitting.value = false
   }

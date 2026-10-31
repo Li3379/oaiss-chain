@@ -549,6 +549,7 @@ export default {
     statBestPriceHint: '当前列表最优报价',
   },
   carbonUpload: {
+    reviseFailed: '修改失败，请检查填写内容或密钥状态',
     reviseAndResubmit: '修改重提',
     reviseTitle: '修改被驳回的报告',
     reviseConfirm: '将打开编辑窗口修改报告 {reportNo}，修改后需重新提交审核。是否继续？',

@@ -549,6 +549,7 @@ export default {
     statBestPriceHint: 'Top quote in the current list',
   },
   carbonUpload: {
+    reviseFailed: 'Update failed. Check the form and your key status.',
     reviseAndResubmit: 'Revise & resubmit',
     reviseTitle: 'Revise rejected report',
     reviseConfirm: 'This opens the editor for report {reportNo}. You will need to resubmit it for review. Continue?',
