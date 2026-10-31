@@ -114,11 +114,15 @@ public class CarbonService {
         // 可信签名链：提交时用企业私钥对排放数据签名（文档契约"企业确认签名后发审核员"）。
         //
         // 两种情形，处置不同：
-        //   1. 全新报告、企业从未生成密钥 → 跳过签名放行（存量兼容，审核端会显示「未签名」）；
-        //   2. 报告**曾经被编辑过**（D13）→ 旧签名已失效，必须重新签名成功才允许提交。
-        //      否则「编辑一次」就能让一份带签名的报告变成无签名报告并继续走审核上链。
+        //   1. 报告没有签名（从未签过）：跳过签名放行（存量兼容，审核端显示「未签名」）；
+        //   2. 报告**带着一份与当前内容不符的签名**（曾被编辑，旧签名已失效）：
+        //      必须重新签名成功才允许提交。否则「编辑一次」就能把一份带签名的报告
+        //      悄悄变成无签名报告，而审核侧对「无签名」是放行的——这就是绕过通道。
+        //
+        // 注意判据不能用「状态是驳回」：被驳回后原样重提的无密钥存量企业也会被误拦，
+        // 而他们并没有引入任何新内容，不构成签名绕过（BusinessScenarioTest 覆盖该路径）。
         boolean signed;
-        if (isReportEdited(report)) {
+        if (isSignatureStale(report)) {
             signed = signReportStrict(report, currentUser.getUserId());
             if (!signed) {
                 throw CarbonException.submitFailed(
@@ -173,16 +177,24 @@ public class CarbonService {
     }
 
     /**
-     * 判断报告是否处于「曾被审核驳回、现被编辑重提」的路径。
+     * 判断报告是否带着**一份与当前内容不符的旧签名**。
      *
-     * <p>判定依据：状态为 REJECTED。业务上被驳回即意味着用户会去修改内容，
-     * 此时必须重新签名。全新草稿（DRAFT）不走严格路径，保留无密钥企业的存量兼容。</p>
+     * <p>这才是「被编辑过」的可靠判据，而不是状态：</p>
+     * <ul>
+     *   <li>没有任何签名 → false。企业从未生成密钥（存量兼容），或全新草稿，都属正常路径；</li>
+     *   <li>有签名但验签失败/异常 → true。说明内容在签名之后被改过，必须重签；</li>
+     *   <li>有签名且验签通过 → false。内容未变，无需重签。</li>
+     * </ul>
      *
-     * <p>局限：若未来引入「草稿可编辑」，需改用显式的 edited 标记字段，
-     * 否则草稿编辑后的无签名提交仍会被放行。</p>
+     * <p>反例（曾踩过的坑）：用「状态 == REJECTED」做判据，会把「被驳回后原样重提」的
+     * 无密钥存量企业一并拦下——他们并没有引入新内容，不构成签名绕过。</p>
      */
-    private boolean isReportEdited(CarbonReport report) {
-        return Objects.equals(report.getStatus(), ReportStatusEnum.REJECTED.getCode());
+    private boolean isSignatureStale(CarbonReport report) {
+        if (report.getSignatureData() == null || report.getSignatureData().isBlank()) {
+            return false;
+        }
+        Boolean valid = verifyReportSignature(report);
+        return !Boolean.TRUE.equals(valid);
     }
 
     @Transactional
@@ -572,6 +584,9 @@ public class CarbonService {
         // D15：存证**完整快照**（企业归属 / 周期 / 总量 / 三范围 / 签名 / 原文明细）。
         // v1 只传 emissionData 原文且链码 EnterpriseID 从未赋值，
         // 链上无法回答「这份报告属于哪家企业」——存证不能独立验证主体。
+        // 过程排放从原文明细里取出并单独上链：总量含这三项，只存三范围会让链上对不上账。
+        BigDecimal[] process = EmissionDataValidator.parseProcessEmissions(
+                report.getEmissionData(), objectMapper);
         CarbonReportSnapshot snapshot = CarbonReportSnapshot.builder()
                 .reportId(report.getId())
                 .enterpriseId(report.getEnterpriseId())
@@ -581,6 +596,9 @@ public class CarbonService {
                 .scope1Emission(stringify(report.getScope1Emission()))
                 .scope2Emission(stringify(report.getScope2Emission()))
                 .scope3Emission(stringify(report.getScope3Emission()))
+                .desulfEmission(stringify(process[0]))
+                .transmissionLossEmission(stringify(process[1]))
+                .sf6Emission(stringify(process[2]))
                 .signature(report.getSignatureData())
                 .data(report.getEmissionData())
                 .build();

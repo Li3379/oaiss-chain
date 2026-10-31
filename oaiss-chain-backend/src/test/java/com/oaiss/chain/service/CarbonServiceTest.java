@@ -346,6 +346,30 @@ class CarbonServiceTest {
     }
 
     @Test
+    @DisplayName("AC-C6: 已上链后重复 certify 不得二次加分、二次提交链上")
+    void testCertifyAlreadyOnChainIsIdempotent() {
+        // 场景：审核通过已自动上链（方案 A），管理员再点一次「认证」。
+        // D17 修的是「先加分后上链」的顺序，但若幂等分支失效，
+        // 补救成功的报告再次 certify 会再发一次 +5 信用分且再提交一笔链上交易。
+        testReport.setStatus(ReportStatusEnum.ON_CHAIN.getCode());
+        testReport.setBlockchainTxHash("tx-already");
+        ReviewRequest certificationRequest = new ReviewRequest(1L, ReportStatusEnum.ON_CHAIN.getCode(), "certified again");
+
+        when(carbonReportRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(testReport));
+
+        CarbonReportResponse response = carbonService.certifyReport(currentUser, certificationRequest);
+
+        assertNotNull(response);
+        assertEquals(ReportStatusEnum.ON_CHAIN.getCode(), response.getStatus());
+        assertEquals("tx-already", response.getBlockchainTxHash());
+        // 关键断言：不得重复发放奖励、不得重复上链
+        verify(blockchainService, never()).commitReportSnapshot(any());
+        verify(creditScoreService, never()).addBonusPoints(any(), any(Integer.class), any(), any());
+        verify(emissionRatingService, never()).recalculateYearlyRating(any(), any(), any());
+        verify(carbonReportRepository, never()).save(any(CarbonReport.class));
+    }
+
+    @Test
     @DisplayName("admin certification rejects non-approved report")
     void testCertifyReportFailsWhenStatusInvalid() {
         testReport.setStatus(ReportStatusEnum.SUBMITTED.getCode());
@@ -1148,6 +1172,9 @@ class CarbonServiceTest {
     @DisplayName("D13安全: 被驳回报告无法重签时拒绝提交（不产出无签名报告）")
     void testSubmitRejectedReportWithoutResignIsBlocked() {
         testReport.setStatus(ReportStatusEnum.REJECTED.getCode());
+        // 判定不能用「状态是驳回」，否则会误伤「驳回后原样重提」的无密钥存量企业。
+        // 正确判据是：报告里已有一份签名，但它与当前内容对不上（说明被编辑过）。
+        testReport.setSignatureData("stale-signature-from-before-edit");
         testReport.setEmissionData("{\"scope1\":[],\"scope2\":[],\"scope3\":[]}");
         ObjectMapper realMapper = new ObjectMapper();
         try {
@@ -1159,7 +1186,10 @@ class CarbonServiceTest {
 
         when(carbonReportRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(testReport));
         when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(testEnterprise));
-        // 签名抛异常 → 无法重签
+        // 旧签名验不过 → 签名与内容已不符，必须重签
+        when(digitalSignatureService.verifySignature(any(), any(), eq("stale-signature-from-before-edit")))
+                .thenReturn(false);
+        // 重签又因无密钥失败 → 拒绝提交
         when(digitalSignatureService.signReport(any(), any()))
                 .thenThrow(new RuntimeException("no usable key pair"));
 
@@ -1168,6 +1198,34 @@ class CarbonServiceTest {
         assertTrue(ex.getMessage().contains("需重新数字签名"),
                 "错误信息应引导用户去检查密钥，实际: " + ex.getMessage());
         verify(carbonReportRepository, never()).save(any(CarbonReport.class));
+    }
+
+    @Test
+    @DisplayName("驳回后原样重提（无密钥存量企业）不应被签名闸门拦截")
+    void testResubmitRejectedReportWithoutAnySignatureIsAllowed() {
+        // 对齐 BusinessScenarioTest.reportRejected_ThenResubmit：
+        // 企业从未生成密钥、报告也从未签过名。驳回 ≠ 已编辑，不能要求他先有密钥。
+        testReport.setStatus(ReportStatusEnum.REJECTED.getCode());
+        testReport.setSignatureData(null);
+        testReport.setEmissionData("{\"scope1\":[],\"scope2\":[],\"scope3\":[]}");
+        ObjectMapper realMapper = new ObjectMapper();
+        try {
+            var mockNode = realMapper.readTree("{\"scope1\":[],\"scope2\":[],\"scope3\":[]}");
+            when(objectMapper.readTree(any(String.class))).thenReturn(mockNode);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        when(carbonReportRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(testReport));
+        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(testEnterprise));
+        when(carbonReportRepository.save(any(CarbonReport.class))).thenAnswer(i -> i.getArgument(0));
+        when(digitalSignatureService.signReport(any(), any()))
+                .thenThrow(new RuntimeException("no usable key pair"));
+
+        CarbonReportResponse response = carbonService.submitReport(currentUser, 1L);
+
+        assertNotNull(response);
+        assertEquals(ReportStatusEnum.SUBMITTED.getCode(), response.getStatus());
     }
 
     @Test
