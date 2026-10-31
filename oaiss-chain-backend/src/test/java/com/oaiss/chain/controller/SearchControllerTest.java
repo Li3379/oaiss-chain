@@ -200,7 +200,7 @@ class SearchControllerTest {
                 reportsMethod.getAnnotation(org.springframework.security.access.prepost.PreAuthorize.class).value());
 
         var tradesMethod = SearchController.class.getMethod("searchTrades",
-                com.oaiss.chain.security.JwtUserDetails.class, Long.class, Long.class, Integer.class, Integer.class, Integer.class, Integer.class);
+                com.oaiss.chain.security.JwtUserDetails.class, String.class, Long.class, Long.class, Integer.class, Integer.class, Integer.class, Integer.class);
         org.junit.jupiter.api.Assertions.assertTrue(
                 tradesMethod.isAnnotationPresent(org.springframework.security.access.prepost.PreAuthorize.class));
         org.junit.jupiter.api.Assertions.assertEquals(

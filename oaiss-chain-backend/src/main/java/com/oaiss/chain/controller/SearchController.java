@@ -79,13 +79,23 @@ public class SearchController {
     @SecurityRequirement(name = "Bearer Authentication")
     public ApiResponse<Page<SearchResponse.TradeSummary>> searchTrades(
             @Parameter(hidden = true) @AuthenticationPrincipal JwtUserDetails currentUser,
+            @Parameter(description = "关键词：匹配交易编号、企业名称、统一社会信用代码", example = "碳能")
+            @RequestParam(required = false) String keyword,
             @Parameter(description = "卖方企业ID", example = "1") @RequestParam(required = false) Long sellerId,
             @Parameter(description = "买方企业ID", example = "2") @RequestParam(required = false) Long buyerId,
             @Parameter(description = "交易类型：1-P2P, 2-拍卖, 3-挂牌", example = "1") @RequestParam(required = false) Integer tradeType,
-            @Parameter(description = "交易状态：0-待付款, 1-已完成, 2-已取消", example = "1") @RequestParam(required = false) Integer status,
+            // 状态口径对齐 TradeStatusEnum（0-待处理 1-处理中 2-已完成 3-已取消 4-失败）。
+            // 此前注释写作「0-待付款 1-已完成 2-已取消」，与枚举完全不符，会误导接口调用方。
+            @Parameter(description = "交易状态：0-待处理, 1-处理中, 2-已完成, 3-已取消, 4-失败", example = "2") @RequestParam(required = false) Integer status,
             @Parameter(description = "页码（从1开始）", example = "1") @RequestParam(defaultValue = "1") Integer page,
             @Parameter(description = "每页大小", example = "20") @RequestParam(defaultValue = "20") Integer size) {
-        return ApiResponse.success(searchService.searchTrades(currentUser, sellerId, buyerId, tradeType, status, page, size));
+        // 无关键词时走原方法，保持既有行为与既有断言口径不变
+        if (keyword == null || keyword.isBlank()) {
+            return ApiResponse.success(searchService.searchTrades(currentUser,
+                    sellerId, buyerId, tradeType, status, page, size));
+        }
+        return ApiResponse.success(searchService.searchTradesWithKeyword(currentUser, keyword,
+                sellerId, buyerId, tradeType, status, page, size));
     }
 
     /**

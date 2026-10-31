@@ -155,13 +155,13 @@ bash ./scripts/stability-baseline.sh
 | 事实 | 值 | 说明 |
 |------|-----|------|
 | Controllers | 23 | `controller/*.java` 数（2026-10-20 新增 CopilotController） |
-| REST 端点 | 150 | `@Mapping` 注解总数（+2 撮合控制台查询端点：matching-status / all-results；+2 用户管理端点：创建/删除用户） |
-| Services | 45 | 42 主包 + 3 ml/ |
+| REST 端点 | 150 | `@Mapping` 注解总数（2026-10-31 去掉 `/blockchain/transaction/{txHash}`、新增 `/blockchain/report/{reportId}`，总数不变） |
+| Services | 46 | 43 主包 + 3 ml/ |
 | Entities | 28 | 27 @Entity + BaseEntity |
 | Tables | 27 | 现存 27 张（曾创建 28 张，authenticator 在 V8 DROP 退场） |
 | Repositories | 27 | `repository/*.java` 数 |
-| Flyway 迁移 | V1-V18 | V3 跳过（共 17 个版本；V16=配额流水，V17=成交审核，V18=监管线索） |
-| i18n 词条 | 2133 | zh-CN 与 en-US 严格镜像（`scripts/i18n-verify.mjs` 实测；2026-10-31 碳币转账移除后 2149→2133） |
+| Flyway 迁移 | V1-V19 | V3 跳过（共 18 个版本；V16=配额流水，V17=成交审核，V18=监管线索，V19=证书撤销） |
+| i18n 词条 | 2126 | zh-CN 与 en-US 严格镜像（`scripts/gates/i18n-verify.mjs` 实测；2026-10-31 移除「交易哈希查询」面板 7 键后 2133→2126） |
 | 前端 API 模块 | 22 | `src/api/*.ts`（不含 request.ts 与 index.ts） |
 | 枚举 | 9 | `enums/*.java`（UserTypeEnum 等 9 个核心枚举） |
 | 角色 | 4 | ENTERPRISE/REVIEWER/THIRD_PARTY/ADMIN |

@@ -87,6 +87,63 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
             Pageable pageable);
 
     /**
+     * 带关键词的综合搜索。
+     *
+     * <p>关键词匹配交易编号，以及买卖双方企业的名称与统一社会信用代码——
+     * 信用代码必须覆盖：名称会变、信用代码不变，且它是唯一的法定标识。
+     *
+     * <p>实现说明：企业名称/信用代码通过子查询命中，避免把 enterprise 表 join 进来
+     * 造成分页计数失真（join 后一交易对多企业会重复行）。
+     */
+    @Query("SELECT t FROM Transaction t WHERE t.deleted = false " +
+            "AND (:sellerId IS NULL OR t.sellerId = :sellerId) " +
+            "AND (:buyerId IS NULL OR t.buyerId = :buyerId) " +
+            "AND (:tradeType IS NULL OR t.tradeType = :tradeType) " +
+            "AND (:status IS NULL OR t.status = :status) " +
+            "AND (LOWER(t.tradeNo) LIKE LOWER(CONCAT('%', :keyword, '%')) " +
+            "     OR t.sellerId IN (SELECT e.userId FROM Enterprise e WHERE e.deleted = false " +
+            "         AND (LOWER(e.enterpriseName) LIKE LOWER(CONCAT('%', :keyword, '%')) " +
+            "              OR LOWER(e.creditCode) LIKE LOWER(CONCAT('%', :keyword, '%')))) " +
+            "     OR t.buyerId IN (SELECT e.userId FROM Enterprise e WHERE e.deleted = false " +
+            "         AND (LOWER(e.enterpriseName) LIKE LOWER(CONCAT('%', :keyword, '%')) " +
+            "              OR LOWER(e.creditCode) LIKE LOWER(CONCAT('%', :keyword, '%')))))")
+    Page<Transaction> searchWithKeyword(
+            @Param("keyword") String keyword,
+            @Param("sellerId") Long sellerId,
+            @Param("buyerId") Long buyerId,
+            @Param("tradeType") Integer tradeType,
+            @Param("status") Integer status,
+            Pageable pageable);
+
+    /**
+     * 带关键词 + 企业租户边界的综合搜索。
+     *
+     * <p>新增 keyword 参数不得成为绕过租户隔离的通道，故单独提供带边界的版本：
+     * 企业用户只能检索到自己参与的成交。
+     */
+    @Query("SELECT t FROM Transaction t WHERE t.deleted = false " +
+            "AND (:userId IS NULL OR t.sellerId = :userId OR t.buyerId = :userId) " +
+            "AND (:sellerId IS NULL OR t.sellerId = :sellerId) " +
+            "AND (:buyerId IS NULL OR t.buyerId = :buyerId) " +
+            "AND (:tradeType IS NULL OR t.tradeType = :tradeType) " +
+            "AND (:status IS NULL OR t.status = :status) " +
+            "AND (LOWER(t.tradeNo) LIKE LOWER(CONCAT('%', :keyword, '%')) " +
+            "     OR t.sellerId IN (SELECT e.userId FROM Enterprise e WHERE e.deleted = false " +
+            "         AND (LOWER(e.enterpriseName) LIKE LOWER(CONCAT('%', :keyword, '%')) " +
+            "              OR LOWER(e.creditCode) LIKE LOWER(CONCAT('%', :keyword, '%')))) " +
+            "     OR t.buyerId IN (SELECT e.userId FROM Enterprise e WHERE e.deleted = false " +
+            "         AND (LOWER(e.enterpriseName) LIKE LOWER(CONCAT('%', :keyword, '%')) " +
+            "              OR LOWER(e.creditCode) LIKE LOWER(CONCAT('%', :keyword, '%')))))")
+    Page<Transaction> searchWithUserBoundAndKeyword(
+            @Param("userId") Long userId,
+            @Param("keyword") String keyword,
+            @Param("sellerId") Long sellerId,
+            @Param("buyerId") Long buyerId,
+            @Param("tradeType") Integer tradeType,
+            @Param("status") Integer status,
+            Pageable pageable);
+
+    /**
      * 查询与指定用户相关的交易（作为买方或卖方）
      */
     @Query("SELECT t FROM Transaction t WHERE t.deleted = false " +

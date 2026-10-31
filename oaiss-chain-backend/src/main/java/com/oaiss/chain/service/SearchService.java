@@ -108,8 +108,16 @@ public class SearchService {
      * 管理员（ADMIN）与第三方监管（THIRD_PARTY）保留真实企业名称，以满足穿透核查需要。
      * 返回结构（买卖双方 ID、数量、单价、金额、状态等字段）保持不变，仅名称字段取值随角色变化。
      */
-    public Page<SearchResponse.TradeSummary> searchTrades(
+    /**
+     * 搜索交易记录（带关键词）。
+     *
+     * <p>刻意用独立方法名而不是重载：重载会让 {@code searchTrades(any(), ...)}
+     * 这类 Mockito 匹配出现「引用不明确」（JwtUserDetails 与 String 都匹配 any()），
+     * 迫使调用方到处显式转型。独立方法名让编译器不需要做重载决议。
+     */
+    public Page<SearchResponse.TradeSummary> searchTradesWithKeyword(
             JwtUserDetails currentUser,
+            String keyword,
             Long sellerId, Long buyerId, Integer tradeType, Integer status,
             Integer page, Integer size) {
         Long boundUserId = null;
@@ -117,7 +125,23 @@ public class SearchService {
             boundUserId = currentUser.getUserId();
         }
         Pageable pageable = PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<Transaction> trades = transactionRepository.searchWithUserBound(boundUserId, sellerId, buyerId, tradeType, status, pageable);
+
+        String trimmed = keyword == null ? null : keyword.trim();
+        boolean hasKeyword = trimmed != null && !trimmed.isEmpty();
+
+        Page<Transaction> trades;
+        if (hasKeyword) {
+            // 新参数不得成为绕过租户隔离的通道：企业用户走带边界的版本
+            trades = boundUserId != null
+                    ? transactionRepository.searchWithUserBoundAndKeyword(
+                            boundUserId, trimmed, sellerId, buyerId, tradeType, status, pageable)
+                    : transactionRepository.searchWithKeyword(
+                            trimmed, sellerId, buyerId, tradeType, status, pageable);
+        } else {
+            // 无关键词时维持原查询：避免无谓的 like 全表扫描
+            trades = transactionRepository.searchWithUserBound(
+                    boundUserId, sellerId, buyerId, tradeType, status, pageable);
+        }
 
         // 监管穿透：仅管理员与第三方监管可见真实主体名称
         boolean revealNames = currentUser != null
@@ -127,9 +151,10 @@ public class SearchService {
     }
 
     public Page<SearchResponse.TradeSummary> searchTrades(
+            JwtUserDetails currentUser,
             Long sellerId, Long buyerId, Integer tradeType, Integer status,
             Integer page, Integer size) {
-        return searchTrades(null, sellerId, buyerId, tradeType, status, page, size);
+        return searchTradesWithKeyword(currentUser, null, sellerId, buyerId, tradeType, status, page, size);
     }
 
     /**
