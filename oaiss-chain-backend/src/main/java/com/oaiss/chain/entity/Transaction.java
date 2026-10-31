@@ -74,6 +74,27 @@ public class Transaction extends BaseEntity {
     private Integer status = 0;
 
     /**
+     * 成交审核态（0-无需审核, 1-待审核, 2-已通过, 3-已驳回）。
+     *
+     * <p>与 {@code status} 正交：{@code status} 描述交易的**生命周期**
+     * （待处理/处理中/已完成/已取消/失败），{@code auditStatus} 描述这笔成交
+     * **是否经过人工裁决**。不把审核态并入 {@code TradeStatusEnum} 的原因：
+     * 那样会给前端状态渲染、i18n、以及全部依赖状态码的既有断言引入一个新状态码，
+     * 回归面远大于收益，而两者语义本就分属不同维度。
+     *
+     * <p>取值与 {@link TradeAudit} 的常量保持一致，避免两处定义漂移。
+     */
+    @Column(name = "audit_status", nullable = false)
+    @Builder.Default
+    private Integer auditStatus = 0;
+
+    /**
+     * 审核意见摘要（完整意见见 {@code trade_audit} 表）
+     */
+    @Column(name = "audit_remark", length = 500)
+    private String auditRemark;
+
+    /**
      * 交易备注
      */
     @Column(name = "remark", columnDefinition = "TEXT")

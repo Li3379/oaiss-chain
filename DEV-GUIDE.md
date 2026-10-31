@@ -26,7 +26,7 @@
 ## 3. 仓库结构
 
 ```
-├── oaiss-chain-backend/    Spring Boot 后端 (23 controllers / 39 services / 26 entities / 25 repos，纯净业务模块)
+├── oaiss-chain-backend/    Spring Boot 后端 (23 controllers / 40 services / 27 entities / 26 repos，纯净业务模块)
 ├── oaiss-chain-frontend/   Vue 3 SPA (22 api modules, views/ 按角色分，纯净前端模块)
 ├── oaiss-chain-ml-service/ FastAPI ML (3 routers: emission/enterprise/market)
 ├── oaiss-chain-chaincode/  Go Fabric 链码
@@ -156,12 +156,12 @@ bash ./scripts/stability-baseline.sh
 |------|-----|------|
 | Controllers | 23 | `controller/*.java` 数（2026-10-20 新增 CopilotController） |
 | REST 端点 | 150 | `@Mapping` 注解总数（+2 撮合控制台查询端点：matching-status / all-results；+2 用户管理端点：创建/删除用户） |
-| Services | 42 | 39 主包 + 3 ml/ |
-| Entities | 26 | 25 @Entity + BaseEntity |
-| Tables | 25 | 现存 25 张（曾创建 26 张，authenticator 在 V8 DROP 退场） |
-| Repositories | 25 | `repository/*.java` 数 |
-| Flyway 迁移 | V1-V16 | V3 跳过（共 15 个版本；V15=评级来源报告数，V16=配额变动流水表） |
-| i18n 词条 | 2149 | zh-CN 与 en-US 严格镜像（`scripts/i18n-verify.mjs` 实测） |
+| Services | 43 | 40 主包 + 3 ml/ |
+| Entities | 27 | 26 @Entity + BaseEntity |
+| Tables | 26 | 现存 26 张（曾创建 27 张，authenticator 在 V8 DROP 退场） |
+| Repositories | 26 | `repository/*.java` 数 |
+| Flyway 迁移 | V1-V17 | V3 跳过（共 16 个版本；V15=评级来源报告数，V16=配额流水表，V17=成交审核） |
+| i18n 词条 | 2133 | zh-CN 与 en-US 严格镜像（`scripts/i18n-verify.mjs` 实测；2026-10-31 碳币转账移除后 2149→2133） |
 | 前端 API 模块 | 22 | `src/api/*.ts`（不含 request.ts 与 index.ts） |
 | 枚举 | 9 | `enums/*.java`（UserTypeEnum 等 9 个核心枚举） |
 | 角色 | 4 | ENTERPRISE/REVIEWER/THIRD_PARTY/ADMIN |

@@ -171,6 +171,72 @@ public class CreditScoreService {
     }
 
     /**
+     * 成交审核驳回扣分：与 {@code deductPoints} 的区别是能**归因到交易**。
+     *
+     * <p>存在理由：{@code deductPoints} 的签名只有 {@code relatedReportId}，
+     * 而 {@code CreditEvent.relatedTradeId} 字段虽早已存在，全仓却从无写入方——
+     * 造成「企业为什么被扣分」在交易维度上不可回答。审核驳回必须能指回
+     * 那笔交易，否则监管无法把信誉下降与具体成交关联起来。
+     *
+     * <p>调用方（TradeAuditService）对买卖双方分别调用：一笔异常成交中双方
+     * 都参与了价格形成，只罚一方会留下「靠对手方低信誉规避」的口子。
+     *
+     * @param enterpriseId 被扣分企业ID
+     * @param eventType    事件类型（应传 {@code TRADE_AUDIT_REJECTED}）
+     * @param description  描述
+     * @param triggeredBy  裁决人用户ID
+     * @param tradeId      关联交易ID
+     */
+    @Transactional
+    public CreditScoreResponse deductPointsForTrade(Long enterpriseId, Integer eventType,
+                                                    String description, Long triggeredBy,
+                                                    Long tradeId) {
+        CreditScore creditScore = creditScoreRepository.findByEnterpriseIdAndDeletedFalse(enterpriseId)
+                .orElseGet(() -> creditScoreRepository.save(CreditScore.builder()
+                        .enterpriseId(enterpriseId)
+                        .score(100)
+                        .level(CreditLevelEnum.EXCELLENT.getCode())
+                        .tradeRestricted(false)
+                        .accountFrozen(false)
+                        .build()));
+
+        CreditEventTypeEnum typeEnum = CreditEventTypeEnum.fromCode(eventType);
+        if (typeEnum == null) {
+            throw new IllegalArgumentException("无效的事件类型: " + eventType);
+        }
+        if (typeEnum.getDefaultPoints() > 0) {
+            throw new IllegalArgumentException("扣分接口不接受奖励类型事件，请使用 addBonusPoints");
+        }
+
+        int pointsToDeduct = typeEnum.getDefaultPoints();
+        int scoreBefore = creditScore.getScore();
+        int scoreAfter = Math.max(0, scoreBefore + pointsToDeduct);
+
+        CreditEvent event = CreditEvent.builder()
+                .enterpriseId(enterpriseId)
+                .eventType(eventType)
+                .eventDescription(description != null ? description : typeEnum.getDescription())
+                .pointsChanged(pointsToDeduct)
+                .scoreBefore(scoreBefore)
+                .scoreAfter(scoreAfter)
+                .relatedTradeId(tradeId)
+                .triggeredBy(triggeredBy)
+                .triggeredAt(LocalDateTime.now())
+                .build();
+        creditEventRepository.save(event);
+
+        creditScore.setScore(scoreAfter);
+        creditScore.setLastEvaluatedAt(LocalDateTime.now());
+        checkThresholds(creditScore);
+        creditScore = creditScoreRepository.save(creditScore);
+
+        log.info("成交审核驳回扣分: enterprise={}, trade={}, {} -> {}, event={}",
+                enterpriseId, tradeId, scoreBefore, scoreAfter, eventType);
+
+        return toScoreResponse(creditScore);
+    }
+
+    /**
      * 添加奖励分
      *
      * @param enterpriseId 企业ID
