@@ -549,6 +549,10 @@ export default {
     statBestPriceHint: '当前列表最优报价',
   },
   carbonUpload: {
+    reviseAndResubmit: '修改重提',
+    reviseTitle: '修改被驳回的报告',
+    reviseConfirm: '将打开编辑窗口修改报告 {reportNo}，修改后需重新提交审核。是否继续？',
+    reviseSuccess: '报告已修改，请重新提交审核',
     breadcrumbAccounting: '碳核算',
     breadcrumbUpload: '上传审核',
     pageTitle: '碳核算填报',

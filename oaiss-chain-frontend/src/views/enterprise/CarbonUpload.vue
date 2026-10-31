@@ -28,7 +28,7 @@ import { reactive, ref, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowRight, Clock, CopyDocument, Cpu, DataAnalysis, Document, Key, Link, Lock, Paperclip, Search, TrendCharts, Warning } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
-import { getMyReports, createReport, deleteReport, submitReport, getReport, getAiReportAnalysis, type AiReportAnalysisResponse } from '../../api/carbon'
+import { getMyReports, createReport, updateReport, deleteReport, submitReport, getReport, getAiReportAnalysis, type AiReportAnalysisResponse } from '../../api/carbon'
 import { getKeyPair } from '../../api/signature'
 import { uploadFile } from '../../api/file'
 import type { CarbonReportResponse, RsaKeyPairResponse } from '../../types'
@@ -125,6 +125,8 @@ const pageSize = ref(10)
 const total = ref(0)
 
 const dialogVisible = ref(false)
+/** D13：非空时表示当前对话框处于「修改已有报告」模式，而非新建 */
+const editingReportId = ref<number | null>(null)
 const formRef = ref()
 const submitting = ref(false)
 const detailDialogVisible = ref(false)
@@ -471,6 +473,7 @@ const onSizeChange = (size: number) => { pageSize.value = size; currentPage.valu
 const onCurrentChange = (page: number) => { currentPage.value = page; fetchData() }
 
 const openAddDialog = () => {
+  editingReportId.value = null
   formModel.accountingPeriod = ''
   formModel.title = ''
   formModel.reportType = 1
@@ -482,21 +485,48 @@ const openAddDialog = () => {
   dialogVisible.value = true
 }
 
+/**
+ * D13：打开编辑对话框，预填已有报告内容。
+ *
+ * 仅 DRAFT / REJECTED 可进入（后端也会二次校验）。
+ * emissionData 原文直接回填并切到 JSON 模式——避免把已存的 JSON 强行解析成结构化行。
+ */
+const openEditDialog = async (row: CarbonReportResponse) => {
+  editingReportId.value = row.id
+  formModel.accountingPeriod = row.accountingPeriod || ''
+  formModel.title = row.title || ''
+  formModel.reportType = row.reportType ?? 1
+  formModel.calculationMethod = row.calculationMethod || ''
+  formModel.attachments = row.attachments || ''
+  attachmentList.value = []
+  formModel.emissionData = row.emissionData || ''
+  emissionMode.value = 'json'
+  resetStructuredScopes()
+  dialogVisible.value = true
+}
+
 const onSubmitForm = async () => {
   if (submitting.value) return
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
   submitting.value = true
   try {
-    await createReport({
+    const payload = {
       accountingPeriod: formModel.accountingPeriod.trim(),
       title: formModel.title.trim(),
       reportType: formModel.reportType,
       emissionData: formModel.emissionData,
       calculationMethod: formModel.calculationMethod || undefined,
       attachments: formModel.attachments || undefined,
-    })
-    ElMessage.success(`${t('carbonUpload.createSuccess')} ${t('nextSteps.afterCreateReport')}`)
+    }
+    if (editingReportId.value !== null) {
+      // D13：修改模式——走 PUT，后端会重算四列并在提交时重新签名
+      await updateReport(editingReportId.value, payload)
+      ElMessage.success(t('carbonUpload.reviseSuccess'))
+    } else {
+      await createReport(payload)
+      ElMessage.success(`${t('carbonUpload.createSuccess')} ${t('nextSteps.afterCreateReport')}`)
+    }
     dialogVisible.value = false
     await fetchData()
   } catch {
@@ -515,6 +545,26 @@ const onSubmitReport = async (row: CarbonReportResponse) => {
   } catch (e) {
     if (e !== 'cancel') ElMessage.error(t('carbonUpload.submitFailed'))
   }
+}
+
+/**
+ * D13：被驳回报告的「修改重提」入口。
+ *
+ * 后端只允许 DRAFT/REJECTED 编辑，修改后会重算四列并清空旧签名，
+ * 提交时按最新内容重新签名。这里给用户一个轻量确认，主体编辑仍在详情抽屉完成。
+ */
+const openReviseDialog = async (row: CarbonReportResponse) => {
+  try {
+    await ElMessageBox.confirm(
+      t('carbonUpload.reviseConfirm', { reportNo: row.reportNo }),
+      t('carbonUpload.reviseTitle'),
+      { type: 'warning', confirmButtonText: t('common.confirm'), cancelButtonText: t('common.cancel') },
+    )
+  } catch {
+    return
+  }
+  // 打开编辑弹窗，预填该报告内容
+  await openEditDialog(row)
 }
 
 const onDeleteReport = async (row: CarbonReportResponse) => {
@@ -688,6 +738,13 @@ onMounted(() => {
             <span v-else class="row-selected-placeholder" aria-hidden="true" />
             <el-button link type="primary" @click="viewDetail(row)">{{ t('carbonUpload.viewDetail') }}</el-button>
             <el-button v-if="row.status === 0" link type="primary" @click="openSubmitConfirm(row)">{{ t('common.submit') }}</el-button>
+            <!-- D13：被驳回的报告可「修改重提」，不再只能删除重建 -->
+            <el-button
+              v-if="row.status === 4"
+              link
+              type="warning"
+              @click="openReviseDialog(row)"
+            >{{ t('carbonUpload.reviseAndResubmit') }}</el-button>
             <el-button v-if="row.status === 0" link type="danger" @click="onDeleteReport(row)">{{ t('common.delete') }}</el-button>
           </template>
         </el-table-column>

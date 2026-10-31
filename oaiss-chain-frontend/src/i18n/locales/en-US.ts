@@ -549,6 +549,10 @@ export default {
     statBestPriceHint: 'Top quote in the current list',
   },
   carbonUpload: {
+    reviseAndResubmit: 'Revise & resubmit',
+    reviseTitle: 'Revise rejected report',
+    reviseConfirm: 'This opens the editor for report {reportNo}. You will need to resubmit it for review. Continue?',
+    reviseSuccess: 'Report updated. Please submit it again for review.',
     breadcrumbAccounting: 'Carbon Accounting',
     breadcrumbUpload: 'Upload Audit',
     pageTitle: 'Carbon Accounting Filing',

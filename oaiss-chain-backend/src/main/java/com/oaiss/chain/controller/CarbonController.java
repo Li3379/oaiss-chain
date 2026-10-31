@@ -33,6 +33,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -200,6 +201,28 @@ public class CarbonController {
             @PathVariable Long reportId) {
         carbonService.deleteReport(currentUser, reportId);
         return ApiResponse.success();
+    }
+
+    /**
+     * 【业务功能】：企业修改草稿或被驳回的碳报告并重新提交
+     * 【对应前端页面】：views/enterprise/CarbonUpload.vue (/enterprise/carbon/upload)
+     * 【对应前端API】：api/carbon.ts -> updateReport()
+     * 【可见UI操作】：报告列表中状态为「草稿」或「已驳回」的行点击【修改】打开编辑弹窗
+     */
+    @AuditLog(module = "碳核算管理", action = "UPDATEREPORT", description = "碳核算管理 UPDATEREPORT")
+    @PutMapping("/reports/{reportId}")
+    @Operation(
+            summary = "Update report",
+            description = "Update a draft or rejected report, then recalculate totals.",
+            security = @SecurityRequirement(name = "Bearer Authentication")
+    )
+    @PreAuthorize("hasRole('ENTERPRISE')")
+    @DataIsolation
+    public ApiResponse<CarbonReportResponse> updateReport(
+            @Parameter(hidden = true) @AuthenticationPrincipal JwtUserDetails currentUser,
+            @PathVariable Long reportId,
+            @Valid @RequestBody CarbonReportRequest request) {
+        return ApiResponse.success(carbonService.updateReport(currentUser, reportId, request), "报告更新成功");
     }
 
     /**

@@ -421,6 +421,47 @@ public class CarbonService {
         log.info("Carbon report deleted: {}", report.getReportNo());
     }
 
+    /**
+     * 修改报告（D13）：被驳回或草稿状态的报告可由所属企业编辑后重新提交。
+     *
+     * <p>历史缺陷：后端 `isSubmittable()` 允许 REJECTED 重提，但没有任何编辑端点，
+     * 界面也没有入口——被驳回的报告在客户端是死胡同（库内曾有 10 份卡住）。
+     * 用户唯一出路是删除重建，附件、编号、审计链全部丢失。</p>
+     *
+     * <p>安全边界：仅 ENTERPRISE 本人、仅 DRAFT/REJECTED、必须归属校验。
+     * 修改后重算四个结果列，签名会因内容变化而失效——提交时会重新签名。</p>
+     */
+    @Transactional
+    public CarbonReportResponse updateReport(JwtUserDetails currentUser, Long reportId,
+                                             CarbonReportRequest request) {
+        CarbonReport report = carbonReportRepository.findByIdAndDeletedFalse(reportId)
+                .orElseThrow(() -> CarbonException.reportNotFound(reportId));
+
+        assertEnterpriseOwnsReport(currentUser, report, "无权修改其他企业的碳报告");
+
+        ReportStatusEnum status = ReportStatusEnum.fromCode(report.getStatus());
+        if (!status.isEditable()) {
+            throw CarbonException.reportAlreadySubmitted(reportId);
+        }
+
+        report.setTitle(CommonUtils.sanitizeHtml(CommonUtils.sanitizeInput(request.getTitle())));
+        report.setAccountingPeriod(request.getAccountingPeriod());
+        report.setReportType(request.getReportType());
+        report.setEmissionData(request.getEmissionData());
+        report.setCalculationMethod(request.getCalculationMethod());
+        if (request.getAttachments() != null) {
+            report.setAttachments(request.getAttachments());
+        }
+
+        // 内容变了，四列必须重算；签名缓存也一并清空，提交时重新签。
+        calculateEmissions(report);
+        report.setSignatureData(null);
+
+        report = carbonReportRepository.save(report);
+        log.info("Carbon report updated: {} by user {}", report.getReportNo(), currentUser.getUsername());
+        return toResponse(report);
+    }
+
     private void calculateEmissions(CarbonReport report) {
         BigDecimal[] totals = parseEmissionTotals(report.getEmissionData());
         report.setScope1Emission(totals[0]);
@@ -429,31 +470,46 @@ public class CarbonService {
         report.setTotalEmission(totals[3]);
     }
 
+    /**
+     * 审核通过后的副作用：上链 → 加信用分 → 评级。
+     *
+     * <p><b>顺序至关重要（D17）</b>：历史实现先加分与评级、最后才上链。
+     * 上链抛异常时分数已经发出，而 {@code /carbon/certify} 补救成功后会再执行一遍，
+     * 导致同一份报告被加两次分（+10 而非 +5）。</p>
+     *
+     * <p>现在的约束是：<b>只有真正上链成功（txHash 非空）才发放奖励</b>。
+     * 未存证的报告不该获得信用分与评级——这是「数据受限」与「可信存证」的底线。</p>
+     *
+     * @throws RuntimeException 上链失败时抛出，调用方据此保持 APPROVED 状态等待补救
+     */
     private void applyApprovedReportSideEffects(CarbonReport report, Long operatorUserId) {
         Long enterpriseId = report.getEnterpriseId();
 
+        // 第一步：先上链。失败则直接抛出，后续奖励一概不发。
+        String txHash = blockchainService.commitReportToChain(report.getId(), report.getEmissionData());
+        if (txHash == null || txHash.isBlank()) {
+            throw new IllegalStateException("上链未返回有效交易哈希，报告 " + report.getReportNo() + " 暂不发放奖励");
+        }
+        report.setBlockchainTxHash(txHash);
+        report.setOnChainAt(LocalDateTime.now());
+
+        // 第二步：上链确认后才加信用分
         creditScoreService.addBonusPoints(
                 enterpriseId,
                 5,
                 MessageUtils.getMessage("credit.event.report.certified"),
                 operatorUserId);
 
+        // 第三步：评级
         String ratingYear = report.getAccountingPeriod();
         if (ratingYear == null || ratingYear.isEmpty()) {
             ratingYear = String.valueOf(LocalDateTime.now().getYear());
         } else if (ratingYear.length() > 4) {
             ratingYear = ratingYear.substring(0, 4);
         }
-        emissionRatingService.rateEnterprise(
-                enterpriseId,
-                ratingYear,
-                report.getTotalEmission(),
-                null,
-                operatorUserId);
-
-        String txHash = blockchainService.commitReportToChain(report.getId(), report.getEmissionData());
-        report.setBlockchainTxHash(txHash);
-        report.setOnChainAt(LocalDateTime.now());
+        // D10：按**年度汇总**重算，而不是用「这一份报告的排放量」覆盖写。
+        // 历史实现在同年多份报告时只有最后一份生效，「年度评级」名不副实。
+        emissionRatingService.recalculateYearlyRating(enterpriseId, ratingYear, operatorUserId);
     }
 
     private boolean isReviewerDecision(Integer decision) {

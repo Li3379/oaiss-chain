@@ -47,6 +47,11 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class SearchService {
 
+    /** 权威报告状态：已通过 (3) 与已上链 (5)，用于平台统计口径（D11）。 */
+    private static final java.util.List<Integer> AUTHORITATIVE_STATUSES =
+            java.util.List.of(3, 5);
+
+
     /** 匿名别名前缀（前端据前缀即可判定该名称已被脱敏） */
     static final String ANONYMOUS_ALIAS_PREFIX = "匿名企业-";
     /**
@@ -137,7 +142,10 @@ public class SearchService {
                 .orElse(BigDecimal.ZERO);
         BigDecimal totalTradeAmount = Optional.ofNullable(transactionRepository.sumTotalAmount())
                 .orElse(BigDecimal.ZERO);
-        BigDecimal totalEmissionQuota = Optional.ofNullable(carbonReportRepository.sumTotalEmission())
+        // D11：核证减排配额只统计已通过/已上链的报告。
+        // 历史实现只过滤 deleted=false，草稿与已驳回也被计入「核证」口径。
+        BigDecimal totalEmissionQuota = Optional.ofNullable(
+                        carbonReportRepository.sumTotalEmissionByStatusIn(AUTHORITATIVE_STATUSES))
                 .orElse(BigDecimal.ZERO);
 
         // 联盟链网络状态感知与指标聚合

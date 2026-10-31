@@ -136,6 +136,12 @@ app:
   security:
     captcha:
       enabled: ${SECURITY_CAPTCHA_ENABLED:true}
+  # 双向拍卖自动撮合：CDA 引擎需要外部时钟驱动，否则挂单永久停在「待撮合」
+  auction:
+    auto-matching:
+      enabled: ${AUCTION_AUTO_MATCHING_ENABLED:true}
+      interval-ms: ${AUCTION_AUTO_MATCHING_INTERVAL_MS:30000}
+      initial-delay-ms: ${AUCTION_AUTO_MATCHING_INITIAL_DELAY_MS:60000}
 
 # API Documentation
 springdoc:

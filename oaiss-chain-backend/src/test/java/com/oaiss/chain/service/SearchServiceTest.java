@@ -399,7 +399,7 @@ class SearchServiceTest {
         when(transactionRepository.count()).thenReturn(200L);
         when(transactionRepository.sumTotalQuantity()).thenReturn(new BigDecimal("125000.50"));
         when(transactionRepository.sumTotalAmount()).thenReturn(new BigDecimal("6250025.00"));
-        when(carbonReportRepository.sumTotalEmission()).thenReturn(new BigDecimal("980000.00"));
+        when(carbonReportRepository.sumTotalEmissionByStatusIn(java.util.List.of(3, 5))).thenReturn(new BigDecimal("980000.00"));
 
         Map<String, Object> conn = Map.of(
                 "connected", true,
@@ -438,7 +438,7 @@ class SearchServiceTest {
         when(transactionRepository.count()).thenReturn(0L);
         when(transactionRepository.sumTotalQuantity()).thenReturn(null);
         when(transactionRepository.sumTotalAmount()).thenReturn(null);
-        when(carbonReportRepository.sumTotalEmission()).thenReturn(null);
+        when(carbonReportRepository.sumTotalEmissionByStatusIn(java.util.List.of(3, 5))).thenReturn(null);
         when(blockchainService.checkConnection()).thenReturn(null);
 
         // When

@@ -6,7 +6,7 @@
  *   - 企业端填报: views/enterprise/CarbonUpload.vue (/enterprise/carbon/upload)
  *   - 企业综合大屏: views/enterprise/CompanyDashboard.vue (/enterprise/company/dashboard)
  *   - 核查员初审列表: views/auditor/AuditList.vue (/auditor/audit/list)
- *   - 管理员终审上链: views/admin/VerifyList.vue (/admin/verify/list)
+ *   - 审核员上链补救: views/admin/VerifyList.vue (/auditor/verify/list)
  *   - 管理员全网监管: views/admin/SystemCarbon.vue (/admin/system/carbon)
  * ==============================================================================
  */
@@ -45,8 +45,8 @@ export function submitReport(reportId: number): Promise<CarbonReportResponse> {
 
 /**
  * 【业务功能】：管理员/监管端分页多条件查询全平台碳报告列表
- * 【对应前端页面】：VerifyList.vue (/admin/verify/list), SystemCarbon.vue (/admin/system/carbon)
- * 【界面触发操作】：进入认证列表或按状态、企业、年份进行表格检索
+ * 【对应前端页面】：VerifyList.vue (/auditor/verify/list), SystemCarbon.vue (/admin/system/carbon)
+ * 【界面触发操作】：进入上链补救页或按状态、企业、年份进行表格检索
  * 【后端对应端点】：CarbonController -> GET /carbon/reports
  */
 export function getReportList(params?: PageRequest): Promise<PageResponse<CarbonReportResponse>> {
@@ -75,6 +75,22 @@ export function deleteReport(reportId: number): Promise<void> {
 }
 
 /**
+ * 【业务功能】：修改草稿或已驳回的碳报告（D13）
+ * 【对应前端页面】：views/enterprise/CarbonUpload.vue
+ * 【界面触发操作】：报告列表中「草稿」或「已驳回」行点击【修改】
+ * 【后端对应端点】：CarbonController -> PUT /carbon/reports/{reportId}
+ *
+ * 只允许这两种状态——已提交/已通过/已上链的报告不可编辑，后端会拒绝。
+ */
+export function updateReport(
+  reportId: number,
+  data: CarbonReportRequest,
+): Promise<CarbonReportResponse> {
+  if (!reportId) return Promise.reject(new Error('Report ID is required'))
+  return request.put(`/carbon/reports/${reportId}`, data)
+}
+
+/**
  * 【业务功能】：专业核查员对企业申报的碳排放报告进行初审（通过或驳回）
  * 【对应前端页面】：AuditList.vue (/auditor/audit/list)
  * 【界面触发操作】：审查附件凭证和验签后，点击【通过审核】或【驳回修改】弹窗提交
@@ -91,8 +107,8 @@ export function reviewReport(data: { reportId: number; approved: boolean; commen
 
 /**
  * 【业务功能】：系统管理员对初审通过的碳报告进行终审认证并触发区块链存证上链
- * 【对应前端页面】：VerifyList.vue (/admin/verify/list)
- * 【界面触发操作】：在认证列表单条记录操作列点击【终审上链】按钮
+ * 【对应前端页面】：VerifyList.vue (/auditor/verify/list)
+ * 【界面触发操作】：在上链补救页单条记录操作列点击【上链补救】按钮
  * 【后端对应端点】：CarbonController -> POST /carbon/certify
  */
 export function certifyReport(data: { reportId: number; approved: boolean; comment: string }): Promise<void> {
@@ -106,7 +122,7 @@ export function certifyReport(data: { reportId: number; approved: boolean; comme
 
 /**
  * 【业务功能】：系统管理员批量认证多份碳报告并批量存证上链至 Hyperledger Fabric
- * 【对应前端页面】：VerifyList.vue (/admin/verify/list)
+ * 【对应前端页面】：VerifyList.vue (/auditor/verify/list)
  * 【界面触发操作】：勾选多个复选框后点击表格上方的【批量上链认证】按钮
  * 【后端对应端点】：CarbonController -> POST /carbon/certify/batch
  */
@@ -134,6 +150,10 @@ export interface AiReportAnalysisResponse {
   full_text: string
   analysis_hash: string
   model_used: string
+  /** true 表示报告缺少可用排放量，后端未生成诊断（各分析字段为空） */
+  insufficient_data?: boolean
+  /** insufficient_data 为 true 时的说明文本 */
+  insufficient_data_reason?: string
 }
 
 /**

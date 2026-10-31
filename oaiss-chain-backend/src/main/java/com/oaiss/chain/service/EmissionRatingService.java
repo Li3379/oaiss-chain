@@ -1,5 +1,6 @@
 package com.oaiss.chain.service;
 
+import com.oaiss.chain.entity.CarbonReport;
 import com.oaiss.chain.entity.EmissionRating;
 import com.oaiss.chain.repository.EmissionRatingRepository;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +27,15 @@ import java.util.List;
 @RequiredArgsConstructor
 public class EmissionRatingService {
 
+    /** 权威报告状态：已通过 (3) 与已上链 (5)。 */
+    private static final java.util.List<Integer> AUTHORITATIVE_STATUSES =
+            java.util.List.of(3, 5);
+
+
     private final EmissionRatingRepository ratingRepository;
+
+    /** 用于按年度汇总权威报告（D10） */
+    private final com.oaiss.chain.repository.CarbonReportRepository carbonReportRepository;
 
     /**
      * 评级阈值（吨CO2当量）
@@ -43,6 +52,43 @@ public class EmissionRatingService {
     @Transactional(readOnly = true)
     public List<EmissionRating> getEnterpriseRatings(Long enterpriseId) {
         return ratingRepository.findByEnterpriseIdAndDeletedFalseOrderByRatingYearDesc(enterpriseId);
+    }
+
+    /**
+     * 按**年度汇总**重算企业评级（D10 修正）。
+     *
+     * <p>历史实现是「每份通过的报告直接 rateEnterprise(该报告排放量)」，
+     * 由于 upsert 语义，同一年份有多份报告时只有最后一份生效——
+     * 「年度评级」实际是「最后一份报告的评级」。</p>
+     *
+     * <p>现在改为：取该年度所有已通过/已上链报告，**求和后**再评级。
+     * 只有一份报告时结果与旧行为一致；多份时才是真正的年度汇总。</p>
+     *
+     * @return 重算后的评级；该年度无权威报告时返回 null，不覆盖既有记录
+     */
+    @Transactional
+    public EmissionRating recalculateYearlyRating(Long enterpriseId, String year, Long ratedBy) {
+        if (enterpriseId == null || year == null || year.isBlank()) {
+            return null;
+        }
+        String periodPrefix = year.length() > 4 ? year.substring(0, 4) : year;
+
+        List<CarbonReport> yearly = carbonReportRepository
+                .findYearlyAuthoritativeReports(enterpriseId, periodPrefix, AUTHORITATIVE_STATUSES);
+        if (yearly.isEmpty()) {
+            log.debug("No authoritative reports for enterprise {} year {}, skip rating recalc",
+                    enterpriseId, periodPrefix);
+            return null;
+        }
+
+        BigDecimal yearlyTotal = yearly.stream()
+                .map(CarbonReport::getTotalEmission)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        log.info("Recalculating yearly rating: enterprise={}, year={}, reports={}, total={}",
+                enterpriseId, periodPrefix, yearly.size(), yearlyTotal);
+        return rateEnterprise(enterpriseId, periodPrefix, yearlyTotal, null, ratedBy);
     }
 
     /**

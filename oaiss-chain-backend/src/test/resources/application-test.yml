@@ -5,6 +5,13 @@ oaiss:
   ratelimit:
     enabled: false
 
+# 关闭双向拍卖自动撮合：测试上下文里后台出清会修改订单/资金状态，干扰断言。
+# 生产/本地开发默认开启，见 application.yml
+app:
+  auction:
+    auto-matching:
+      enabled: false
+
 # Default H2 configuration for fast unit tests
 spring:
   datasource:

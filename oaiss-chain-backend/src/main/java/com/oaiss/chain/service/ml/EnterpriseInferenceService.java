@@ -34,6 +34,16 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class EnterpriseInferenceService {
 
+    /**
+     * 权威报告状态：已通过 (3) 与已上链 (5)。
+     *
+     * <p>AI 推理与评级只应基于审核完成的数据——草稿与已驳回代表「尚未确认真实性」，
+     * 把它们计入会高估或污染企业画像（D11）。</p>
+     */
+    private static final java.util.List<Integer> AUTHORITATIVE_STATUSES =
+            java.util.List.of(3, 5);
+
+
     private final MlServiceClient mlServiceClient;
     private final UserRepository userRepository;
     private final CarbonReportRepository carbonReportRepository;
@@ -57,13 +67,16 @@ public class EnterpriseInferenceService {
                 .orElseThrow(() -> new BusinessException(
                         4001, "Enterprise not found: " + enterpriseId));
 
-        // Query carbon reports
-        List<CarbonReport> reports = carbonReportRepository.findByEnterpriseIdAndDeletedFalse(enterpriseId);
+        // D11：只取**审核完成且已存证**的报告。
+        // 历史实现取全部未删除报告，把草稿与已驳回一并喂给推理，
+        // 导致「未审核数据被当成既成事实」（库内曾有 62% 是草稿+已驳回）。
+        List<CarbonReport> reports = carbonReportRepository
+                .findByEnterpriseIdAndStatusInAndDeletedFalse(enterpriseId, AUTHORITATIVE_STATUSES);
 
         if (reports.isEmpty()) {
             // 空数据不是故障：前端据此渲染「先填报再推理」的空态引导，而不是报错弹窗。
             throw new BusinessException(
-                    3004, "该企业暂无碳排放报告，无法生成 AI 合规推理，请先填报碳核算报告");
+                    3004, "该企业暂无已审核通过的碳排放报告，无法生成 AI 合规推理，请先完成填报与审核");
         }
 
         // Compute features from reports

@@ -73,7 +73,7 @@ class EnterpriseInferenceServiceTest {
     void inferEnterprise_noReports_throws() {
         User user = new User();
         when(userRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(user));
-        when(carbonReportRepository.findByEnterpriseIdAndDeletedFalse(1L))
+        when(carbonReportRepository.findByEnterpriseIdAndStatusInAndDeletedFalse(1L, java.util.List.of(3, 5)))
                 .thenReturn(Collections.emptyList());
 
         assertThrows(BusinessException.class, () -> service.inferEnterprise(1L));
@@ -91,7 +91,7 @@ class EnterpriseInferenceServiceTest {
         report.setTotalEmission(new BigDecimal("500.0"));
         report.setStatus(3); // approved
         report.setCreatedAt(LocalDateTime.now().minusDays(10));
-        when(carbonReportRepository.findByEnterpriseIdAndDeletedFalse(enterpriseId))
+        when(carbonReportRepository.findByEnterpriseIdAndStatusInAndDeletedFalse(enterpriseId, java.util.List.of(3, 5)))
                 .thenReturn(List.of(report));
 
         CreditScore creditScore = new CreditScore();
@@ -143,7 +143,7 @@ class EnterpriseInferenceServiceTest {
         approved.setStatus(3); // approved
         approved.setCreatedAt(LocalDateTime.now().minusDays(1));
 
-        when(carbonReportRepository.findByEnterpriseIdAndDeletedFalse(enterpriseId))
+        when(carbonReportRepository.findByEnterpriseIdAndStatusInAndDeletedFalse(enterpriseId, java.util.List.of(3, 5)))
                 .thenReturn(List.of(rejected, approved));
         when(creditScoreRepository.findByEnterpriseIdAndDeletedFalse(enterpriseId))
                 .thenReturn(Optional.empty());
@@ -180,7 +180,7 @@ class EnterpriseInferenceServiceTest {
         report.setTotalEmission(new BigDecimal("300.0"));
         report.setStatus(1);
         report.setCreatedAt(LocalDateTime.now());
-        when(carbonReportRepository.findByEnterpriseIdAndDeletedFalse(enterpriseId))
+        when(carbonReportRepository.findByEnterpriseIdAndStatusInAndDeletedFalse(enterpriseId, java.util.List.of(3, 5)))
                 .thenReturn(List.of(report));
         when(creditScoreRepository.findByEnterpriseIdAndDeletedFalse(enterpriseId))
                 .thenReturn(Optional.empty());
@@ -222,7 +222,7 @@ class EnterpriseInferenceServiceTest {
         reportWithEmission.setStatus(1);
         reportWithEmission.setCreatedAt(LocalDateTime.now());
 
-        when(carbonReportRepository.findByEnterpriseIdAndDeletedFalse(enterpriseId))
+        when(carbonReportRepository.findByEnterpriseIdAndStatusInAndDeletedFalse(enterpriseId, java.util.List.of(3, 5)))
                 .thenReturn(List.of(reportWithNull, reportWithEmission));
         when(creditScoreRepository.findByEnterpriseIdAndDeletedFalse(enterpriseId))
                 .thenReturn(Optional.empty());
@@ -264,7 +264,7 @@ class EnterpriseInferenceServiceTest {
         reportWithDate.setStatus(1);
         reportWithDate.setCreatedAt(LocalDateTime.now().minusDays(5));
 
-        when(carbonReportRepository.findByEnterpriseIdAndDeletedFalse(enterpriseId))
+        when(carbonReportRepository.findByEnterpriseIdAndStatusInAndDeletedFalse(enterpriseId, java.util.List.of(3, 5)))
                 .thenReturn(List.of(reportWithNullDate, reportWithDate));
         when(creditScoreRepository.findByEnterpriseIdAndDeletedFalse(enterpriseId))
                 .thenReturn(Optional.empty());
@@ -300,7 +300,7 @@ class EnterpriseInferenceServiceTest {
         report.setTotalEmission(new BigDecimal("500.0"));
         report.setStatus(1);
         report.setCreatedAt(LocalDateTime.now());
-        when(carbonReportRepository.findByEnterpriseIdAndDeletedFalse(enterpriseId))
+        when(carbonReportRepository.findByEnterpriseIdAndStatusInAndDeletedFalse(enterpriseId, java.util.List.of(3, 5)))
                 .thenReturn(List.of(report));
 
         CreditScore creditScore = new CreditScore();
@@ -348,7 +348,7 @@ class EnterpriseInferenceServiceTest {
         approvedReport.setStatus(3);
         approvedReport.setCreatedAt(LocalDateTime.now().minusDays(2));
 
-        when(carbonReportRepository.findByEnterpriseIdAndDeletedFalse(enterpriseId))
+        when(carbonReportRepository.findByEnterpriseIdAndStatusInAndDeletedFalse(enterpriseId, java.util.List.of(3, 5)))
                 .thenReturn(List.of(reportWithNullStatus, approvedReport));
         when(creditScoreRepository.findByEnterpriseIdAndDeletedFalse(enterpriseId))
                 .thenReturn(Optional.empty());

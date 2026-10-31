@@ -279,6 +279,32 @@ class CarbonServiceTest {
         assertNull(testReport.getBlockchainTxHash());
         verify(blockchainService, times(1)).commitReportToChain(1L, testReport.getEmissionData());
         verify(carbonReportRepository, times(1)).save(any(CarbonReport.class));
+
+        // D17：上链失败时**不得**发放信用分与评级。
+        // 历史实现先加分后上链，导致补救入口 certify 再跑一遍会重复加（+10 而非 +5）。
+        verify(creditScoreService, never()).addBonusPoints(any(), any(Integer.class), any(), any());
+        verify(emissionRatingService, never()).recalculateYearlyRating(any(), any(), any());
+    }
+
+    /**
+     * D17 正向用例：上链成功时奖励恰好发放一次。
+     * 与上一条失败用例合在一起，锁定「奖励与上链同生共死」的语义。
+     */
+    @Test
+    @DisplayName("D17: 上链成功才发放信用分，且只发放一次")
+    void testReviewApproveGrantsRewardOnlyAfterChainSuccess() {
+        testReport.setStatus(ReportStatusEnum.SUBMITTED.getCode());
+        testReport.setSignatureValid(true);
+        ReviewRequest reviewRequest = new ReviewRequest(1L, ReportStatusEnum.APPROVED.getCode(), "Approved");
+
+        when(carbonReportRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(testReport));
+        when(carbonReportRepository.save(any(CarbonReport.class))).thenAnswer(i -> i.getArgument(0));
+        when(blockchainService.commitReportToChain(1L, testReport.getEmissionData())).thenReturn("tx-ok-1");
+
+        carbonService.reviewReport(currentUser, reviewRequest);
+
+        verify(creditScoreService, times(1)).addBonusPoints(eq(1L), eq(5), any(), eq(1L));
+        verify(emissionRatingService, times(1)).recalculateYearlyRating(any(), any(), any());
     }
 
     @Test
@@ -315,7 +341,7 @@ class CarbonServiceTest {
         assertEquals("tx-123", response.getBlockchainTxHash());
         verify(blockchainService, times(1)).commitReportToChain(1L, testReport.getEmissionData());
         verify(creditScoreService, times(1)).addBonusPoints(eq(1L), eq(5), any(), eq(1L));
-        verify(emissionRatingService, times(1)).rateEnterprise(eq(1L), eq("2024"), eq(BigDecimal.TEN), eq(null), eq(1L));
+        verify(emissionRatingService, times(1)).recalculateYearlyRating(eq(1L), eq("2024"), eq(1L));
     }
 
     @Test
@@ -799,7 +825,7 @@ class CarbonServiceTest {
 
         assertNotNull(response);
         assertEquals(ReportStatusEnum.ON_CHAIN.getCode(), response.getStatus());
-        verify(emissionRatingService).rateEnterprise(eq(1L), eq("2024"), any(), eq(null), eq(1L));
+        verify(emissionRatingService).recalculateYearlyRating(eq(1L), eq("2024"), eq(1L));
     }
 
     @Test
@@ -817,7 +843,7 @@ class CarbonServiceTest {
         CarbonReportResponse response = carbonService.certifyReport(currentUser, certificationRequest);
 
         assertNotNull(response);
-        verify(emissionRatingService).rateEnterprise(eq(1L), any(), any(), eq(null), eq(1L));
+        verify(emissionRatingService).recalculateYearlyRating(eq(1L), any(), eq(1L));
     }
 
     @Test
@@ -835,7 +861,7 @@ class CarbonServiceTest {
         CarbonReportResponse response = carbonService.certifyReport(currentUser, certificationRequest);
 
         assertNotNull(response);
-        verify(emissionRatingService).rateEnterprise(eq(1L), any(), any(), eq(null), eq(1L));
+        verify(emissionRatingService).recalculateYearlyRating(eq(1L), any(), eq(1L));
     }
 
     @Test
@@ -1048,7 +1074,7 @@ class CarbonServiceTest {
 
         CarbonReportResponse response = carbonService.certifyReport(currentUser, certificationRequest);
         assertNotNull(response);
-        verify(emissionRatingService).rateEnterprise(eq(1L), eq("2024"), any(), eq(null), eq(1L));
+        verify(emissionRatingService).recalculateYearlyRating(eq(1L), eq("2024"), eq(1L));
     }
 
     // ==================== Additional branch coverage tests (batch 2) ====================
@@ -1274,7 +1300,7 @@ class CarbonServiceTest {
         assertNotNull(response);
         assertEquals(ReportStatusEnum.ON_CHAIN.getCode(), response.getStatus());
         // null accountingPeriod → uses current year
-        verify(emissionRatingService).rateEnterprise(eq(1L), any(), any(), eq(null), eq(1L));
+        verify(emissionRatingService).recalculateYearlyRating(eq(1L), any(), eq(1L));
     }
 
     @Test
@@ -1291,7 +1317,7 @@ class CarbonServiceTest {
 
         CarbonReportResponse response = carbonService.certifyReport(currentUser, certificationRequest);
         assertNotNull(response);
-        verify(emissionRatingService).rateEnterprise(eq(1L), any(), any(), eq(null), eq(1L));
+        verify(emissionRatingService).recalculateYearlyRating(eq(1L), any(), eq(1L));
     }
 
     @Test

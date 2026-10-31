@@ -110,8 +110,38 @@ public interface CarbonReportRepository extends JpaRepository<CarbonReport, Long
     long countByStatusInAndDeletedFalse(List<Integer> statuses);
 
     /**
-     * 统计全市场核证报告累计减排配额总量
+     * 统计全市场核证减排配额总量。
+     *
+     * <p><b>只能统计审核完成且已存证的报告</b>（APPROVED / ON_CHAIN）。
+     * 历史实现只过滤 `deleted=false`，把草稿与已驳回也算进「核证减排配额」——
+     * 库内曾有 62% 的未审核数据被当成既成事实（D11）。</p>
      */
-    @Query("SELECT COALESCE(SUM(r.totalEmission), 0) FROM CarbonReport r WHERE r.deleted = false")
-    java.math.BigDecimal sumTotalEmission();
+    @Query("SELECT COALESCE(SUM(r.totalEmission), 0) FROM CarbonReport r "
+            + "WHERE r.deleted = false AND r.status IN :statuses")
+    java.math.BigDecimal sumTotalEmissionByStatusIn(@Param("statuses") List<Integer> statuses);
+
+    /**
+     * 取某企业**权威状态**的报告（用于 AI 推理与评级）。
+     *
+     * <p>历史实现直接用 `findByEnterpriseIdAndDeletedFalse`，把草稿与已驳回一并喂给
+     * AI 推理，导致「未审核数据被当既成事实」（D11）。</p>
+     */
+    List<CarbonReport> findByEnterpriseIdAndStatusInAndDeletedFalse(
+            Long enterpriseId, List<Integer> statuses);
+
+    /**
+     * 取某企业某年度**权威状态**的报告，用于年度评级汇总（D10）。
+     *
+     * <p>历史实现用「最后一份通过报告的排放量」当年度评级，
+     * 同一年份有多份报告时前面的会被覆盖——「年度评级」名不副实。</p>
+     *
+     * @param periodPrefix 年度前缀，如 "2026"（accountingPeriod 形如 2026-Q1）
+     */
+    @Query("SELECT r FROM CarbonReport r WHERE r.enterpriseId = :enterpriseId "
+            + "AND r.deleted = false AND r.status IN :statuses "
+            + "AND r.accountingPeriod LIKE CONCAT(:periodPrefix, '%')")
+    List<CarbonReport> findYearlyAuthoritativeReports(
+            @Param("enterpriseId") Long enterpriseId,
+            @Param("periodPrefix") String periodPrefix,
+            @Param("statuses") List<Integer> statuses);
 }
