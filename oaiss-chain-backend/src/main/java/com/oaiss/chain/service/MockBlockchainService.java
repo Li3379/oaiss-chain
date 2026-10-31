@@ -1,5 +1,7 @@
 package com.oaiss.chain.service;
 
+import com.oaiss.chain.dto.CarbonReportSnapshot;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -82,6 +84,40 @@ public class MockBlockchainService implements BlockchainServicePort {
         );
 
         log.info("[MOCK] Report committed: reportId={}, txHash={}", reportId, txHash);
+        return txHash;
+    }
+
+    /**
+     * 存证碳报告完整快照（v2）。
+     *
+     * <p>Mock 模式下同样生成确定性哈希，并把快照内容一并纳入哈希输入——
+     * 这样「快照内容变化 → 哈希变化」的语义在开发环境也可被观察到，
+     * 不必等到接入真实 Fabric 才发现快照没进哈希。</p>
+     */
+    @Override
+    public String commitReportSnapshot(CarbonReportSnapshot snapshot) {
+        log.info("[MOCK] Committing report snapshot v2: reportId={}, enterpriseId={}",
+                snapshot.getReportId(), snapshot.getEnterpriseId());
+
+        String payload = String.join("|",
+                String.valueOf(snapshot.getReportId()),
+                String.valueOf(snapshot.getEnterpriseId()),
+                String.valueOf(snapshot.getAccountingPeriod()),
+                String.valueOf(snapshot.getTotalEmission()),
+                String.valueOf(snapshot.getScope1Emission()),
+                String.valueOf(snapshot.getScope2Emission()),
+                String.valueOf(snapshot.getScope3Emission()),
+                String.valueOf(snapshot.getSignature()),
+                String.valueOf(snapshot.getData()));
+
+        String txHash = invokeChaincode(
+                "carbon-channel",
+                "carbon-report-cc",
+                "CreateCarbonReportV2",
+                payload
+        );
+
+        log.info("[MOCK] Snapshot committed: reportId={}, txHash={}", snapshot.getReportId(), txHash);
         return txHash;
     }
 

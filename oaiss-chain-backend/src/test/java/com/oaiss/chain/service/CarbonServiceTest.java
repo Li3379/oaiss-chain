@@ -1,6 +1,7 @@
 package com.oaiss.chain.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.oaiss.chain.dto.CarbonReportSnapshot;
 import com.oaiss.chain.dto.BatchCertifyRequest;
 import com.oaiss.chain.dto.BatchCertifyResponse;
 import com.oaiss.chain.dto.CarbonReportRequest;
@@ -228,14 +229,14 @@ class CarbonServiceTest {
 
         when(carbonReportRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(testReport));
         when(carbonReportRepository.save(any(CarbonReport.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(blockchainService.commitReportToChain(1L, testReport.getEmissionData())).thenReturn("tx-auto-123");
+        when(blockchainService.commitReportSnapshot(any())).thenReturn("tx-auto-123");
 
         CarbonReportResponse response = carbonService.reviewReport(currentUser, reviewRequest);
 
         assertNotNull(response);
         assertEquals(ReportStatusEnum.ON_CHAIN.getCode(), response.getStatus());
         assertEquals("tx-auto-123", response.getBlockchainTxHash());
-        verify(blockchainService, times(1)).commitReportToChain(1L, testReport.getEmissionData());
+        verify(blockchainService, times(1)).commitReportSnapshot(any());
         verify(creditScoreService, times(1)).addBonusPoints(eq(1L), eq(5), any(), eq(1L));
         verify(carbonReportRepository, times(1)).save(any(CarbonReport.class));
     }
@@ -248,7 +249,7 @@ class CarbonServiceTest {
 
         when(carbonReportRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(testReport));
         when(carbonReportRepository.save(any(CarbonReport.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(blockchainService.commitReportToChain(1L, testReport.getEmissionData()))
+        when(blockchainService.commitReportSnapshot(any()))
                 .thenThrow(BlockchainException.connectionFailed("Fabric network timeout"));
 
         CarbonReportResponse response = carbonService.reviewReport(currentUser, reviewRequest);
@@ -257,7 +258,7 @@ class CarbonServiceTest {
         assertEquals(ReportStatusEnum.APPROVED.getCode(), response.getStatus());
         assertNull(response.getBlockchainTxHash());
         assertNull(testReport.getBlockchainTxHash());
-        verify(blockchainService, times(1)).commitReportToChain(1L, testReport.getEmissionData());
+        verify(blockchainService, times(1)).commitReportSnapshot(any());
         verify(carbonReportRepository, times(1)).save(any(CarbonReport.class));
     }
 
@@ -269,7 +270,7 @@ class CarbonServiceTest {
 
         when(carbonReportRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(testReport));
         when(carbonReportRepository.save(any(CarbonReport.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(blockchainService.commitReportToChain(1L, testReport.getEmissionData())).thenReturn(null);
+        when(blockchainService.commitReportSnapshot(any())).thenReturn(null);
 
         CarbonReportResponse response = carbonService.reviewReport(currentUser, reviewRequest);
 
@@ -277,7 +278,7 @@ class CarbonServiceTest {
         assertEquals(ReportStatusEnum.APPROVED.getCode(), response.getStatus());
         assertNull(response.getBlockchainTxHash());
         assertNull(testReport.getBlockchainTxHash());
-        verify(blockchainService, times(1)).commitReportToChain(1L, testReport.getEmissionData());
+        verify(blockchainService, times(1)).commitReportSnapshot(any());
         verify(carbonReportRepository, times(1)).save(any(CarbonReport.class));
 
         // D17：上链失败时**不得**发放信用分与评级。
@@ -299,7 +300,7 @@ class CarbonServiceTest {
 
         when(carbonReportRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(testReport));
         when(carbonReportRepository.save(any(CarbonReport.class))).thenAnswer(i -> i.getArgument(0));
-        when(blockchainService.commitReportToChain(1L, testReport.getEmissionData())).thenReturn("tx-ok-1");
+        when(blockchainService.commitReportSnapshot(any())).thenReturn("tx-ok-1");
 
         carbonService.reviewReport(currentUser, reviewRequest);
 
@@ -332,14 +333,14 @@ class CarbonServiceTest {
 
         when(carbonReportRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(testReport));
         when(carbonReportRepository.save(any(CarbonReport.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(blockchainService.commitReportToChain(1L, testReport.getEmissionData())).thenReturn("tx-123");
+        when(blockchainService.commitReportSnapshot(any())).thenReturn("tx-123");
 
         CarbonReportResponse response = carbonService.certifyReport(currentUser, certificationRequest);
 
         assertNotNull(response);
         assertEquals(ReportStatusEnum.ON_CHAIN.getCode(), response.getStatus());
         assertEquals("tx-123", response.getBlockchainTxHash());
-        verify(blockchainService, times(1)).commitReportToChain(1L, testReport.getEmissionData());
+        verify(blockchainService, times(1)).commitReportSnapshot(any());
         verify(creditScoreService, times(1)).addBonusPoints(eq(1L), eq(5), any(), eq(1L));
         verify(emissionRatingService, times(1)).recalculateYearlyRating(eq(1L), eq("2024"), eq(1L));
     }
@@ -353,7 +354,7 @@ class CarbonServiceTest {
         when(carbonReportRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(testReport));
 
         assertThrows(CarbonException.class, () -> carbonService.certifyReport(currentUser, certificationRequest));
-        verify(blockchainService, never()).commitReportToChain(any(), any());
+        verify(blockchainService, never()).commitReportSnapshot(any());
     }
 
     @Test
@@ -363,7 +364,7 @@ class CarbonServiceTest {
         when(carbonReportRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(testReport));
         when(carbonReportRepository.save(any())).thenReturn(testReport);
         when(enterpriseRepository.findById(1L)).thenReturn(Optional.of(testEnterprise));
-        when(blockchainService.commitReportToChain(any(), any())).thenReturn("tx-batch-1");
+        when(blockchainService.commitReportSnapshot(any())).thenReturn("tx-batch-1");
 
         BatchCertifyRequest req = BatchCertifyRequest.builder()
                 .reportIds(Arrays.asList(1L))
@@ -609,7 +610,7 @@ class CarbonServiceTest {
         when(carbonReportRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(testReport));
 
         assertThrows(CarbonException.class, () -> carbonService.certifyReport(currentUser, certificationRequest));
-        verify(blockchainService, never()).commitReportToChain(any(), any());
+        verify(blockchainService, never()).commitReportSnapshot(any());
     }
 
     @Test
@@ -626,7 +627,7 @@ class CarbonServiceTest {
 
         assertNotNull(response);
         assertEquals(ReportStatusEnum.REJECTED.getCode(), response.getStatus());
-        verify(blockchainService, never()).commitReportToChain(any(), any());
+        verify(blockchainService, never()).commitReportSnapshot(any());
     }
 
     @Test
@@ -819,7 +820,7 @@ class CarbonServiceTest {
 
         when(carbonReportRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(testReport));
         when(carbonReportRepository.save(any(CarbonReport.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(blockchainService.commitReportToChain(1L, testReport.getEmissionData())).thenReturn("tx-456");
+        when(blockchainService.commitReportSnapshot(any())).thenReturn("tx-456");
 
         CarbonReportResponse response = carbonService.certifyReport(currentUser, certificationRequest);
 
@@ -838,7 +839,7 @@ class CarbonServiceTest {
 
         when(carbonReportRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(testReport));
         when(carbonReportRepository.save(any(CarbonReport.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(blockchainService.commitReportToChain(1L, testReport.getEmissionData())).thenReturn("tx-789");
+        when(blockchainService.commitReportSnapshot(any())).thenReturn("tx-789");
 
         CarbonReportResponse response = carbonService.certifyReport(currentUser, certificationRequest);
 
@@ -856,7 +857,7 @@ class CarbonServiceTest {
 
         when(carbonReportRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(testReport));
         when(carbonReportRepository.save(any(CarbonReport.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(blockchainService.commitReportToChain(1L, testReport.getEmissionData())).thenReturn("tx-101");
+        when(blockchainService.commitReportSnapshot(any())).thenReturn("tx-101");
 
         CarbonReportResponse response = carbonService.certifyReport(currentUser, certificationRequest);
 
@@ -1019,7 +1020,7 @@ class CarbonServiceTest {
 
         when(carbonReportRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(testReport));
         when(carbonReportRepository.save(any(CarbonReport.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(blockchainService.commitReportToChain(1L, testReport.getEmissionData())).thenReturn("tx-202");
+        when(blockchainService.commitReportSnapshot(any())).thenReturn("tx-202");
 
         CarbonReportResponse response = carbonService.certifyReport(currentUser, certificationRequest);
         assertNotNull(response);
@@ -1070,7 +1071,7 @@ class CarbonServiceTest {
 
         when(carbonReportRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(testReport));
         when(carbonReportRepository.save(any(CarbonReport.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(blockchainService.commitReportToChain(1L, testReport.getEmissionData())).thenReturn("tx-303");
+        when(blockchainService.commitReportSnapshot(any())).thenReturn("tx-303");
 
         CarbonReportResponse response = carbonService.certifyReport(currentUser, certificationRequest);
         assertNotNull(response);
@@ -1140,7 +1141,7 @@ class CarbonServiceTest {
 
         when(carbonReportRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(testReport));
         when(carbonReportRepository.save(any(CarbonReport.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(blockchainService.commitReportToChain(1L, testReport.getEmissionData())).thenReturn("tx-under-review");
+        when(blockchainService.commitReportSnapshot(any())).thenReturn("tx-under-review");
 
         CarbonReportResponse response = carbonService.reviewReport(currentUser, reviewRequest);
         assertNotNull(response);
@@ -1294,7 +1295,7 @@ class CarbonServiceTest {
 
         when(carbonReportRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(testReport));
         when(carbonReportRepository.save(any(CarbonReport.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(blockchainService.commitReportToChain(1L, testReport.getEmissionData())).thenReturn("tx-null-period");
+        when(blockchainService.commitReportSnapshot(any())).thenReturn("tx-null-period");
 
         CarbonReportResponse response = carbonService.certifyReport(currentUser, certificationRequest);
         assertNotNull(response);
@@ -1313,7 +1314,7 @@ class CarbonServiceTest {
 
         when(carbonReportRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(testReport));
         when(carbonReportRepository.save(any(CarbonReport.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(blockchainService.commitReportToChain(1L, testReport.getEmissionData())).thenReturn("tx-empty-period");
+        when(blockchainService.commitReportSnapshot(any())).thenReturn("tx-empty-period");
 
         CarbonReportResponse response = carbonService.certifyReport(currentUser, certificationRequest);
         assertNotNull(response);
@@ -1461,6 +1462,50 @@ class CarbonServiceTest {
         CarbonReportResponse response = carbonService.certifyReport(currentUser, certificationRequest);
         assertNotNull(response);
         assertEquals(ReportStatusEnum.REJECTED.getCode(), response.getStatus());
-        verify(blockchainService, never()).commitReportToChain(any(), any());
+        verify(blockchainService, never()).commitReportSnapshot(any());
+    }
+
+
+    /**
+     * D15：上链快照必须携带企业归属。
+     *
+     * <p>v1 只传 emissionData 原文，链码的 EnterpriseID 字段从未赋值，
+     * 链上无法回答「这份报告属于哪家企业」——存证因此不能独立验证主体。
+     * 此用例用 ArgumentCaptor 抓住真实提交的快照，逐字段核对。</p>
+     */
+    @Test
+    @DisplayName("D15: 上链快照携带企业ID/周期/总量/三范围/签名")
+    void testChainSnapshotCarriesOwnershipAndTotals() {
+        testReport.setStatus(ReportStatusEnum.SUBMITTED.getCode());
+        testReport.setEnterpriseId(42L);
+        testReport.setAccountingPeriod("2026-Q2");
+        testReport.setTotalEmission(new BigDecimal("1234.5678"));
+        testReport.setScope1Emission(new BigDecimal("1000.0000"));
+        testReport.setScope2Emission(new BigDecimal("234.5678"));
+        testReport.setScope3Emission(BigDecimal.ZERO);
+        testReport.setSignatureData("sig-abc");
+        ReviewRequest reviewRequest = new ReviewRequest(1L, ReportStatusEnum.APPROVED.getCode(), "Approved");
+
+        when(carbonReportRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(testReport));
+        when(carbonReportRepository.save(any(CarbonReport.class))).thenAnswer(i -> i.getArgument(0));
+        when(blockchainService.commitReportSnapshot(any())).thenReturn("tx-v2-1");
+        // 本用例只关心快照内容，验签由其它用例覆盖
+        when(digitalSignatureService.verifySignature(any(), any(), any())).thenReturn(true);
+
+        carbonService.reviewReport(currentUser, reviewRequest);
+
+        org.mockito.ArgumentCaptor<CarbonReportSnapshot> captor =
+                org.mockito.ArgumentCaptor.forClass(CarbonReportSnapshot.class);
+        verify(blockchainService, times(1)).commitReportSnapshot(captor.capture());
+        CarbonReportSnapshot snap = captor.getValue();
+
+        assertEquals(Long.valueOf(42L), snap.getEnterpriseId(), "快照必须带企业ID（v1 缺失的核心字段）");
+        assertEquals("2026-Q2", snap.getAccountingPeriod());
+        assertEquals("1234.5678", snap.getTotalEmission());
+        assertEquals("1000.0000", snap.getScope1Emission());
+        assertEquals("234.5678", snap.getScope2Emission());
+        assertEquals("0", snap.getScope3Emission());
+        assertEquals("sig-abc", snap.getSignature(), "快照必须带签名，链上才能独立验证内容未被改");
+        assertNotNull(snap.getData(), "快照必须带 emissionData 原文明细");
     }
 }

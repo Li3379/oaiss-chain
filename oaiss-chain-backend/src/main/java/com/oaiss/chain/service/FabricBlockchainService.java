@@ -3,6 +3,7 @@ package com.oaiss.chain.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.protobuf.ByteString;
+import com.oaiss.chain.dto.CarbonReportSnapshot;
 import com.oaiss.chain.config.FabricProperties;
 import com.oaiss.chain.exception.BlockchainException;
 import io.grpc.Status;
@@ -104,7 +105,45 @@ public class FabricBlockchainService implements BlockchainServicePort {
         }
     }
 
+    /**
+     * 存证碳报告完整快照（v2）。
+     *
+     * <p>调用链码 {@code CreateCarbonReportV2}，把企业归属、周期、总量、三范围与签名
+     * 一并写入链上，使链上记录能独立回答「谁、什么时候、报了多少」。
+     * 旧函数 {@code CreateCarbonReport} 保留在链码里，历史记录不受影响。</p>
+     */
     @Override
+    public String commitReportSnapshot(CarbonReportSnapshot snapshot) {
+        try {
+            log.info("[FABRIC] Committing report snapshot v2: reportId={}, enterpriseId={}",
+                    snapshot.getReportId(), snapshot.getEnterpriseId());
+            byte[] result = carbonContract.submitTransaction(
+                    "CreateCarbonReportV2",
+                    String.valueOf(snapshot.getReportId()),
+                    String.valueOf(snapshot.getEnterpriseId()),
+                    nullSafe(snapshot.getAccountingPeriod()),
+                    nullSafe(snapshot.getTotalEmission()),
+                    nullSafe(snapshot.getScope1Emission()),
+                    nullSafe(snapshot.getScope2Emission()),
+                    nullSafe(snapshot.getScope3Emission()),
+                    nullSafe(snapshot.getSignature()),
+                    nullSafe(snapshot.getData())
+            );
+            String response = new String(result, StandardCharsets.UTF_8);
+            log.info("[FABRIC] Snapshot committed: reportId={}, response={}", snapshot.getReportId(), response);
+            return extractTxHashFromResponse(response);
+        } catch (EndorseException e) {
+            throw BlockchainException.smartContractError("CreateCarbonReportV2", e.getMessage());
+        } catch (Exception e) {
+            throw BlockchainException.connectionFailed("提交快照到链上失败: " + e.getMessage());
+        }
+    }
+
+    /** 链码参数不允许 null；空串会被链码原样存下，语义上等同「未提供」。 */
+    private static String nullSafe(String value) {
+        return value == null ? "" : value;
+    }
+
     public String commitTradeToChain(Long tradeId, String tradeData) {
         try {
             log.info("[FABRIC] Committing trade to chain: tradeId={}", tradeId);

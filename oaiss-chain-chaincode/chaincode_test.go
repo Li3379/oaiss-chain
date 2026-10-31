@@ -40,6 +40,15 @@ func (ms *MockStub) DelState(key string) error {
 	return nil
 }
 
+// CreateCompositeKey 拼接索引键（v2 快照用「企业~报告」索引）。
+func (ms *MockStub) CreateCompositeKey(objectType string, attributes []string) (string, error) {
+	key := objectType
+	for _, a := range attributes {
+		key = key + string(rune(0)) + a
+	}
+	return key, nil
+}
+
 // MockContext exists only to keep the test package aligned with current Fabric APIs.
 type MockContext struct {
 	stub *MockStub
@@ -181,4 +190,61 @@ func TestQueryBlock(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Contains(t, result, "5")
 	assert.Contains(t, result, "VALID")
+}
+
+// TestCarbonReportSnapshotV2Shape 验证 v2 快照结构能正确序列化并携带主体归属。
+//
+// 背景：v1 链上只存 Data 原文，EnterpriseID 字段从未赋值，
+// 链上无法回答「这份报告属于哪家企业」。v2 补齐主体、周期、总量、三范围与签名。
+func TestCarbonReportSnapshotV2Shape(t *testing.T) {
+	snapshot := &CarbonReportSnapshot{
+		ReportID:         "42",
+		EnterpriseID:     "7",
+		AccountingPeriod: "2026-Q2",
+		TotalEmission:    "1234.5678",
+		Scope1Emission:   "1000.0000",
+		Scope2Emission:   "234.5678",
+		Scope3Emission:   "0",
+		Signature:        "sig-abc",
+		Data:             `{"scope1":1000}`,
+		Status:           "COMMITTED",
+		TxHash:           "tx_v2_001",
+		CreatedAt:        "2026-10-31T10:00:00Z",
+		SchemaVersion:    "v2",
+	}
+
+	bytes, err := json.Marshal(snapshot)
+	assert.NoError(t, err)
+
+	var decoded CarbonReportSnapshot
+	assert.NoError(t, json.Unmarshal(bytes, &decoded))
+
+	// 核心断言：链上记录能独立回答「属于哪家企业」
+	assert.Equal(t, "7", decoded.EnterpriseID, "v2 必须携带企业ID，否则链上无法确定主体")
+	assert.Equal(t, "2026-Q2", decoded.AccountingPeriod)
+	assert.Equal(t, "1234.5678", decoded.TotalEmission)
+	assert.Equal(t, "1000.0000", decoded.Scope1Emission)
+	assert.Equal(t, "sig-abc", decoded.Signature, "签名必须上链，链上才能独立验证内容未被改")
+	assert.Equal(t, "v2", decoded.SchemaVersion, "版本标识用于区分新老记录")
+	assert.NotEmpty(t, decoded.Data)
+}
+
+// TestLegacyCarbonReportStillSupported 验证 v1 结构未被破坏（历史链上记录仍可解析）。
+func TestLegacyCarbonReportStillSupported(t *testing.T) {
+	legacy := &CarbonReport{
+		ReportID:  "1",
+		Data:      `{"scope1":100}`,
+		Status:    "COMMITTED",
+		TxHash:    "tx_v1_001",
+		CreatedAt: "2026-01-01T00:00:00Z",
+	}
+	bytes, err := json.Marshal(legacy)
+	assert.NoError(t, err)
+
+	var decoded CarbonReport
+	assert.NoError(t, json.Unmarshal(bytes, &decoded))
+	assert.Equal(t, "1", decoded.ReportID)
+	assert.Equal(t, "COMMITTED", decoded.Status)
+	// v1 的 EnterpriseID 为空——这正是 v2 要解决的问题
+	assert.Empty(t, decoded.EnterpriseID)
 }

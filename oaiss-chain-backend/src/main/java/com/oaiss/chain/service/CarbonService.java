@@ -2,6 +2,7 @@ package com.oaiss.chain.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.oaiss.chain.dto.CarbonReportSnapshot;
 import com.oaiss.chain.dto.BatchCertifyRequest;
 import com.oaiss.chain.dto.BatchCertifyResponse;
 import com.oaiss.chain.dto.CarbonReportRequest;
@@ -462,6 +463,11 @@ public class CarbonService {
         return toResponse(report);
     }
 
+    /** BigDecimal 转字符串，null 保持 null（链码侧会再转空串）。 */
+    private static String stringify(BigDecimal value) {
+        return value == null ? null : value.toPlainString();
+    }
+
     private void calculateEmissions(CarbonReport report) {
         BigDecimal[] totals = parseEmissionTotals(report.getEmissionData());
         report.setScope1Emission(totals[0]);
@@ -486,7 +492,22 @@ public class CarbonService {
         Long enterpriseId = report.getEnterpriseId();
 
         // 第一步：先上链。失败则直接抛出，后续奖励一概不发。
-        String txHash = blockchainService.commitReportToChain(report.getId(), report.getEmissionData());
+        // D15：存证**完整快照**（企业归属 / 周期 / 总量 / 三范围 / 签名 / 原文明细）。
+        // v1 只传 emissionData 原文且链码 EnterpriseID 从未赋值，
+        // 链上无法回答「这份报告属于哪家企业」——存证不能独立验证主体。
+        CarbonReportSnapshot snapshot = CarbonReportSnapshot.builder()
+                .reportId(report.getId())
+                .enterpriseId(report.getEnterpriseId())
+                .reportNo(report.getReportNo())
+                .accountingPeriod(report.getAccountingPeriod())
+                .totalEmission(stringify(report.getTotalEmission()))
+                .scope1Emission(stringify(report.getScope1Emission()))
+                .scope2Emission(stringify(report.getScope2Emission()))
+                .scope3Emission(stringify(report.getScope3Emission()))
+                .signature(report.getSignatureData())
+                .data(report.getEmissionData())
+                .build();
+        String txHash = blockchainService.commitReportSnapshot(snapshot);
         if (txHash == null || txHash.isBlank()) {
             throw new IllegalStateException("上链未返回有效交易哈希，报告 " + report.getReportNo() + " 暂不发放奖励");
         }
