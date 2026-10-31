@@ -42,9 +42,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -73,6 +75,9 @@ class DoubleAuctionServiceTest {
 
     @Mock
     private CarbonCoinService carbonCoinService;
+
+    @Mock
+    private CreditScoreService creditScoreService;
 
     @Mock
     private AuditLogWriter auditLogWriter;
@@ -105,6 +110,10 @@ class DoubleAuctionServiceTest {
         orderRequest.setDirection(1);
         orderRequest.setQuantity(new BigDecimal("100.00"));
         orderRequest.setPrice(new BigDecimal("50.00"));
+
+        // 默认信誉分正常放行、无信誉记录按中性分排序；限制态与同价排序由各用例单独覆写
+        lenient().when(creditScoreService.checkTradePermission(anyLong())).thenReturn(true);
+        lenient().when(creditScoreService.getScoresByUserIds(any())).thenReturn(Collections.emptyMap());
     }
 
     @Test
@@ -217,6 +226,9 @@ class DoubleAuctionServiceTest {
     @Test
     @DisplayName("placeBuyOrder rejects when user already has active sell order (wash trading prevention)")
     void testPlaceBuyOrderRejectsWhenActiveSellOrderExists() {
+        // 信誉闸门与自成交检查都先要定位到企业，因此必须提供企业桩；
+        // 否则会先抛 4002「企业不存在」，测不到洗售拦截本身。
+        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(testEnterprise));
         when(auctionOrderRepository.existsByUserIdAndDirectionAndStatusInAndDeletedFalse(eq(1L), eq(2), anyList()))
                 .thenReturn(true);
 
@@ -231,6 +243,7 @@ class DoubleAuctionServiceTest {
     @Test
     @DisplayName("placeSellOrder rejects when user already has active buy order (wash trading prevention)")
     void testPlaceSellOrderRejectsWhenActiveBuyOrderExists() {
+        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(testEnterprise));
         when(auctionOrderRepository.existsByUserIdAndDirectionAndStatusInAndDeletedFalse(eq(1L), eq(1), anyList()))
                 .thenReturn(true);
 
@@ -240,6 +253,23 @@ class DoubleAuctionServiceTest {
         assertEquals(ErrorCode.PARAM_ERROR, ex.getCode());
         assertTrue(ex.getMessage().contains("同一主体禁止同时买卖"));
         verify(auctionOrderRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("credit gate precedes wash-trading check so a frozen account sees the real reason")
+    void testCreditGatePrecedesWashTradingCheck() {
+        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(testEnterprise));
+        when(creditScoreService.checkTradePermission(1L)).thenReturn(false);
+        // 刻意也把自成交条件设为 true：若闸门未前置，抛出的会是 PARAM_ERROR 而不是信誉限制。
+        // 闸门生效时该桩不会被消费，故用 lenient 表明它是反证桩而非必需桩。
+        lenient().when(auctionOrderRepository.existsByUserIdAndDirectionAndStatusInAndDeletedFalse(eq(1L), eq(2), anyList()))
+                .thenReturn(true);
+
+        TradeException ex = assertThrows(TradeException.class, () ->
+                doubleAuctionService.placeBuyOrder(currentUser, orderRequest));
+
+        assertEquals(ErrorCode.CREDIT_TRADE_RESTRICTED, ex.getCode());
+        assertTrue(ex.getMessage().contains("信誉分过低"));
     }
 
     @Test
@@ -1231,5 +1261,271 @@ class DoubleAuctionServiceTest {
         assertThrows(TradeException.class, () ->
                 doubleAuctionService.cancelOrder(currentUser, 99L));
         verify(auctionOrderRepository, never()).save(any());
+    }
+
+    // ==================== 信誉分交易闸门 ====================
+
+    @Test
+    @DisplayName("placeBuyOrder-信誉分被限制交易时拒绝挂单")
+    void testPlaceBuyOrderFailCreditRestricted() {
+        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(testEnterprise));
+        when(creditScoreService.checkTradePermission(1L)).thenReturn(false);
+
+        TradeException ex = assertThrows(TradeException.class, () ->
+                doubleAuctionService.placeBuyOrder(currentUser, orderRequest));
+
+        assertEquals(ErrorCode.CREDIT_TRADE_RESTRICTED, ex.getCode());
+        assertTrue(ex.getMessage().contains("信誉分过低"));
+        verify(auctionOrderRepository, never()).save(any());
+        // 闸门必须在冻结碳币之前拦截
+        verify(carbonCoinService, never()).freezeBalance(any(), any());
+    }
+
+    @Test
+    @DisplayName("placeSellOrder-信誉分被限制交易时拒绝挂单")
+    void testPlaceSellOrderFailCreditRestricted() {
+        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(testEnterprise));
+        when(creditScoreService.checkTradePermission(1L)).thenReturn(false);
+
+        TradeException ex = assertThrows(TradeException.class, () ->
+                doubleAuctionService.placeSellOrder(currentUser, orderRequest));
+
+        assertEquals(ErrorCode.CREDIT_TRADE_RESTRICTED, ex.getCode());
+        verify(auctionOrderRepository, never()).save(any());
+        // 闸门必须在冻结配额之前拦截
+        verify(enterpriseRepository, never()).save(any());
+        assertEquals(new BigDecimal("500.00"), testEnterprise.getCarbonTradable());
+    }
+
+    // ==================== 同价时信誉优先 ====================
+
+    @Test
+    @DisplayName("executeMatching-同价时信誉分高的卖方优先成交")
+    void testExecuteMatchingSamePricePrefersHigherCreditSeller() {
+        AuctionOrder buyOrder = AuctionOrder.builder()
+                .orderNo("B100").userId(1L).direction(1)
+                .quantity(new BigDecimal("100")).price(new BigDecimal("50"))
+                .matchedQuantity(BigDecimal.ZERO).status(AuctionOrderStatusEnum.PENDING.getCode())
+                .build();
+        buyOrder.setId(1L);
+
+        // 两个同价卖单：低信誉(用户2)在仓储返回中排在前，高信誉(用户3)排在后
+        AuctionOrder lowCreditSeller = AuctionOrder.builder()
+                .orderNo("S100").userId(2L).direction(2)
+                .quantity(new BigDecimal("100")).price(new BigDecimal("50"))
+                .matchedQuantity(BigDecimal.ZERO).status(AuctionOrderStatusEnum.PENDING.getCode())
+                .build();
+        lowCreditSeller.setId(2L);
+
+        AuctionOrder highCreditSeller = AuctionOrder.builder()
+                .orderNo("S101").userId(3L).direction(2)
+                .quantity(new BigDecimal("100")).price(new BigDecimal("50"))
+                .matchedQuantity(BigDecimal.ZERO).status(AuctionOrderStatusEnum.PENDING.getCode())
+                .build();
+        highCreditSeller.setId(3L);
+
+        when(auctionOrderRepository.findByDirectionAndStatusInAndDeletedFalseOrderByPriceDesc(eq(1), anyList()))
+                .thenReturn(Arrays.asList(buyOrder));
+        when(auctionOrderRepository.findByDirectionAndStatusInAndDeletedFalseOrderByPriceAsc(eq(2), anyList()))
+                .thenReturn(Arrays.asList(lowCreditSeller, highCreditSeller));
+        when(creditScoreService.getScoresByUserIds(any()))
+                .thenReturn(java.util.Map.of(1L, 90, 2L, 55, 3L, 95));
+        when(matchingResultRepository.save(any(MatchingResult.class))).thenAnswer(invocation -> {
+            MatchingResult m = invocation.getArgument(0);
+            m.setId(1L);
+            return m;
+        });
+        when(transactionRepository.save(any(Transaction.class))).thenAnswer(invocation -> {
+            Transaction tx = invocation.getArgument(0);
+            tx.setId(1L);
+            return tx;
+        });
+        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(
+                Enterprise.builder().userId(1L).carbonQuota(new BigDecimal("1000"))
+                        .carbonTradable(new BigDecimal("500")).carbonUsed(new BigDecimal("500")).build()));
+        when(enterpriseRepository.findByUserId(3L)).thenReturn(Optional.of(
+                Enterprise.builder().userId(3L).carbonQuota(new BigDecimal("1000"))
+                        .carbonTradable(new BigDecimal("500")).carbonUsed(new BigDecimal("500")).build()));
+        when(auctionOrderRepository.save(any(AuctionOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var results = doubleAuctionService.executeMatching();
+
+        assertEquals(1, results.size());
+        // 100 吨需求由高信誉卖方(用户3)全额吃下，低信誉卖方(用户2)一分未得
+        assertEquals(new BigDecimal("100"), highCreditSeller.getMatchedQuantity());
+        assertEquals(BigDecimal.ZERO, lowCreditSeller.getMatchedQuantity());
+        verify(carbonCoinService).sellQuota(eq(3L), any(), any(), any());
+        verify(carbonCoinService, never()).sellQuota(eq(2L), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("executeMatching-价格优先仍高于信誉：低价卖方先成交")
+    void testExecuteMatchingPriceStillTakesPrecedenceOverCredit() {
+        AuctionOrder buyOrder = AuctionOrder.builder()
+                .orderNo("B101").userId(1L).direction(1)
+                .quantity(new BigDecimal("100")).price(new BigDecimal("60"))
+                .matchedQuantity(BigDecimal.ZERO).status(AuctionOrderStatusEnum.PENDING.getCode())
+                .build();
+        buyOrder.setId(1L);
+
+        // 低价卖方信誉低，高价卖方信誉高：价格优先原则不变，低价卖方先成交
+        AuctionOrder cheapLowCredit = AuctionOrder.builder()
+                .orderNo("S102").userId(2L).direction(2)
+                .quantity(new BigDecimal("100")).price(new BigDecimal("50"))
+                .matchedQuantity(BigDecimal.ZERO).status(AuctionOrderStatusEnum.PENDING.getCode())
+                .build();
+        cheapLowCredit.setId(2L);
+
+        AuctionOrder priceyHighCredit = AuctionOrder.builder()
+                .orderNo("S103").userId(3L).direction(2)
+                .quantity(new BigDecimal("100")).price(new BigDecimal("55"))
+                .matchedQuantity(BigDecimal.ZERO).status(AuctionOrderStatusEnum.PENDING.getCode())
+                .build();
+        priceyHighCredit.setId(3L);
+
+        when(auctionOrderRepository.findByDirectionAndStatusInAndDeletedFalseOrderByPriceDesc(eq(1), anyList()))
+                .thenReturn(Arrays.asList(buyOrder));
+        when(auctionOrderRepository.findByDirectionAndStatusInAndDeletedFalseOrderByPriceAsc(eq(2), anyList()))
+                .thenReturn(Arrays.asList(cheapLowCredit, priceyHighCredit));
+        when(creditScoreService.getScoresByUserIds(any()))
+                .thenReturn(java.util.Map.of(1L, 90, 2L, 30, 3L, 100));
+        when(matchingResultRepository.save(any(MatchingResult.class))).thenAnswer(invocation -> {
+            MatchingResult m = invocation.getArgument(0);
+            m.setId(1L);
+            return m;
+        });
+        when(transactionRepository.save(any(Transaction.class))).thenAnswer(invocation -> {
+            Transaction tx = invocation.getArgument(0);
+            tx.setId(1L);
+            return tx;
+        });
+        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(
+                Enterprise.builder().userId(1L).carbonQuota(new BigDecimal("1000"))
+                        .carbonTradable(new BigDecimal("500")).carbonUsed(new BigDecimal("500")).build()));
+        when(enterpriseRepository.findByUserId(2L)).thenReturn(Optional.of(
+                Enterprise.builder().userId(2L).carbonQuota(new BigDecimal("1000"))
+                        .carbonTradable(new BigDecimal("500")).carbonUsed(new BigDecimal("500")).build()));
+        when(auctionOrderRepository.save(any(AuctionOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var results = doubleAuctionService.executeMatching();
+
+        assertEquals(1, results.size());
+        assertEquals(new BigDecimal("100"), cheapLowCredit.getMatchedQuantity());
+        assertEquals(BigDecimal.ZERO, priceyHighCredit.getMatchedQuantity());
+    }
+
+    @Test
+    @DisplayName("executeMatching-查不到信誉分时按中性分处理且不影响撮合")
+    void testExecuteMatchingMissingCreditFallsBackToNeutral() {
+        AuctionOrder buyOrder = AuctionOrder.builder()
+                .orderNo("B102").userId(1L).direction(1)
+                .quantity(new BigDecimal("100")).price(new BigDecimal("50"))
+                .matchedQuantity(BigDecimal.ZERO).status(AuctionOrderStatusEnum.PENDING.getCode())
+                .build();
+        buyOrder.setId(1L);
+
+        AuctionOrder sellerWithoutScore = AuctionOrder.builder()
+                .orderNo("S104").userId(99L).direction(2)
+                .quantity(new BigDecimal("100")).price(new BigDecimal("50"))
+                .matchedQuantity(BigDecimal.ZERO).status(AuctionOrderStatusEnum.PENDING.getCode())
+                .build();
+        sellerWithoutScore.setId(2L);
+
+        // 各侧保留第二个挂单，确保真正走入信誉分次级排序逻辑
+        AuctionOrder buyOrderNoMatch = AuctionOrder.builder()
+                .orderNo("B102b").userId(4L).direction(1)
+                .quantity(new BigDecimal("100")).price(new BigDecimal("40"))
+                .matchedQuantity(BigDecimal.ZERO).status(AuctionOrderStatusEnum.PENDING.getCode())
+                .build();
+        buyOrderNoMatch.setId(4L);
+
+        AuctionOrder sellerTooExpensive = AuctionOrder.builder()
+                .orderNo("S104b").userId(5L).direction(2)
+                .quantity(new BigDecimal("100")).price(new BigDecimal("60"))
+                .matchedQuantity(BigDecimal.ZERO).status(AuctionOrderStatusEnum.PENDING.getCode())
+                .build();
+        sellerTooExpensive.setId(5L);
+
+        when(auctionOrderRepository.findByDirectionAndStatusInAndDeletedFalseOrderByPriceDesc(eq(1), anyList()))
+                .thenReturn(Arrays.asList(buyOrder, buyOrderNoMatch));
+        when(auctionOrderRepository.findByDirectionAndStatusInAndDeletedFalseOrderByPriceAsc(eq(2), anyList()))
+                .thenReturn(Arrays.asList(sellerWithoutScore, sellerTooExpensive));
+        // 买卖双方均无信誉记录
+        when(creditScoreService.getScoresByUserIds(any())).thenReturn(Collections.emptyMap());
+        when(matchingResultRepository.save(any(MatchingResult.class))).thenAnswer(invocation -> {
+            MatchingResult m = invocation.getArgument(0);
+            m.setId(1L);
+            return m;
+        });
+        when(transactionRepository.save(any(Transaction.class))).thenAnswer(invocation -> {
+            Transaction tx = invocation.getArgument(0);
+            tx.setId(1L);
+            return tx;
+        });
+        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(
+                Enterprise.builder().userId(1L).carbonQuota(new BigDecimal("1000"))
+                        .carbonTradable(new BigDecimal("500")).carbonUsed(new BigDecimal("500")).build()));
+        when(enterpriseRepository.findByUserId(99L)).thenReturn(Optional.of(
+                Enterprise.builder().userId(99L).carbonQuota(new BigDecimal("1000"))
+                        .carbonTradable(new BigDecimal("500")).carbonUsed(new BigDecimal("500")).build()));
+        when(auctionOrderRepository.save(any(AuctionOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var results = doubleAuctionService.executeMatching();
+
+        assertEquals(1, results.size(), "信誉分缺失不得阻断撮合");
+    }
+
+    @Test
+    @DisplayName("executeMatching-信誉分服务异常时降级为中性分，撮合不中断")
+    void testExecuteMatchingCreditServiceFailureDoesNotBreakMatching() {
+        AuctionOrder buyOrder = AuctionOrder.builder()
+                .orderNo("B103").userId(1L).direction(1)
+                .quantity(new BigDecimal("100")).price(new BigDecimal("50"))
+                .matchedQuantity(BigDecimal.ZERO).status(AuctionOrderStatusEnum.PENDING.getCode())
+                .build();
+        buyOrder.setId(1L);
+
+        AuctionOrder sellOrder = AuctionOrder.builder()
+                .orderNo("S105").userId(2L).direction(2)
+                .quantity(new BigDecimal("100")).price(new BigDecimal("50"))
+                .matchedQuantity(BigDecimal.ZERO).status(AuctionOrderStatusEnum.PENDING.getCode())
+                .build();
+        sellOrder.setId(2L);
+
+        // 第二个卖单确保候选数 >= 2，从而真正触发信誉分批量查询并验证异常降级
+        AuctionOrder sellOrderTooExpensive = AuctionOrder.builder()
+                .orderNo("S106").userId(3L).direction(2)
+                .quantity(new BigDecimal("100")).price(new BigDecimal("80"))
+                .matchedQuantity(BigDecimal.ZERO).status(AuctionOrderStatusEnum.PENDING.getCode())
+                .build();
+        sellOrderTooExpensive.setId(3L);
+
+        when(auctionOrderRepository.findByDirectionAndStatusInAndDeletedFalseOrderByPriceDesc(eq(1), anyList()))
+                .thenReturn(Arrays.asList(buyOrder));
+        when(auctionOrderRepository.findByDirectionAndStatusInAndDeletedFalseOrderByPriceAsc(eq(2), anyList()))
+                .thenReturn(Arrays.asList(sellOrder, sellOrderTooExpensive));
+        when(creditScoreService.getScoresByUserIds(any()))
+                .thenThrow(new IllegalStateException("credit db down"));
+        when(matchingResultRepository.save(any(MatchingResult.class))).thenAnswer(invocation -> {
+            MatchingResult m = invocation.getArgument(0);
+            m.setId(1L);
+            return m;
+        });
+        when(transactionRepository.save(any(Transaction.class))).thenAnswer(invocation -> {
+            Transaction tx = invocation.getArgument(0);
+            tx.setId(1L);
+            return tx;
+        });
+        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(
+                Enterprise.builder().userId(1L).carbonQuota(new BigDecimal("1000"))
+                        .carbonTradable(new BigDecimal("500")).carbonUsed(new BigDecimal("500")).build()));
+        when(enterpriseRepository.findByUserId(2L)).thenReturn(Optional.of(
+                Enterprise.builder().userId(2L).carbonQuota(new BigDecimal("1000"))
+                        .carbonTradable(new BigDecimal("500")).carbonUsed(new BigDecimal("500")).build()));
+        when(auctionOrderRepository.save(any(AuctionOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var results = doubleAuctionService.executeMatching();
+
+        assertEquals(1, results.size(), "信誉分服务异常不得阻断撮合");
     }
 }

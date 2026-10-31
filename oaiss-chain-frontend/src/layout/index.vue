@@ -25,13 +25,17 @@ import {
   DataBoard,
   Document,
   Expand,
+  Files,
   Fold,
+  Histogram,
   Key,
   Link,
   Medal,
   Monitor,
+  Search,
   Setting,
   Stamp,
+  Switch,
   Tickets,
   TrendCharts,
   User,
@@ -44,7 +48,7 @@ import { ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import { logout as apiLogout } from '../api/auth'
 import { useAppStore } from '../store'
-import { MENU_BY_ROLE, ROLE, type MenuItem } from '../config/menu'
+import { MENU_BY_ROLE, RAIL_BY_ROLE, ROLE, type MenuItem, type RailItem } from '../config/menu'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
 import NotificationBell from '../components/NotificationBell.vue'
 
@@ -67,6 +71,31 @@ const SECTION_ICONS: Record<string, Component> = {
   'menu.dataManage': DataBoard,
   'menu.certificationManage': Stamp,
   'menu.certificateManage': Key,
+  'menu.searchCenter': Search,
+}
+
+/* 图标栏图标注册表：config/menu.ts 里的 RailItem.icon 是字符串名，这里解析为组件 */
+const RAIL_ICONS: Record<string, Component> = {
+  DataAnalysis,
+  Tickets,
+  Coin,
+  Switch,
+  TrendCharts,
+  Medal,
+  Wallet,
+  Link,
+  Aim,
+  Cpu,
+  User,
+  Document,
+  Stamp,
+  Key,
+  Monitor,
+  Setting,
+  DataBoard,
+  Histogram,
+  Files,
+  Search,
 }
 
 const route = useRoute()
@@ -111,6 +140,7 @@ const TAB_LABEL: Record<string, string> = {
   system: 'layout.tabSystem',
   data: 'layout.tabData',
   cert: 'layout.tabCert',
+  search: 'layout.tabSearch',
 }
 
 /** 拍平所有叶子节点（保留父级 label 以便图标与提示） */
@@ -140,13 +170,26 @@ const activeTab = computed<string>(() => {
   return prefix || tabs.value[0]?.key || ''
 })
 
-/** 图标栏条目：rail === true 的叶子 */
-const railItems = computed<MenuItem[]>(() => flatLeaves.value.filter((l) => l.rail === true))
+/** 图标栏条目：pen 稿的 11 个图标入口（分组只落一个首叶子，其余叶子由页签二级进入） */
+const railItems = computed<RailItem[]>(
+  () => RAIL_BY_ROLE[appStore.role as keyof typeof RAIL_BY_ROLE] || [],
+)
 
 /** 页签内的二级条目（rail === false 的叶子，属于当前页签） */
 const tabSubItems = computed<MenuItem[]>(() =>
   flatLeaves.value.filter((l) => l.rail === false && l.tab === activeTab.value),
 )
+
+/** 图标栏高亮：路由命中条目的任一 match 片段即视为当前项（分组入口覆盖全部子页） */
+const activeRail = computed<RailItem | undefined>(() => {
+  const items = railItems.value
+  return (
+    items.find((item) => item.path === route.path) ||
+    items.find((item) => item.match.some((p) => route.path === p || route.path.startsWith(p + '/')))
+  )
+})
+
+const railIcon = (item: RailItem): Component | undefined => RAIL_ICONS[item.icon]
 
 /** 页签切换：跳到该页签下第一个叶子 */
 const onSelectTab = (key: string) => {
@@ -266,7 +309,7 @@ onMounted(() => {
 
 <template>
   <el-container class="app-shell">
-    <el-aside class="side-panel" :width="appStore.sidebarCollapsed ? '70px' : '260px'">
+    <el-aside class="side-panel" :width="appStore.sidebarCollapsed ? '72px' : '260px'">
       <div class="brand-area">
         <div class="brand-badge">
           <el-icon :size="16"><Link /></el-icon>
@@ -274,21 +317,60 @@ onMounted(() => {
         <span v-show="!appStore.sidebarCollapsed" class="brand-title">{{ t('layout.brand') }}</span>
       </div>
 
-      <el-scrollbar class="menu-scrollbar">
+      <!-- 折叠态：pen 稿 Rail（64×56，图标 18px + 短标签 9.5px，当前项浅底 + 左侧 2px 蓝条） -->
+      <nav v-if="appStore.sidebarCollapsed" class="pen-rail" :aria-label="t('layout.primaryNav')">
+        <button
+          v-for="item in railItems"
+          :key="item.path"
+          type="button"
+          class="pen-rail__item"
+          :class="{ 'is-active': activeRail?.path === item.path }"
+          :aria-label="t(item.label)"
+          :aria-current="activeRail?.path === item.path ? 'page' : undefined"
+          role="menuitem"
+          @click="onSelectMenu(item.path)"
+        >
+          <span class="pen-rail__marker" aria-hidden="true" />
+          <el-icon v-if="railIcon(item)" :size="18" class="pen-rail__icon">
+            <component :is="railIcon(item)" />
+          </el-icon>
+          <span class="pen-rail__label">{{ t(item.railLabel) }}</span>
+        </button>
+      </nav>
+
+      <el-scrollbar v-else class="menu-scrollbar">
         <el-menu
           class="side-menu"
           :default-active="activeMenu"
-          :collapse="appStore.sidebarCollapsed"
+          :collapse="false"
           :collapse-transition="false"
           @select="onSelectMenu"
         >
-          <!-- 折叠：72px 图标栏，悬停显示名称（aria-label 保住 e2e 的 menuitem 可访问名） -->
-          <template v-if="appStore.sidebarCollapsed">
+          <!-- 展开：按分组呈现，分组标题不可点击，叶子逐条保留 -->
+          <template v-for="item in menuTree" :key="item.label">
+            <el-sub-menu
+              v-if="item.children && item.children.length > 0"
+              :index="item.label"
+            >
+              <template #title>
+                <el-icon v-if="sectionIcon(item.label)" class="menu-icon">
+                  <component :is="sectionIcon(item.label)" />
+                </el-icon>
+                <span>{{ t(item.label) }}</span>
+              </template>
+
+              <el-menu-item
+                v-for="sub in item.children"
+                :key="sub.path"
+                :index="sub.path as string"
+              >
+                <span>{{ t(sub.label) }}</span>
+              </el-menu-item>
+            </el-sub-menu>
+
             <el-menu-item
-              v-for="item in railItems"
-              :key="item.path"
-              :index="item.path as string"
-              :aria-label="t(item.label)"
+              v-else-if="item.path"
+              :index="item.path"
             >
               <el-icon v-if="sectionIcon(item.label)" class="menu-icon">
                 <component :is="sectionIcon(item.label)" />
@@ -297,43 +379,6 @@ onMounted(() => {
                 <span>{{ t(item.label) }}</span>
               </template>
             </el-menu-item>
-          </template>
-
-          <!-- 展开：按 pen 稿分组呈现，分组标题不可点击，叶子逐条保留 -->
-          <template v-else>
-            <template v-for="item in menuTree" :key="item.label">
-              <el-sub-menu
-                v-if="item.children && item.children.length > 0"
-                :index="item.label"
-              >
-                <template #title>
-                  <el-icon v-if="sectionIcon(item.label)" class="menu-icon">
-                    <component :is="sectionIcon(item.label)" />
-                  </el-icon>
-                  <span>{{ t(item.label) }}</span>
-                </template>
-
-                <el-menu-item
-                  v-for="sub in item.children"
-                  :key="sub.path"
-                  :index="sub.path as string"
-                >
-                  <span>{{ t(sub.label) }}</span>
-                </el-menu-item>
-              </el-sub-menu>
-
-              <el-menu-item
-                v-else-if="item.path"
-                :index="item.path"
-              >
-                <el-icon v-if="sectionIcon(item.label)" class="menu-icon">
-                  <component :is="sectionIcon(item.label)" />
-                </el-icon>
-                <template #title>
-                  <span>{{ t(item.label) }}</span>
-                </template>
-              </el-menu-item>
-            </template>
           </template>
         </el-menu>
       </el-scrollbar>
@@ -491,47 +536,131 @@ onMounted(() => {
 }
 
 .side-panel {
-  border-right: 1px solid var(--color-border);
-  background: var(--color-ground);
+  border-right: 1px solid var(--pen-border);
+  background: var(--pen-shell);
+  transition: width var(--motion-base) var(--motion-ease);
 }
 
 .brand-area {
-  height: 66px;
+  height: 56px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 20px;
-  color: var(--color-text);
-  border-bottom: 1px solid var(--color-border);
+  gap: var(--space-2-5);
+  padding: 0 var(--space-4);
+  color: var(--pen-ink);
+  border-bottom: 1px solid var(--pen-border);
 }
 
+/* 设计稿 Mark：26×26、2px 圆角、墨色底 */
 .brand-badge {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-control);
   display: grid;
   place-items: center;
-  background: var(--color-accent);
+  background: var(--pen-brand-mark);
   color: var(--color-on-inverse);
   box-shadow: none;
   flex-shrink: 0;
 }
 
 .brand-title {
-  font-size: var(--text-md);
-  font-weight: 700;
-  letter-spacing: 0.6px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  letter-spacing: 0.2px;
 }
 
 .menu-scrollbar {
-  height: calc(100vh - 66px);
+  height: calc(100vh - 56px);
+}
+
+/* ---------- pen 图标栏 Rail：64×56、图标 18px + 短标签 9.5px ---------- */
+.pen-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-0-5);
+  padding: var(--space-3) 0;
+  overflow-y: auto;
+  height: calc(100vh - 56px);
+  scrollbar-width: none;
+}
+
+.pen-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.pen-rail__item {
+  position: relative;
+  appearance: none;
+  border: none;
+  background: transparent;
+  width: 64px;
+  height: 56px;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border-radius: var(--radius-control);
+  color: var(--pen-faint);
+  font-family: inherit;
+  font-size: 9.5px;
+  font-weight: 400;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.pen-rail__item:hover {
+  background: var(--pen-nav-active);
+  color: var(--pen-ink);
+}
+
+.pen-rail__item:focus-visible {
+  outline: 2px solid var(--pen-ink);
+  outline-offset: -2px;
+}
+
+/* 当前项：浅底 + 左侧 2px 蓝色 Marker（设计稿 Marker 20px 高、圆角 1px） */
+.pen-rail__item.is-active {
+  background: var(--pen-nav-active);
+  color: var(--pen-ink);
+  font-weight: 500;
+}
+
+.pen-rail__marker {
+  position: absolute;
+  left: 0;
+  top: 18px;
+  width: 2px;
+  height: 20px;
+  border-radius: 1px;
+  background: transparent;
+}
+
+.pen-rail__item.is-active .pen-rail__marker {
+  background: var(--pen-chart);
+}
+
+.pen-rail__icon {
+  flex-shrink: 0;
+}
+
+.pen-rail__label {
+  font-size: 9.5px;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
 .side-menu {
   border-right: none;
   background: transparent;
-  --el-menu-base-level-padding: 18px;
-  --el-menu-level-padding: 18px;
+  --el-menu-base-level-padding: var(--space-2);
+  --el-menu-level-padding: var(--space-2);
 }
 
 .side-menu :deep(.el-menu) {
@@ -539,38 +668,43 @@ onMounted(() => {
   border-right: none;
 }
 
+/* 设计稿 Nav 项：64×56、2px 圆角、图标 18px + 文字 10.5px、当前项浅底 + 左侧蓝条 */
 .side-menu :deep(.el-sub-menu__title),
 .side-menu :deep(.el-menu-item) {
-  color: var(--color-text);
-  border-radius: var(--radius-card);
-  margin: 2px 10px;
+  color: var(--pen-muted);
+  border-radius: var(--radius-control);
+  margin: 2px var(--space-1);
   height: 44px;
   line-height: 44px;
-  transition: background 0.18s ease, color 0.18s ease;
+  font-size: var(--fs-body);
+  transition: background-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
 }
 
 .side-menu :deep(.el-sub-menu__title .menu-icon),
 .side-menu :deep(.el-menu-item .menu-icon) {
-  color: var(--color-text-muted);
-  margin-right: 8px;
+  color: var(--pen-faint);
+  margin-right: var(--space-2);
   width: 18px;
+  font-size: 18px;
 }
 
 .side-menu :deep(.el-sub-menu__title:hover),
 .side-menu :deep(.el-menu-item:hover) {
-  background: var(--color-raised);
-  color: var(--color-text);
+  background: var(--pen-nav-active);
+  color: var(--pen-ink);
 }
 
+/* 当前项：浅底 + 左侧 2px 蓝色标记（设计稿 Marker） */
 .side-menu :deep(.el-menu-item.is-active) {
-  color: var(--color-text);
-  background: var(--color-raised);
-  font-weight: 600;
-  box-shadow: inset 2px 0 0 0 var(--color-accent);
+  color: var(--pen-ink);
+  background: var(--pen-nav-active);
+  font-weight: 500;
+  box-shadow: inset 2px 0 0 0 var(--pen-chart);
 }
 
 .side-menu :deep(.el-menu-item.is-active .menu-icon) {
-  color: var(--color-accent);
+  color: var(--pen-ink);
 }
 
 /* 侧栏滚动条与文本选区（浏览器表面主题化） */
@@ -588,60 +722,62 @@ onMounted(() => {
   color: var(--color-on-inverse);
 }
 
+/* 设计稿 TopBar：56px 高、左右 18px 内边距、白底 + 发丝线 */
 .top-header {
-  height: 70px;
+  height: 56px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
+  padding: 0 var(--space-5);
+  background: var(--pen-shell-top);
+  border-bottom: 1px solid var(--pen-border);
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: var(--space-4);
   flex: 1;
   min-width: 0;
   overflow: hidden;
 }
 
 .collapse-btn {
-  border-color: var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-muted);
+  border-color: var(--pen-border);
+  background: var(--pen-surface);
+  color: var(--pen-muted);
   flex-shrink: 0;
 }
 
 .collapse-btn:hover {
-  border-color: var(--color-border);
-  background: var(--color-raised);
-  color: var(--color-text);
+  border-color: var(--pen-border);
+  background: var(--pen-raised);
+  color: var(--pen-ink);
 }
 
 .system-meta {
-  color: var(--color-text);
+  color: var(--pen-ink);
 }
 
 .system-title {
-  font-size: var(--text-lg);
-  font-weight: 700;
-  letter-spacing: 0.3px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .system-subtitle {
-  font-size: var(--text-xs);
-  opacity: 0.78;
-  margin-top: 3px;
+  font-size: var(--fs-caption);
+  color: var(--pen-faint);
+  margin-top: 2px;
 }
 
 /* ---------- pen 壳层：顶栏一级页签 ---------- */
+/* 设计稿 Tabs：文字 13px，当前项墨色 + 2px 蓝色下划线 */
 .top-tabs {
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin-left: 18px;
+  gap: var(--space-5);
+  margin-left: var(--space-4);
   flex-shrink: 0;
 }
 
@@ -649,96 +785,101 @@ onMounted(() => {
   appearance: none;
   border: none;
   background: transparent;
-  padding: 0 12px;
-  height: 32px;
-  border-radius: var(--radius-control);
+  padding: 0;
+  height: 54px;
+  border-radius: 0;
   font-family: inherit;
-  font-size: var(--text-base);
-  color: var(--color-text-muted);
+  font-size: var(--fs-body);
+  color: var(--pen-faint);
   cursor: pointer;
   position: relative;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: color var(--motion-fast) var(--motion-ease);
 }
 
 .top-tab:hover {
-  background: var(--color-raised);
-  color: var(--color-text);
+  color: var(--pen-ink);
 }
 
 .top-tab:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
+  outline: 2px solid var(--pen-ink);
+  outline-offset: -2px;
 }
 
 .top-tab.is-active {
-  color: var(--color-text);
-  font-weight: 600;
+  color: var(--pen-ink);
+  font-weight: 500;
 }
 
 .top-tab.is-active::after {
   content: '';
   position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: -1px;
+  left: 0;
+  right: 0;
+  bottom: 0;
   height: 2px;
   border-radius: 1px;
-  background: var(--color-accent);
+  background: var(--pen-chart);
 }
 
 .header-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-2-5);
 }
 
 .logout-btn {
-  color: var(--color-text-muted);
-  padding: 0 6px;
+  color: var(--pen-muted);
+  padding: 0 4px;
+  font-size: var(--fs-sub);
 }
 
 .logout-btn:hover {
-  color: var(--color-text);
+  color: var(--pen-ink);
 }
 
 .theme-toggle {
-  color: var(--color-text-muted);
-  padding: 0 6px;
-  font-size: var(--text-lg);
+  color: var(--pen-muted);
+  padding: 0 4px;
+  font-size: 16px;
 }
 
 .theme-toggle:hover {
-  color: var(--color-text);
+  color: var(--pen-ink);
 }
 
 .status-tag {
   background: transparent;
-  border: 1px solid var(--color-border);
-  color: var(--color-text-muted);
+  border: 1px solid var(--pen-border);
+  color: var(--pen-muted);
+  height: 23px;
+  font-size: var(--fs-pill);
 }
 
 .avatar-icon {
-  color: var(--color-text);
-  background: var(--color-raised);
+  color: var(--pen-muted);
+  background: var(--pen-raised);
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-control);
 }
 
 .user-name {
-  font-size: var(--text-base);
-  font-weight: 700;
-  color: var(--color-text);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--pen-ink);
 }
 
 .user-role {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
-  margin-top: 2px;
+  font-size: var(--fs-caption);
+  color: var(--pen-faint);
+  margin-top: 1px;
 }
 
 .main-content {
-  min-height: calc(100vh - 70px);
+  min-height: calc(100vh - 56px);
   max-width: 1600px;
   margin: 0 auto;
-  background: var(--color-ground);
+  background: var(--pen-ground);
+  padding: var(--space-6) var(--space-7);
 }
 
 @media (max-width: 768px) {
@@ -750,7 +891,7 @@ onMounted(() => {
 
   /* 侧栏固定悬浮后脱离文档流：主容器补偿折叠宽度，避免内容被遮挡 */
   .app-shell > .el-container {
-    padding-left: 70px;
+    padding-left: 72px;
   }
 
   .top-header {

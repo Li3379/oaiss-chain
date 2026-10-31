@@ -5,6 +5,7 @@ import com.oaiss.chain.aop.AuditLogWriter;
 import com.oaiss.chain.constant.ErrorCode;
 import com.oaiss.chain.dto.AuctionOrderRequest;
 import com.oaiss.chain.dto.AuctionOrderResponse;
+import com.oaiss.chain.dto.AuctionMatchingStatusResponse;
 import com.oaiss.chain.dto.MatchingResultResponse;
 import com.oaiss.chain.entity.AuctionOrder;
 import com.oaiss.chain.entity.Enterprise;
@@ -39,6 +40,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -73,6 +75,7 @@ public class DoubleAuctionService {
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final CarbonCoinService carbonCoinService;
+    private final CreditScoreService creditScoreService;
     private final AuditLogWriter auditLogWriter;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
@@ -84,6 +87,12 @@ public class DoubleAuctionService {
     private static final ThreadLocalRandom MATCH_RNG = ThreadLocalRandom.current();
 
     /**
+     * 查不到信誉分时采用的中性分（0-100 区间的中间值）。
+     * 采用中性分而非最低分，保证数据缺失的挂单不会被动排到最后。
+     */
+    private static final int NEUTRAL_CREDIT_SCORE = 50;
+
+    /**
      * 提交买入挂单
      */
     @DistributedLock(key = "'auction:order:' + #currentUser.userId", expireTime = 10)
@@ -91,14 +100,19 @@ public class DoubleAuctionService {
     public AuctionOrderResponse placeBuyOrder(JwtUserDetails currentUser, AuctionOrderRequest request) {
         validateOrderRequest(request);
 
+        Enterprise buyerEnterprise = enterpriseRepository.findByUserId(currentUser.getUserId())
+                .orElseThrow(() -> TradeException.insufficientQuota(BigDecimal.ZERO, request.getQuantity()));
+
+        // 信誉分风控闸门：被限制交易或账户冻结的发起方不得挂买单。
+        // 必须排在其他业务校验之前——冻结账户无论挂单参数如何都不该参与市场，
+        // 否则会被自成交/余额等次要提示掩盖，用户看不到真正原因。
+        assertTradeAllowed(buyerEnterprise.getId());
+
         // 自成交与洗售交易防范：同一主体存在未完成的反向挂单时禁止提交
         if (auctionOrderRepository.existsByUserIdAndDirectionAndStatusInAndDeletedFalse(
                 currentUser.getUserId(), 2, ACTIVE_ORDER_STATUSES)) {
             throw new TradeException(ErrorCode.PARAM_ERROR, "存在未完成的卖出挂单，同一主体禁止同时买卖以防自成交/洗售交易");
         }
-
-        enterpriseRepository.findByUserId(currentUser.getUserId())
-                .orElseThrow(() -> TradeException.insufficientQuota(BigDecimal.ZERO, request.getQuantity()));
 
         // 验证买方碳币余额是否足以支付买入意向金并执行全额现货锁定
         BigDecimal requiredAmount = request.getQuantity().multiply(request.getPrice()).setScale(2, RoundingMode.HALF_UP);
@@ -134,14 +148,18 @@ public class DoubleAuctionService {
     public AuctionOrderResponse placeSellOrder(JwtUserDetails currentUser, AuctionOrderRequest request) {
         validateOrderRequest(request);
 
+        Enterprise enterprise = enterpriseRepository.findByUserId(currentUser.getUserId())
+                .orElseThrow(() -> TradeException.insufficientQuota(BigDecimal.ZERO, request.getQuantity()));
+
+        // 信誉分风控闸门：被限制交易或账户冻结的发起方不得挂卖单。
+        // 必须排在其他业务校验之前，理由同 placeBuyOrder。
+        assertTradeAllowed(enterprise.getId());
+
         // 自成交与洗售交易防范：同一主体存在未完成的反向挂单时禁止提交
         if (auctionOrderRepository.existsByUserIdAndDirectionAndStatusInAndDeletedFalse(
                 currentUser.getUserId(), 1, ACTIVE_ORDER_STATUSES)) {
             throw new TradeException(ErrorCode.PARAM_ERROR, "存在未完成的买入挂单，同一主体禁止同时买卖以防自成交/洗售交易");
         }
-
-        Enterprise enterprise = enterpriseRepository.findByUserId(currentUser.getUserId())
-                .orElseThrow(() -> TradeException.insufficientQuota(BigDecimal.ZERO, request.getQuantity()));
 
         BigDecimal remaining = enterprise.getCarbonTradable();
         if (remaining.compareTo(request.getQuantity()) < 0) {
@@ -203,12 +221,14 @@ public class DoubleAuctionService {
         List<Integer> activeStatuses = ACTIVE_ORDER_STATUSES;
 
         // 买方：价格降序（出价高的优先）
-        List<AuctionOrder> buyOrders = auctionOrderRepository
-                .findByDirectionAndStatusInAndDeletedFalseOrderByPriceDesc(1, activeStatuses);
+        List<AuctionOrder> buyOrders = sortByPriceThenCredit(
+                auctionOrderRepository.findByDirectionAndStatusInAndDeletedFalseOrderByPriceDesc(1, activeStatuses),
+                true);
 
         // 卖方：价格升序（出价低的优先）
-        List<AuctionOrder> sellOrders = auctionOrderRepository
-                .findByDirectionAndStatusInAndDeletedFalseOrderByPriceAsc(2, activeStatuses);
+        List<AuctionOrder> sellOrders = sortByPriceThenCredit(
+                auctionOrderRepository.findByDirectionAndStatusInAndDeletedFalseOrderByPriceAsc(2, activeStatuses),
+                false);
 
         List<MatchingResultResponse> results = new ArrayList<>();
 
@@ -318,11 +338,12 @@ public class DoubleAuctionService {
                 );
                 eventPublisher.publishEvent(new com.oaiss.chain.event.TradeCompletedEvent(this, trade.getId(), tradeDataJson));
 
-                // 通知买卖双方：撮合成交
+                // 通知买卖双方：撮合成交（成交由后台自动撮合周期产生，文案需让用户明白无需手动操作）
                 notificationService.sendBatchNotificationsAsync(
                         java.util.List.of(buyOrder.getUserId(), sellOrder.getUserId()),
                         "拍卖撮合成交",
-                        "您的拍卖订单已成交 " + matchQty + " 吨，成交价 " + settlementPrice + " 元/吨",
+                        "您的拍卖订单已成交 " + matchQty + " 吨，成交价 " + settlementPrice
+                                + " 元/吨（系统自动撮合），资金与配额已同步结算。",
                         "TRADE");
 
                 buyRemaining = buyRemaining.subtract(matchQty);
@@ -342,6 +363,72 @@ public class DoubleAuctionService {
 
         log.info("Matching round completed: {} matches", results.size());
         return results;
+    }
+
+    /**
+     * 信誉分交易准入校验
+     * <p>
+     * 复用 {@link CreditScoreService#checkTradePermission(Long)} 的既有判定（信誉分低于阈值限制交易、
+     * 账户冻结则禁止交易）。无信誉分记录的企业默认放行，保持与信誉服务一致。
+     *
+     * @param enterpriseId 挂单方企业ID
+     */
+    private void assertTradeAllowed(Long enterpriseId) {
+        if (enterpriseId == null) {
+            return;
+        }
+        if (!creditScoreService.checkTradePermission(enterpriseId)) {
+            throw TradeException.creditTradeRestricted(
+                    "您的信誉分过低，暂不可参与碳交易（账户可能已被限制交易或冻结），请联系平台管理员");
+        }
+    }
+
+    /**
+     * 撮合候选排序：价格优先不变，仅在同价位时以发起方企业信誉分从高到低作为次级键。
+     * <p>
+     * 信誉分缺失（无企业、无评分记录或评分服务异常）的挂单按 {@link #NEUTRAL_CREDIT_SCORE} 中性分处理，
+     * 既不抛错也不被动排到最后。使用稳定排序，同价同分时保持仓储返回的原始顺序。
+     *
+     * @param orders         仓储按价格排好序的候选挂单
+     * @param priceDescending true=买方（价格降序），false=卖方（价格升序）
+     * @return 价格优先、同价信誉优先的挂单列表
+     */
+    private List<AuctionOrder> sortByPriceThenCredit(List<AuctionOrder> orders, boolean priceDescending) {
+        if (orders == null || orders.size() < 2) {
+            return orders;
+        }
+
+        Map<Long, Integer> scoresByUserId = resolveCreditScores(orders);
+
+        Comparator<AuctionOrder> comparator = Comparator.comparing(
+                (AuctionOrder order) -> order.getPrice() != null ? order.getPrice() : BigDecimal.ZERO);
+        comparator = priceDescending ? comparator.reversed() : comparator;
+        comparator = comparator.thenComparing(
+                (AuctionOrder order) -> scoresByUserId.getOrDefault(order.getUserId(), NEUTRAL_CREDIT_SCORE),
+                Comparator.reverseOrder());
+
+        List<AuctionOrder> sorted = new ArrayList<>(orders);
+        sorted.sort(comparator);
+        return sorted;
+    }
+
+    /**
+     * 批量解析挂单发起方的企业信誉分；评分不可用时降级为空 Map（全部按中性分处理），绝不阻断撮合。
+     */
+    private Map<Long, Integer> resolveCreditScores(List<AuctionOrder> orders) {
+        Set<Long> userIds = orders.stream()
+                .map(AuctionOrder::getUserId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (userIds.isEmpty()) {
+            return java.util.Collections.emptyMap();
+        }
+        try {
+            return creditScoreService.getScoresByUserIds(userIds);
+        } catch (Exception e) {
+            log.warn("[AUCTION-CREDIT] 信誉分批量查询失败，本轮按中性分排序: {}", e.getMessage());
+            return java.util.Collections.emptyMap();
+        }
     }
 
     /**
@@ -438,6 +525,46 @@ public class DoubleAuctionService {
         Page<MatchingResult> results = matchingResultRepository.findByUserIdRelated(currentUser.getUserId(), pageable);
         Map<Long, String> userNames = resolveUserNames(results.getContent());
         return results.map(m -> toMatchResponse(m, userNames));
+    }
+
+    /**
+     * 查询全平台撮合成交明细（管理员撮合控制台）
+     */
+    @Transactional(readOnly = true)
+    public Page<MatchingResultResponse> listAllMatchingResults(Integer page, Integer size) {
+        size = CommonUtils.sanitizePageSize(size);
+        Pageable pageable = PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<MatchingResult> results = matchingResultRepository.findByDeletedFalse(pageable);
+        Map<Long, String> userNames = resolveUserNames(results.getContent());
+        return results.map(m -> toMatchResponse(m, userNames));
+    }
+
+    /**
+     * 查询撮合控制台运行态：自动撮合开关、间隔、盘口待撮合规模、上次出清时间
+     *
+     * @param autoMatchingEnabled 自动撮合是否已启用（由调度器持有的配置决定）
+     * @param intervalMs          自动撮合间隔（毫秒）
+     */
+    @Transactional(readOnly = true)
+    public AuctionMatchingStatusResponse getMatchingStatus(
+            boolean autoMatchingEnabled, long intervalMs) {
+        long pendingBuys = auctionOrderRepository
+                .countByDirectionAndStatusInAndDeletedFalse(1, ACTIVE_ORDER_STATUSES);
+        long pendingSells = auctionOrderRepository
+                .countByDirectionAndStatusInAndDeletedFalse(2, ACTIVE_ORDER_STATUSES);
+
+        java.time.LocalDateTime lastMatchAt = matchingResultRepository
+                .findFirstByDeletedFalseOrderByCreatedAtDesc()
+                .map(MatchingResult::getCreatedAt)
+                .orElse(null);
+
+        return AuctionMatchingStatusResponse.builder()
+                .autoMatchingEnabled(autoMatchingEnabled)
+                .intervalSeconds(Math.max(1L, intervalMs / 1000L))
+                .pendingBuyOrders(pendingBuys)
+                .pendingSellOrders(pendingSells)
+                .lastMatchAt(lastMatchAt)
+                .build();
     }
 
     // ==================== 私有方法 ====================

@@ -49,6 +49,7 @@ public class TradeService {
     private final MetricsService metricsService;
     private final NotificationService notificationService;
     private final CarbonCoinService carbonCoinService;
+    private final CreditScoreService creditScoreService;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     /**
@@ -80,7 +81,10 @@ public class TradeService {
 
         Enterprise sellerEnterprise = enterpriseRepository.findByUserId(sellerId)
                 .orElseThrow(() -> TradeException.insufficientQuota(BigDecimal.ZERO, request.getQuantity()));
-        
+
+        // 信誉分风控闸门：被限制交易或账户冻结的发起方不得创建 P2P 交易
+        assertTradeAllowed(sellerEnterprise.getId());
+
         if (sellerEnterprise.getCarbonTradable().compareTo(request.getQuantity()) < 0) {
             throw TradeException.insufficientQuota(sellerEnterprise.getCarbonTradable(), request.getQuantity());
         }
@@ -121,6 +125,9 @@ public class TradeService {
     public TradeResponse createAuctionOrder(JwtUserDetails currentUser, TradeRequest request) {
         Enterprise enterprise = enterpriseRepository.findByUserId(currentUser.getUserId())
                 .orElseThrow(() -> TradeException.insufficientQuota(BigDecimal.ZERO, request.getQuantity()));
+
+        // 信誉分风控闸门：被限制交易或账户冻结的发起方不得创建拍卖挂单
+        assertTradeAllowed(enterprise.getId());
 
         if (enterprise.getCarbonTradable().compareTo(request.getQuantity()) < 0) {
             throw TradeException.insufficientQuota(enterprise.getCarbonTradable(), request.getQuantity());
@@ -339,6 +346,24 @@ public class TradeService {
     }
 
     // ==================== 私有方法 ====================
+
+    /**
+     * 信誉分交易准入校验
+     * <p>
+     * 复用 {@link CreditScoreService#checkTradePermission(Long)} 的既有判定（信誉分低于阈值限制交易、
+     * 账户冻结则禁止交易）。无信誉分记录的企业默认放行，保持与信誉服务一致。
+     *
+     * @param enterpriseId 发起方企业ID
+     */
+    private void assertTradeAllowed(Long enterpriseId) {
+        if (enterpriseId == null) {
+            return;
+        }
+        if (!creditScoreService.checkTradePermission(enterpriseId)) {
+            throw TradeException.creditTradeRestricted(
+                    "您的信誉分过低，暂不可参与碳交易（账户可能已被限制交易或冻结），请联系平台管理员");
+        }
+    }
 
     /**
      * 批量解析交易涉及的用户名称（解决 N+1 查询问题）

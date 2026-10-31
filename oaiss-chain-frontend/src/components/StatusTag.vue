@@ -1,22 +1,21 @@
 <script setup lang="ts">
 import { computed, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { CircleCheck, CircleClose, Clock, InfoFilled, Tools } from '@element-plus/icons-vue'
 import { STATUS_DOMAIN_META, type StatusDomain } from '../utils/status-meta'
 
 /**
- * 状态三重编码标签：图标 + 颜色 + 文字
- * - domain 提供域内统一色板与图标（报告/交易/项目）
- * - text 显式覆盖（页面有角色特定措辞时使用）
- * - 无 text 时优先 i18n 文案（修复英文界面直出后端中文 statusText 的问题）
+ * 状态标签：pen 设计稿的「5px 圆点 + 浅底胶囊 + 11px 文字」
+ * ─ 设计源 pill 规格：高 23、内边距 3/8、圆点 5px、字号 11/500、发丝线边框
+ * ─ 三重编码保留：颜色（圆点+浅底）、文案（i18n）、无障碍语义（title + 读屏可见文字）
+ * ─ iconComponent 仍可覆盖为真实图标（少数需要图标的场景），默认按设计稿渲染圆点
  *
- * 图标统一使用 Element Plus SVG 图标组件（UI/UX 规范：图标用 SVG，不用 emoji）。
+ * 状态枚举与 i18n 键完全不动：status-meta.ts 是单一真相源。
  */
 const props = defineProps<{
   status?: number | string | null
   domain?: StatusDomain
   type?: string
-  /** 图标组件覆盖（默认取域内 meta） */
+  /** 显式图标覆盖：传了就用图标，不传用设计稿圆点 */
   iconComponent?: Component
   text?: string
   size?: 'small' | 'default' | 'large'
@@ -31,19 +30,8 @@ const meta = computed(() => {
   return STATUS_DOMAIN_META[props.domain][code]
 })
 
-/** 无域映射时的兜底图标：让"颜色+文字"升级为"图标+颜色+文字"三重编码 */
-const FALLBACK_ICON: Record<string, Component> = {
-  info: InfoFilled,
-  warning: Clock,
-  primary: Tools,
-  success: CircleCheck,
-  danger: CircleClose,
-}
-
-const tagType = computed(() => meta.value?.type || props.type || 'info')
-const tagIcon = computed<Component | undefined>(
-  () => props.iconComponent ?? meta.value?.icon ?? FALLBACK_ICON[tagType.value],
-)
+/** 无域映射时按显式 type 兜底（保持既有调用点行为不变） */
+const tone = computed<string>(() => meta.value?.type || props.type || 'info')
 
 const label = computed(() => {
   if (props.text) return props.text
@@ -53,12 +41,26 @@ const label = computed(() => {
   }
   return props.status === undefined || props.status === null ? '-' : String(props.status)
 })
+
+/** 圆点取各胶囊的深墨色（设计源 pillXxxInk） */
+const DOT_COLOR: Record<string, string> = {
+  success: 'var(--pen-pill-pos-ink)',
+  danger: 'var(--pen-pill-neg-ink)',
+  warning: 'var(--pen-pill-warn-ink)',
+  primary: 'var(--pen-pill-info-ink)',
+  info: 'var(--pen-pill-neu-ink)',
+}
 </script>
 
 <template>
-  <el-tag :type="tagType" :size="size" class="status-tag">
-    <el-icon v-if="tagIcon" class="status-tag__icon" aria-hidden="true">
-      <component :is="tagIcon" />
+  <el-tag :type="tone" :size="size" class="status-tag">
+    <el-icon class="status-tag__mark" aria-hidden="true">
+      <component :is="iconComponent" v-if="iconComponent" />
+      <span
+        v-else
+        class="status-tag__dot"
+        :style="{ background: DOT_COLOR[tone] || DOT_COLOR.info }"
+      />
     </el-icon>
     <span class="status-tag__text">{{ label }}</span>
   </el-tag>
@@ -68,11 +70,36 @@ const label = computed(() => {
 .status-tag {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1-5);
+  height: 23px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-pill);
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  vertical-align: middle;
 }
 
-.status-tag__icon {
-  font-size: 13px;
-  vertical-align: middle;
+/* el-icon 仅作为圆点/图标的对齐容器，不参与字号缩放 */
+.status-tag__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 5px;
+  height: 5px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.status-tag__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-tag__text {
+  line-height: 1;
 }
 </style>

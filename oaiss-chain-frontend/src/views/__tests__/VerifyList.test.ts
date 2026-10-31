@@ -141,11 +141,13 @@ describe('VerifyList.vue', () => {
     vi.clearAllMocks()
   })
 
-  it('renders page container and section cards', async () => {
+  it('renders page shell and data panels', async () => {
     const wrapper = mountVerifyList()
     await flush()
-    expect(wrapper.find('.page-container').exists()).toBe(true)
-    expect(wrapper.find('.section-card').exists()).toBe(true)
+    // pen 壳层迁移后：PageContainer/.section-card 已由 PageHeader/StatStrip/DataPanel 取代
+    expect(wrapper.find('.verify-page').exists()).toBe(true)
+    expect(wrapper.find('.pen-stat-strip').exists()).toBe(true)
+    expect(wrapper.find('.pen-panel').exists()).toBe(true)
     wrapper.unmount()
   })
 

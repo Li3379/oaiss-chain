@@ -44,6 +44,41 @@ watch(latestNotification, (notif) => {
   }
 })
 
+/**
+ * 轮询通道的主动提示（WebSocket 默认关闭时的兜底）。
+ *
+ * 背景：实时 WS 通道因协议未对齐默认关闭，未读计数靠 REST 轮询更新；
+ * 若只更新徽标数字，用户不会注意到「挂单已自动撮合成交」这类业务事件。
+ * 因此这里以「未读数增长」为触发信号，拉一次最新通知并弹出提示。
+ * 基线在首次加载时记录，不补弹历史消息。
+ */
+const seenUnreadBaseline = ref<number | null>(null)
+
+watch(unreadCount, async (current) => {
+  if (appStore.loggedIn === false) return
+  // immediate: 首次执行即记录基线，之后只对「增长」反应，避免补弹历史消息
+  if (seenUnreadBaseline.value === null || current <= seenUnreadBaseline.value) {
+    seenUnreadBaseline.value = current
+    return
+  }
+  seenUnreadBaseline.value = current
+
+  try {
+    const page = await getNotifications({ pageNum: 1, pageSize: 1 })
+    const list = page?.content ?? (page as unknown as { items?: Notification[] })?.items ?? []
+    const newest = list[0]
+    if (!newest || newest.isRead) return
+    ElNotification({
+      title: newest.title,
+      message: newest.content,
+      type: 'info',
+      duration: 6000,
+    })
+  } catch {
+    // 提示失败不影响徽标计数
+  }
+}, { immediate: true })
+
 async function fetchNotifications() {
   if (!appStore.loggedIn) return
   loading.value = true

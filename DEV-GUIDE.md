@@ -109,6 +109,13 @@ Vue 组件 → api/*.ts (Axios) → request.ts 拦截器(JWT注入, pageNum→pa
 `DB_PASSWORD` `REDIS_PASSWORD` `JWT_SECRET` `MINIO_ACCESS_KEY` `MINIO_SECRET_KEY` `RSA_KEK` `ML_SERVICE_SECRET`
 （前端: `VITE_API_BASE_URL` 相对 `/api/v1`，`VITE_APP_TITLE`）
 
+**可选开关**（均有默认值，见 `.env.example`）：
+- `SECURITY_CAPTCHA_ENABLED`（默认 `true`）：登录是否强制图形验证码。
+  **运行 `scripts/api/*.sh` 集成测试时必须设为 `false`**——这些脚本不传验证码，
+  在 `true` 下会全部以 `2006 验证码错误` 失败。生产环境保持 `true`。
+- `AUCTION_AUTO_MATCHING_ENABLED`（默认 `true`）：双向拍卖 30s 自动出清。
+- `CORS_ALLOWED_ORIGINS`：前端来源白名单。
+
 ## 10. 常用命令
 
 ```bash
@@ -118,11 +125,18 @@ node scripts/doc-verify.mjs
 # 角色/权限语义断言（开发后必跑）——防止「文档写的权限」与「@PreAuthorize 实际授权」漂移
 node scripts/role-matrix-verify.mjs
 
+# i18n 键引用断言（开发后必跑）——代码引用的键在 zh/en 均存在且两侧键集合一致
+node scripts/i18n-verify.mjs
+
 # 测试
 cd oaiss-chain-backend && mvn test          # 单元
 cd oaiss-chain-backend && mvn verify        # 集成(含95% JaCoCo gate)
-cd oaiss-chain-frontend && npm run test     # Vitest
+cd oaiss-chain-frontend && npm run verify   # 类型 + 样式 + 单测（一次跑完）
 cd oaiss-chain-frontend && npm run test:e2e # Playwright
+
+# API 集成测试（需先以 SECURITY_CAPTCHA_ENABLED=false 启动后端）
+bash scripts/api/login-test.sh
+bash scripts/api/double-auction-test.sh
 
 # 运行
 scripts\start-all.bat --with-fabric   # Windows 全栈
@@ -132,18 +146,22 @@ docker compose -f deploy/compose/docker-compose.infra.yml up -d  # 基础设施
 bash ./scripts/stability-baseline.sh
 ```
 
+> ⚠️ **`scripts/api/aop-test.sh` 会执行 `git checkout --` 回退**
+> `CarbonController` / `DoubleAuctionController`。运行前必须备份工作区改动，
+> 或在干净分支上运行。
+
 ## 11. 核心系统结构事实（权威断言锚点）
 
 | 事实 | 值 | 说明 |
 |------|-----|------|
 | Controllers | 23 | `controller/*.java` 数（2026-10-20 新增 CopilotController） |
-| REST 端点 | 146 | `@Mapping` 注解总数（+3 AI Copilot 代理端点） |
-| Services | 37 | 34 主包 + 3 ml/ |
+| REST 端点 | 148 | `@Mapping` 注解总数（+2 撮合控制台查询端点：matching-status / all-results） |
+| Services | 39 | 36 主包 + 3 ml/ |
 | Entities | 25 | 24 @Entity + BaseEntity |
 | Tables | 24 | 现存 24 张（曾创建 25 张，authenticator 在 V8 DROP 退场） |
 | Repositories | 24 | `repository/*.java` 数 |
 | Flyway 迁移 | V1-V14 | V3 跳过（共 13 个版本） |
-| i18n 词条 | 1441 | zh-CN 与 en-US 严格镜像（`scripts/i18n-verify.mjs` 实测） |
+| i18n 词条 | 2091 | zh-CN 与 en-US 严格镜像（`scripts/i18n-verify.mjs` 实测） |
 | 前端 API 模块 | 22 | `src/api/*.ts`（不含 request.ts 与 index.ts） |
 | 枚举 | 9 | `enums/*.java`（UserTypeEnum 等 9 个核心枚举） |
 | 角色 | 4 | ENTERPRISE/REVIEWER/THIRD_PARTY/ADMIN |

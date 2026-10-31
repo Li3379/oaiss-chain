@@ -255,6 +255,36 @@ describe('AuditList.vue', () => {
     wrapper.unmount()
   })
 
+  it('展示规则预检卡片，且文案明确标注非 AI 模型', async () => {
+    vi.mocked(getPendingReports).mockResolvedValue({
+      items: [{ ...baseReport, signatureValid: true } as unknown as typeof baseReport],
+      total: 1,
+      page: 0,
+      size: 10,
+      totalPages: 1,
+    })
+
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    const vm = wrapper.vm as unknown as {
+      openReviewDialog: (row: typeof baseReport) => void
+      rulePrecheck: { status: string; statusText: string; findings: string[] }
+    }
+    vm.openReviewDialog({ ...baseReport, signatureValid: true } as unknown as typeof baseReport)
+    await flushPromises()
+
+    const card = wrapper.find('[data-testid="rule-precheck"]')
+    expect(card.exists()).toBe(true)
+    // i18n 在测试里被 mock 成返回 key：标题必须是 rulePrecheckTitle 而不是任何 AI 文案
+    expect(card.text()).toContain('auditList.rulePrecheckTitle')
+    expect(card.text()).not.toContain('aiPreAuditTitle')
+    expect(vm.rulePrecheck.status).toBe('CHECK_PASS')
+    expect(vm.rulePrecheck.findings).toHaveLength(3)
+
+    wrapper.unmount()
+  })
+
   it('submits reviews and refreshes pending data plus statistics', async () => {
     vi.mocked(getPendingReports).mockResolvedValue({
       items: [baseReport],

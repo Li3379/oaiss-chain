@@ -11,7 +11,10 @@ vi.mock('vue-i18n', () => ({
 
 vi.mock('../../api/carbonNeutral', () => ({
   getPendingVerification: vi.fn(() => Promise.resolve({ items: [], total: 0, page: 0, size: 10, totalPages: 0 })),
+  getProjects: vi.fn(() => Promise.resolve({ items: [], total: 0, page: 0, size: 10, totalPages: 0 })),
+  reviewProject: vi.fn(() => Promise.resolve()),
   verifyProject: vi.fn(() => Promise.resolve()),
+  completeCertification: vi.fn(() => Promise.resolve()),
 }))
 
 vi.mock('../../api/credit', () => ({
@@ -23,13 +26,17 @@ vi.mock('element-plus', async (importOriginal) => {
   return {
     ...actual,
     ElMessage: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
+    ElMessageBox: {
+      confirm: vi.fn(() => Promise.resolve()),
+      prompt: vi.fn(() => Promise.resolve({ value: 'documents incomplete' })),
+    },
   }
 })
 
 import ProjectReview from '../auditor/ProjectReview.vue'
-import { getPendingVerification, verifyProject } from '../../api/carbonNeutral'
+import { completeCertification, getPendingVerification, getProjects, reviewProject, verifyProject } from '../../api/carbonNeutral'
 import { deductPoints } from '../../api/credit'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const stubs = {
   'el-card': { template: '<div class="el-card"><slot /></div>' },
@@ -66,6 +73,12 @@ const stubs = {
     props: ['type', 'size', 'loading', 'link', 'plain'],
     emits: ['click'],
   },
+  'el-tabs': {
+    template: '<div class="el-tabs"><slot /></div>',
+    props: ['modelValue'],
+    emits: ['tab-change', 'update:modelValue'],
+  },
+  'el-tab-pane': { template: '<div class="el-tab-pane"><slot /></div>', props: ['label', 'name'] },
   'el-empty': { template: '<div class="el-empty">{{ description }}</div>', props: ['description'] },
   'el-select': {
     template: '<select :value="modelValue" @change="$emit(\'update:modelValue\', Number($event.target.value))"><slot /></select>',
@@ -141,6 +154,76 @@ describe('ProjectReview.vue', () => {
     await flushPromises()
 
     expect(getPendingVerification).toHaveBeenCalledWith({ pageNum: 1, pageSize: 10 })
+    wrapper.unmount()
+  })
+
+  it('loads the review queue (status=1) and the certification queue (status=4) on mount', async () => {
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    expect(getProjects).toHaveBeenCalledWith({ status: 1, pageNum: 1, pageSize: 10 })
+    expect(getProjects).toHaveBeenCalledWith({ status: 4, pageNum: 1, pageSize: 10 })
+    wrapper.unmount()
+  })
+
+  it('approves a pending project and refreshes the review queue', async () => {
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    const vm = wrapper.vm as unknown as {
+      approveProject: (row: typeof baseProject) => Promise<void>
+    }
+
+    await vm.approveProject({ ...baseProject, status: 1 })
+    await flushPromises()
+
+    expect(reviewProject).toHaveBeenCalledWith(8, { approved: true, comment: '' })
+    expect(ElMessage.success).toHaveBeenCalledWith('projectReview.reviewApproved')
+    wrapper.unmount()
+  })
+
+  it('requires a comment when rejecting and sends it to the backend', async () => {
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    const vm = wrapper.vm as unknown as {
+      rejectProject: (row: typeof baseProject) => Promise<void>
+    }
+
+    vi.mocked(ElMessageBox.prompt).mockResolvedValueOnce({ value: '   ' } as never)
+    await vm.rejectProject({ ...baseProject, status: 1 })
+    await flushPromises()
+
+    expect(reviewProject).not.toHaveBeenCalled()
+    expect(ElMessage.warning).toHaveBeenCalledWith('projectReview.rejectCommentRequired')
+
+    await vm.rejectProject({ ...baseProject, status: 1 })
+    await flushPromises()
+
+    expect(reviewProject).toHaveBeenCalledWith(8, { approved: false, comment: 'documents incomplete' })
+    expect(ElMessage.success).toHaveBeenCalledWith('projectReview.reviewRejected')
+    wrapper.unmount()
+  })
+
+  it('completes certification with the entered certificate number', async () => {
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    const vm = wrapper.vm as unknown as {
+      certificationAction: (row: typeof baseProject) => Promise<void>
+      canCompleteCertification: (row: typeof baseProject) => boolean
+    }
+
+    const certifiable = { ...baseProject, status: 4, verificationStatus: 2, certStatus: 1 }
+    expect(vm.canCompleteCertification(certifiable)).toBe(true)
+    // 已核证但企业尚未申请认证（certStatus=0）时不可操作，否则后端必报 3003
+    expect(vm.canCompleteCertification({ ...certifiable, certStatus: 0 })).toBe(false)
+
+    await vm.certificationAction(certifiable)
+    await flushPromises()
+
+    expect(completeCertification).toHaveBeenCalledWith(8, { certNo: 'documents incomplete' })
+    expect(ElMessage.success).toHaveBeenCalledWith('projectReview.certificationCompleted')
     wrapper.unmount()
   })
 

@@ -29,6 +29,14 @@ class ReportAnalysisResponse(BaseModel):
     full_text: str = Field(..., description="Full analytical narrative text")
     analysis_hash: str = Field(..., description="SHA-256 hash of the full text for blockchain anchoring")
     model_used: str = Field(..., description="Name/version of the generative model used")
+    insufficient_data: bool = Field(
+        default=False,
+        description="True when the report carries no usable emission data; analysis fields are then intentionally empty",
+    )
+    insufficient_data_reason: Optional[str] = Field(
+        default=None,
+        description="Human-readable explanation returned only when insufficient_data is true",
+    )
 
 
 class PolicyQARequest(BaseModel):

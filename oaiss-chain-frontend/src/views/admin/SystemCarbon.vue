@@ -14,12 +14,17 @@
  *     * GET /api/v1/carbon/reports -> getReportList() 分页查询全平台碳报告列表
  * ==============================================================================
  */
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
+import { Clock, DataAnalysis, Link, Odometer } from '@element-plus/icons-vue'
 import { getReportList } from '../../api/carbon'
 import type { CarbonReportResponse } from '../../types'
 import { formatDateTime, formatNumber } from '../../utils/format'
+import PageHeader from '../../components/pen/PageHeader.vue'
+import StatStrip from '../../components/pen/StatStrip.vue'
+import FilterBar from '../../components/pen/FilterBar.vue'
+import DataPanel from '../../components/pen/DataPanel.vue'
 import PageHint from '../../components/PageHint.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import TermTip from '../../components/TermTip.vue'
@@ -70,36 +75,85 @@ const onCurrentChange = (page: number) => {
   fetchData()
 }
 
+/** 首屏统计条：全部由已加载的本页报告数据推导，不新增接口请求 */
+const overviewStats = computed(() => {
+  const rows = tableData.value
+  const totalEmission = rows.reduce((sum, row) => sum + (Number(row.totalEmission) || 0), 0)
+  const pending = rows.filter((row) => row.status === 1 || row.status === 2).length
+  const locked = rows.filter((row) => row.status === 3 || row.status === 5).length
+  const rejected = rows.filter((row) => row.status === 4).length
+
+  return [
+    {
+      label: t('systemCarbon.statTotalReports'),
+      value: total.value,
+      unit: t('systemCarbon.statUnitReports'),
+      delta: t('systemCarbon.statTotalReportsHint', { count: rows.length }),
+      tone: 'neu' as const,
+      icon: DataAnalysis,
+    },
+    {
+      label: t('systemCarbon.statTotalEmission'),
+      value: Number(totalEmission.toFixed(1)),
+      unit: 'tCO2e',
+      delta: t('systemCarbon.statTotalEmissionHint'),
+      tone: 'neu' as const,
+      icon: Odometer,
+    },
+    {
+      label: t('systemCarbon.statPending'),
+      value: pending,
+      unit: t('systemCarbon.statUnitReports'),
+      delta: t('systemCarbon.statPendingHint'),
+      tone: pending > 0 ? ('neu' as const) : ('pos' as const),
+      icon: Clock,
+    },
+    {
+      label: t('systemCarbon.statSettled'),
+      value: locked,
+      unit: t('systemCarbon.statUnitReports'),
+      delta: t('systemCarbon.statSettledHint', { rejected }),
+      tone: rejected > 0 ? ('neg' as const) : ('pos' as const),
+      icon: Link,
+    },
+  ]
+})
+
 onMounted(() => {
   fetchData()
 })
 </script>
 
 <template>
-  <section class="carbon-page">
-    <el-card class="section-card" shadow="never">
-      <el-breadcrumb separator="/">
-        <el-breadcrumb-item>{{ t('systemCarbon.breadcrumbSystem') }}</el-breadcrumb-item>
-        <el-breadcrumb-item>{{ t('systemCarbon.breadcrumbCarbon') }}</el-breadcrumb-item>
-      </el-breadcrumb>
-    </el-card>
+  <section class="carbon-page pen-enter">
+    <PageHeader
+      :title="t('menu.carbonManage')"
+      :description="t('systemCarbon.pageDescription')"
+      :crumbs="[t('systemCarbon.breadcrumbSystem'), t('systemCarbon.breadcrumbCarbon')]"
+    />
 
     <PageHint :text="t('pageHints.systemCarbon')" />
 
-    <el-card class="section-card" shadow="never">
-      <el-form :inline="true" class="search-form">
-        <el-form-item :label="t('common.keyword')">
-          <el-input v-model="searchForm.keyword" :placeholder="t('common.enterKeyword')" clearable />
-        </el-form-item>
+    <StatStrip :items="overviewStats" :loading="loading" />
 
-        <el-form-item>
-          <el-button type="primary" @click="onQuery">{{ t('common.search') }}</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+    <FilterBar :aria-label="t('systemCarbon.filterLabel')">
+      <label class="pen-field">
+        <span class="pen-field__label">{{ t('common.keyword') }}</span>
+        <el-input
+          v-model="searchForm.keyword"
+          :placeholder="t('common.enterKeyword')"
+          clearable
+          @keyup.enter="onQuery"
+        />
+      </label>
+      <el-button type="primary" @click="onQuery">{{ t('common.search') }}</el-button>
+    </FilterBar>
 
-    <el-card class="section-card" shadow="never">
-      <el-table :data="tableData" border v-loading="loading">
+    <DataPanel
+      :title="t('systemCarbon.panelTitle')"
+      :meta="t('systemCarbon.panelMeta', { total })"
+    >
+      <el-table :data="tableData" v-loading="loading">
         <el-table-column prop="reportNo" :label="t('systemCarbon.colReportNo')" min-width="140" />
         <el-table-column prop="enterpriseName" :label="t('systemCarbon.colEnterpriseName')" min-width="180" />
         <el-table-column prop="title" :label="t('systemCarbon.colReportTitle')" min-width="200" show-overflow-tooltip />
@@ -118,7 +172,7 @@ onMounted(() => {
         <el-table-column prop="createdAt" :label="t('common.createTime')" min-width="170" :formatter="(row: CarbonReportResponse) => formatDateTime(row.createdAt)" />
       </el-table>
 
-      <div class="pagination-row">
+      <template #footer>
         <el-pagination
           v-model:current-page="currentPage"
           v-model:page-size="pageSize"
@@ -129,8 +183,8 @@ onMounted(() => {
           @size-change="onSizeChange"
           @current-change="onCurrentChange"
         />
-      </div>
-    </el-card>
+      </template>
+    </DataPanel>
   </section>
 </template>
 
@@ -138,22 +192,6 @@ onMounted(() => {
 .carbon-page {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-}
-
-.section-card {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-}
-
-.search-form {
-  display: flex;
-  flex-wrap: wrap;
-}
-
-.pagination-row {
-  margin-top: 14px;
-  display: flex;
-  justify-content: flex-end;
+  gap: var(--space-4);
 }
 </style>

@@ -40,6 +40,45 @@ def test_copilot_service_report_analysis():
     assert "tCO" in res.full_text
 
 
+def test_copilot_service_report_analysis_insufficient_data():
+    """排放量缺失时必须如实返回「数据不足」，不得编造任何数值充当模型结论。"""
+    service = CopilotService()
+    req = ReportAnalysisRequest(
+        report_id=999,
+        enterprise_name="无数据企业",
+        accounting_period="2026-Q4",
+        total_emission=0.0,
+    )
+    res = service.generate_report_analysis(req)
+
+    assert res.insufficient_data is True
+    assert res.insufficient_data_reason
+    assert "数据不足" in res.full_text
+    assert res.key_findings == []
+    assert res.reduction_suggestions == []
+    assert len(res.analysis_hash) == 64
+    # 历史伪造常量绝不能再出现在输出里
+    for fabricated in ("370.50", "250.50", "120.00", "22.00"):
+        assert fabricated not in res.full_text
+
+
+def test_copilot_service_report_analysis_recovers_from_emission_details():
+    """主字段为 0 但 emission_details 有真实数据时应正常分析，而非走数据不足分支。"""
+    service = CopilotService()
+    req = ReportAnalysisRequest(
+        report_id=1001,
+        enterprise_name="明细企业",
+        accounting_period="2026-Q1",
+        total_emission=0.0,
+        emission_details='{"totalEmission": 500.0, "scope1": 300.0, "scope2": 200.0, "desulf": 10.0}',
+    )
+    res = service.generate_report_analysis(req)
+
+    assert res.insufficient_data is False
+    assert "500.00" in res.full_text
+    assert len(res.key_findings) >= 2
+
+
 def test_copilot_service_policy_qa():
     """Verify policy QA for Scope 1, Scope 2, and default questions."""
     service = CopilotService()

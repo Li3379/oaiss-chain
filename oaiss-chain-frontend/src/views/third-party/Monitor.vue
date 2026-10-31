@@ -9,24 +9,32 @@
  *   2. 监管机构主体档案卡片：展示机构全称、统一社会信用代码与法定资质
  *   3. 机构联络人维护表单：更新监管专员姓名与应急联络电话
  *   4. 全辖区排碳报告穿透审计列表：多条件检索辖区内企业碳报告（按企业ID、状态等）
- *   5. 监管职责与合规标准释义（PageHint / StatusTag）
+ *   5. 全市场交易流水穿透台账：交易笔数/总量/总额聚合 + 分页流水明细（只读，无任何写操作）
+ *   6. 监管职责与合规标准释义（PageHint / StatusTag）
  * 【对应后端 Controller & API】：
  *   - ThirdPartyController:
- *     * GET /api/v1/third-party/statistics     -> getStatistics() 监管宏观统计指标
+ *     * GET /api/v1/third-party/statistics     -> getStatistics() 监管宏观统计指标（含交易维度聚合）
  *     * GET /api/v1/third-party/org-info       -> getOrgInfo() 获取监管机构档案
  *     * PUT /api/v1/third-party/contact        -> updateContact() 更新监管机构联系人
  *     * GET /api/v1/third-party/carbon-reports -> getCarbonReports() 穿透查询企业碳报告
+ *   - TradeController:
+ *     * GET /api/v1/trade/list                 -> listTrades() 穿透查询全市场交易流水
  * ==============================================================================
  */
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
+import { CircleCheck, Clock, DataAnalysis, Money, OfficeBuilding, TrendCharts } from '@element-plus/icons-vue'
 import { getCarbonReports, getOrgInfo, getStatistics, updateContact } from '../../api/thirdParty'
+import { listTrades } from '../../api/trade'
 import { formatDateTime, formatNumber } from '../../utils/format'
-import PageContainer from '../../components/PageContainer.vue'
+import PageHeader from '../../components/pen/PageHeader.vue'
+import StatStrip from '../../components/pen/StatStrip.vue'
+import FilterBar from '../../components/pen/FilterBar.vue'
+import DataPanel from '../../components/pen/DataPanel.vue'
 import PageHint from '../../components/PageHint.vue'
 import StatusTag from '../../components/StatusTag.vue'
-import type { CarbonReport, ThirdPartyOrg, ThirdPartyStatistics } from '../../types'
+import type { CarbonReport, ThirdPartyOrg, ThirdPartyStatistics, TradeResponse } from '../../types'
 
 const { t } = useI18n()
 
@@ -35,6 +43,9 @@ const statistics = ref<ThirdPartyStatistics>({
   pendingReports: 0,
   approvedReports: 0,
   rejectedReports: 0,
+  totalTrades: 0,
+  totalTradeQuantity: 0,
+  totalTradeAmount: 0,
 })
 
 const orgInfo = ref<ThirdPartyOrg | null>(null)
@@ -73,6 +84,45 @@ const numericPendingRate = computed(() => {
   return Number(((statistics.value.pendingReports / statistics.value.totalReports) * 100).toFixed(1))
 })
 
+/** 首屏统计条：全部由已加载的监管统计接口返回值推导，不新增接口请求 */
+const overviewStats = computed(() => {
+  const s = statistics.value
+  return [
+    {
+      label: t('monitor.statTotalReports'),
+      value: s.totalReports,
+      unit: t('monitor.statUnitReports'),
+      delta: t('monitor.statTotalHint'),
+      tone: 'neu' as const,
+      icon: DataAnalysis,
+    },
+    {
+      label: t('monitor.statPending'),
+      value: s.pendingReports,
+      unit: t('monitor.statUnitReports'),
+      delta: t('monitor.statPendingHint', { count: numericPendingRate.value }),
+      tone: s.pendingReports > 0 ? ('neu' as const) : ('pos' as const),
+      icon: Clock,
+    },
+    {
+      label: t('monitor.statApproved'),
+      value: s.approvedReports,
+      unit: t('monitor.statUnitReports'),
+      delta: t('monitor.statApprovedHint'),
+      tone: 'pos' as const,
+      icon: CircleCheck,
+    },
+    {
+      label: t('monitor.statApprovalRate'),
+      value: approvalRate.value,
+      unit: '',
+      delta: t('monitor.statApprovalRateHint', { rejected: s.rejectedReports }),
+      tone: s.rejectedReports > 0 ? ('neu' as const) : ('pos' as const),
+      icon: TrendCharts,
+    },
+  ]
+})
+
 const statsLoading = ref(false)
 
 const reports = ref<CarbonReport[]>([])
@@ -92,6 +142,9 @@ const loadStatistics = async () => {
       pendingReports: result?.pendingReports || 0,
       approvedReports: result?.approvedReports || 0,
       rejectedReports: result?.rejectedReports || 0,
+      totalTrades: result?.totalTrades || 0,
+      totalTradeQuantity: Number(result?.totalTradeQuantity) || 0,
+      totalTradeAmount: Number(result?.totalTradeAmount) || 0,
     }
   } catch (error) {
     console.error('Failed to load statistics:', error)
@@ -199,22 +252,122 @@ const onCurrentChange = (page: number) => {
   loadReports()
 }
 
+/* ---------- 交易流水穿透台账（监管只读） ---------- */
+const tradeForm = reactive<{ status: '' | number; tradeType: '' | number }>({
+  status: '',
+  tradeType: '',
+})
+
+const trades = ref<TradeResponse[]>([])
+const tradesLoading = ref(false)
+const tradePage = ref(1)
+const tradePageSize = ref(10)
+const tradeTotal = ref(0)
+
+const loadTrades = async () => {
+  try {
+    tradesLoading.value = true
+    // 监管端走 /trade/list（TradeController 已授权 THIRD_PARTY），返回含买卖双方名称与上链哈希的完整明细。
+    const result = await listTrades({
+      page: tradePage.value,
+      size: tradePageSize.value,
+      status: tradeForm.status === '' ? undefined : tradeForm.status,
+      tradeType: tradeForm.tradeType === '' ? undefined : tradeForm.tradeType,
+    })
+    trades.value = result?.items || []
+    tradeTotal.value = result?.total || 0
+  } catch {
+    ElMessage.error(t('monitor.tradeLoadFailed'))
+  } finally {
+    tradesLoading.value = false
+  }
+}
+
+const onTradeSearch = () => {
+  tradePage.value = 1
+  loadTrades()
+}
+
+const onTradeReset = () => {
+  tradeForm.status = ''
+  tradeForm.tradeType = ''
+  tradePage.value = 1
+  loadTrades()
+}
+
+const onTradeSizeChange = (size: number) => {
+  tradePageSize.value = size
+  tradePage.value = 1
+  loadTrades()
+}
+
+const onTradeCurrentChange = (page: number) => {
+  tradePage.value = page
+  loadTrades()
+}
+
+/** 交易类型文案走前端 i18n（后端 tradeTypeText 为中文，en 界面下会混语言） */
+const tradeTypeLabel = (tradeType: number | null | undefined) => {
+  if (tradeType === 1) return t('monitor.tradeTypeAuction')
+  if (tradeType === 2) return t('monitor.tradeTypeP2P')
+  if (tradeType === 3) return t('monitor.tradeTypeAllocation')
+  return '-'
+}
+
 onMounted(() => {
   loadStatistics()
   loadOrgInfo()
   loadReports()
+  loadTrades()
 })
 </script>
 
 <template>
-  <PageContainer :title="t('monitor.title')" :description="t('monitor.description')">
-    <PageHint :text="t('pageHints.monitor')" />
-    <section class="monitor-page">
-      <el-card class="section-card" shadow="never" v-loading="orgLoading">
-        <template #header>
-          <span class="card-header">{{ t('monitor.orgInfoTitle') }}</span>
-        </template>
+  <section class="monitor-page pen-enter">
+    <PageHeader
+      :title="t('monitor.title')"
+      :description="t('monitor.description')"
+      :crumbs="[t('monitor.breadcrumbMonitorCenter'), t('monitor.breadcrumbMonitorPanel')]"
+    />
 
+    <PageHint :text="t('pageHints.monitor')" />
+
+    <StatStrip :items="overviewStats" :loading="statsLoading" />
+
+    <DataPanel
+      :title="t('monitor.dataStats')"
+      :meta="t('monitor.statApprovalRateHint', { rejected: statistics.rejectedReports })"
+    >
+      <div class="stats-dials-row" v-loading="statsLoading">
+        <div class="dial-card">
+          <el-progress type="dashboard" :percentage="numericApprovalRate" :color="'var(--color-accent)'" :width="110">
+            <template #default="{ percentage }">
+              <div class="dial-inner">
+                <span class="dial-val">{{ percentage }}%</span>
+                <span class="dial-lbl">{{ t('monitor.statApprovalRate') }}</span>
+              </div>
+            </template>
+          </el-progress>
+        </div>
+        <div class="dial-card">
+          <el-progress type="dashboard" :percentage="numericPendingRate" :color="'var(--color-status-warning)'" :width="110">
+            <template #default="{ percentage }">
+              <div class="dial-inner">
+                <span class="dial-val">{{ percentage }}%</span>
+                <span class="dial-lbl">{{ t('monitor.statPending') }}</span>
+              </div>
+            </template>
+          </el-progress>
+        </div>
+      </div>
+    </DataPanel>
+
+    <DataPanel
+      :title="t('monitor.orgInfoTitle')"
+      :meta="t('monitor.orgFieldHint')"
+      :icon="OfficeBuilding"
+    >
+      <div v-loading="orgLoading" class="org-body">
         <div v-if="orgInfo" class="org-grid">
           <div><strong>{{ t('monitor.orgName') }}:</strong> {{ orgInfo.orgName || '-' }}</div>
           <div><strong>{{ t('monitor.accessLevel') }}:</strong> {{ orgInfo.accessLevel || '-' }}</div>
@@ -236,232 +389,182 @@ onMounted(() => {
             </el-button>
           </el-form-item>
         </el-form>
-      </el-card>
+      </div>
+    </DataPanel>
 
-      <el-card class="section-card" shadow="never" v-loading="statsLoading">
-        <template #header>
-          <span class="card-header">{{ t('monitor.dataStats') }}</span>
-        </template>
-        <div class="stats-grid">
-          <div class="stat-card total">
-            <div class="stat-content">
-              <div class="stat-label">{{ t('monitor.statTotalReports') }}</div>
-              <div class="stat-value">{{ statistics.totalReports }}</div>
-            </div>
-          </div>
-          <div class="stat-card pending">
-            <div class="stat-content">
-              <div class="stat-label">{{ t('monitor.statPending') }}</div>
-              <div class="stat-value">{{ statistics.pendingReports }}</div>
-            </div>
-          </div>
-          <div class="stat-card approved">
-            <div class="stat-content">
-              <div class="stat-label">{{ t('monitor.statApproved') }}</div>
-              <div class="stat-value">{{ statistics.approvedReports }}</div>
-            </div>
-          </div>
-          <div class="stat-card rejected">
-            <div class="stat-content">
-              <div class="stat-label">{{ t('monitor.statRejected') }}</div>
-              <div class="stat-value">{{ statistics.rejectedReports }}</div>
-            </div>
-          </div>
-          <div class="stat-card rate">
-            <div class="stat-content">
-              <div class="stat-label">{{ t('monitor.statApprovalRate') }}</div>
-              <div class="stat-value">{{ approvalRate }}</div>
-            </div>
-          </div>
-        </div>
+    <FilterBar :aria-label="t('monitor.filterLabel')">
+      <label class="pen-field">
+        <span class="pen-field__label">{{ t('monitor.enterpriseIdLabel') }}</span>
+        <el-input v-model="searchForm.enterpriseId" :placeholder="t('monitor.enterpriseIdPlaceholder')" clearable />
+      </label>
+      <label class="pen-field">
+        <span class="pen-field__label">{{ t('common.keyword') }}</span>
+        <el-input v-model="searchForm.keyword" :placeholder="t('common.enterKeyword')" clearable />
+      </label>
+      <label class="pen-field">
+        <span class="pen-field__label">{{ t('monitor.colStatus') }}</span>
+        <el-select v-model="searchForm.status" clearable style="width: 160px">
+          <el-option :label="t('monitor.statusDraft')" :value="0" />
+          <el-option :label="t('monitor.statusPending')" :value="1" />
+          <el-option :label="t('monitor.statusApproved')" :value="3" />
+          <el-option :label="t('monitor.statusRejected')" :value="4" />
+          <el-option :label="t('monitor.statusOnChain')" :value="5" />
+        </el-select>
+      </label>
+      <el-button type="primary" @click="onSearch">{{ t('common.search') }}</el-button>
+      <el-button @click="onReset">{{ t('common.reset') }}</el-button>
+    </FilterBar>
 
-        <div class="stats-dials-row">
-          <div class="dial-card">
-            <el-progress type="dashboard" :percentage="numericApprovalRate" :color="'var(--color-accent)'" :width="110">
-              <template #default="{ percentage }">
-                <div class="dial-inner">
-                  <span class="dial-val">{{ percentage }}%</span>
-                  <span class="dial-lbl">{{ t('monitor.statApprovalRate') }}</span>
-                </div>
-              </template>
-            </el-progress>
-          </div>
-          <div class="dial-card">
-            <el-progress type="dashboard" :percentage="numericPendingRate" :color="'var(--color-status-warning)'" :width="110">
-              <template #default="{ percentage }">
-                <div class="dial-inner">
-                  <span class="dial-val">{{ percentage }}%</span>
-                  <span class="dial-lbl">{{ t('monitor.statPending') }}</span>
-                </div>
-              </template>
-            </el-progress>
-          </div>
-        </div>
-      </el-card>
+    <DataPanel
+      :title="t('monitor.tableTitle')"
+      :meta="t('monitor.panelMeta', { total })"
+    >
+      <el-table :data="reports" v-loading="loading">
+        <el-table-column :label="t('common.colIndex')" width="80">
+          <template #default="scope">
+            {{ (currentPage - 1) * pageSize + scope.$index + 1 }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="reportNo" :label="t('monitor.colReportNo')" min-width="150" />
+        <el-table-column prop="enterpriseName" :label="t('monitor.colEnterpriseName')" min-width="180" show-overflow-tooltip />
+        <el-table-column prop="accountingPeriod" :label="t('monitor.colYear')" min-width="100" />
+        <el-table-column prop="totalEmission" :label="t('monitor.colTotalEmission')" min-width="140">
+          <template #default="{ row }">{{ formatNumber(row.totalEmission) }}</template>
+        </el-table-column>
+        <el-table-column prop="status" :label="t('monitor.colStatus')" min-width="110">
+          <template #default="{ row }">
+            <StatusTag :status="row.status" domain="report" />
+          </template>
+        </el-table-column>
+        <el-table-column prop="submitTime" :label="t('monitor.colSubmitTime')" min-width="170">
+          <template #default="{ row }">{{ formatDateTime(row.submitTime || row.createdAt) }}</template>
+        </el-table-column>
+      </el-table>
 
-      <el-card class="section-card" shadow="never">
-        <template #header>
-          <span class="card-header">{{ t('monitor.filterTitle') }}</span>
-        </template>
-        <el-form :inline="true" class="search-form">
-          <el-form-item :label="t('monitor.enterpriseIdLabel')">
-            <el-input v-model="searchForm.enterpriseId" :placeholder="t('monitor.enterpriseIdPlaceholder')" clearable />
-          </el-form-item>
-          <el-form-item :label="t('common.enterKeyword')">
-            <el-input v-model="searchForm.keyword" :placeholder="t('common.enterKeyword')" clearable />
-          </el-form-item>
-          <el-form-item :label="t('monitor.colStatus')">
-            <el-select v-model="searchForm.status" clearable style="width: 160px">
-              <el-option :label="t('monitor.statusDraft')" :value="0" />
-              <el-option :label="t('monitor.statusPending')" :value="1" />
-              <el-option :label="t('monitor.statusApproved')" :value="3" />
-              <el-option :label="t('monitor.statusRejected')" :value="4" />
-              <el-option :label="t('monitor.statusOnChain')" :value="5" />
-            </el-select>
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" @click="onSearch">{{ t('common.search') }}</el-button>
-            <el-button @click="onReset">{{ t('common.reset') }}</el-button>
-          </el-form-item>
-        </el-form>
-      </el-card>
+      <template #footer>
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          background
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next, jumper"
+          :total="total"
+          @size-change="onSizeChange"
+          @current-change="onCurrentChange"
+        />
+      </template>
+    </DataPanel>
 
-      <el-card class="section-card" shadow="never">
-        <template #header>
-          <span class="card-header">{{ t('monitor.tableTitle') }}</span>
-        </template>
-        <el-table :data="reports" border v-loading="loading">
-          <el-table-column :label="t('common.colIndex')" width="80">
-            <template #default="scope">
-              {{ (currentPage - 1) * pageSize + scope.$index + 1 }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="reportNo" :label="t('monitor.colReportNo')" min-width="150" />
-          <el-table-column prop="enterpriseName" :label="t('monitor.colEnterpriseName')" min-width="180" show-overflow-tooltip />
-          <el-table-column prop="accountingPeriod" :label="t('monitor.colYear')" min-width="100" />
-          <el-table-column prop="totalEmission" :label="t('monitor.colTotalEmission')" min-width="140">
-            <template #default="{ row }">{{ formatNumber(row.totalEmission) }}</template>
-          </el-table-column>
-          <el-table-column prop="status" :label="t('monitor.colStatus')" min-width="110">
-            <template #default="{ row }">
-              <StatusTag :status="row.status" domain="report" />
-            </template>
-          </el-table-column>
-          <el-table-column prop="submitTime" :label="t('monitor.colSubmitTime')" min-width="170">
-            <template #default="{ row }">{{ formatDateTime(row.submitTime || row.createdAt) }}</template>
-          </el-table-column>
-        </el-table>
+    <!-- 交易流水穿透台账：监管只读，不含任何写操作入口 -->
+    <FilterBar :aria-label="t('monitor.tradeFilterLabel')">
+      <label class="pen-field">
+        <span class="pen-field__label">{{ t('monitor.colTradeStatus') }}</span>
+        <el-select v-model="tradeForm.status" clearable style="width: 160px">
+          <el-option :label="t('statusMeta.tradePending')" :value="0" />
+          <el-option :label="t('statusMeta.tradeProcessing')" :value="1" />
+          <el-option :label="t('statusMeta.tradeCompleted')" :value="2" />
+          <el-option :label="t('statusMeta.tradeCancelled')" :value="3" />
+          <el-option :label="t('statusMeta.tradeFailed')" :value="4" />
+        </el-select>
+      </label>
+      <label class="pen-field">
+        <span class="pen-field__label">{{ t('monitor.colTradeType') }}</span>
+        <el-select v-model="tradeForm.tradeType" clearable style="width: 160px">
+          <el-option :label="t('monitor.tradeTypeAuction')" :value="1" />
+          <el-option :label="t('monitor.tradeTypeP2P')" :value="2" />
+          <el-option :label="t('monitor.tradeTypeAllocation')" :value="3" />
+        </el-select>
+      </label>
+      <el-button type="primary" @click="onTradeSearch">{{ t('common.search') }}</el-button>
+      <el-button @click="onTradeReset">{{ t('common.reset') }}</el-button>
+    </FilterBar>
 
-        <div class="pagination-row">
-          <el-pagination
-            v-model:current-page="currentPage"
-            v-model:page-size="pageSize"
-            background
-            :page-sizes="[10, 20, 50]"
-            layout="total, sizes, prev, pager, next, jumper"
-            :total="total"
-            @size-change="onSizeChange"
-            @current-change="onCurrentChange"
-          />
-        </div>
-      </el-card>
-    </section>
-  </PageContainer>
+    <DataPanel
+      :title="t('monitor.tradeTableTitle')"
+      :meta="t('monitor.tradePanelMeta', { total: tradeTotal })"
+      :icon="Money"
+    >
+      <div class="trade-aggregates">
+        <span>{{ t('monitor.tradeAggCount') }}：<strong>{{ formatNumber(statistics.totalTrades || 0) }}</strong></span>
+        <span>{{ t('monitor.tradeAggVolume') }}：<strong>{{ formatNumber(statistics.totalTradeQuantity) }}</strong> tCO₂e</span>
+        <span>{{ t('monitor.tradeAggAmount') }}：<strong>{{ formatNumber(statistics.totalTradeAmount) }}</strong> {{ t('monitor.tradeAmountUnit') }}</span>
+      </div>
+
+      <el-table :data="trades" v-loading="tradesLoading">
+        <el-table-column prop="tradeNo" :label="t('monitor.colTradeNo')" min-width="170" show-overflow-tooltip />
+        <el-table-column prop="sellerName" :label="t('monitor.colSeller')" min-width="150" show-overflow-tooltip />
+        <el-table-column prop="buyerName" :label="t('monitor.colBuyer')" min-width="150" show-overflow-tooltip />
+        <el-table-column prop="tradeType" :label="t('monitor.colTradeType')" min-width="110">
+          <template #default="{ row }">{{ tradeTypeLabel(row.tradeType) }}</template>
+        </el-table-column>
+        <el-table-column prop="quantity" :label="t('monitor.colTradeQuantity')" min-width="120">
+          <template #default="{ row }">{{ formatNumber(row.quantity) }}</template>
+        </el-table-column>
+        <el-table-column prop="unitPrice" :label="t('monitor.colTradeUnitPrice')" min-width="110">
+          <template #default="{ row }">{{ formatNumber(row.unitPrice) }}</template>
+        </el-table-column>
+        <el-table-column prop="totalAmount" :label="t('monitor.colTradeTotal')" min-width="130">
+          <template #default="{ row }">{{ formatNumber(row.totalAmount) }}</template>
+        </el-table-column>
+        <el-table-column prop="status" :label="t('monitor.colTradeStatus')" min-width="105">
+          <template #default="{ row }">
+            <StatusTag :status="row.status" domain="trade" />
+          </template>
+        </el-table-column>
+        <el-table-column prop="blockchainTxHash" :label="t('monitor.colTradeHash')" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.blockchainTxHash || '-' }}</template>
+        </el-table-column>
+        <el-table-column prop="completedAt" :label="t('monitor.colTradeCompletedAt')" min-width="170">
+          <template #default="{ row }">{{ formatDateTime(row.completedAt) || '-' }}</template>
+        </el-table-column>
+      </el-table>
+
+      <template #footer>
+        <el-pagination
+          v-model:current-page="tradePage"
+          v-model:page-size="tradePageSize"
+          background
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next, jumper"
+          :total="tradeTotal"
+          @size-change="onTradeSizeChange"
+          @current-change="onTradeCurrentChange"
+        />
+      </template>
+    </DataPanel>
+  </section>
 </template>
 
 <style scoped>
 .monitor-page {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-5);
 }
 
-.section-card {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-}
-
-.card-header {
-  font-weight: 600;
-  font-size: var(--text-md);
+.org-body {
+  padding: var(--space-4);
 }
 
 .org-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 10px 18px;
-  margin-bottom: 12px;
+  gap: var(--space-2) var(--space-5);
+  margin-bottom: var(--space-3);
+  color: var(--pen-muted);
+  font-size: var(--fs-body);
 }
 
-.contact-form,
-.search-form {
+.contact-form {
   display: flex;
   flex-wrap: wrap;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-  padding: 10px 0;
-}
-
-.stat-card {
-  border-radius: var(--radius-card);
-  padding: 20px;
-  color: var(--color-text);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-top: 3px solid var(--color-border);
-}
-
-/* 顶部 3px 语义色条（不用左边框，规避"colored border-left"反模式） */
-.stat-card.total {
-  border-top-color: var(--color-chart-1);
-}
-
-.stat-card.pending {
-  border-top-color: var(--color-status-warning);
-}
-
-.stat-card.approved {
-  border-top-color: var(--color-status-success);
-}
-
-.stat-card.rejected {
-  border-top-color: var(--color-status-danger);
-}
-
-.stat-card.rate {
-  border-top-color: var(--color-accent);
-}
-
-.stat-label {
-  font-size: var(--text-base);
-  margin-bottom: 8px;
-  color: var(--color-text-muted);
-}
-
-.stat-value {
-  font-size: 32px;
-  font-weight: 700;
-  line-height: 1;
-  color: var(--color-text);
-}
-
-.pagination-row {
-  margin-top: 14px;
-  display: flex;
-  justify-content: flex-end;
 }
 
 .stats-dials-row {
   display: flex;
   justify-content: center;
-  gap: 48px;
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid var(--el-border-color-lighter);
+  gap: var(--space-7);
+  padding: var(--space-4);
 }
 
 .dial-card {
@@ -477,14 +580,31 @@ onMounted(() => {
 }
 
 .dial-val {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--el-text-color-primary);
+  font-size: var(--fs-stat);
+  font-weight: 500;
+  color: var(--pen-ink);
+  font-variant-numeric: tabular-nums;
 }
 
 .dial-lbl {
-  font-size: 11px;
-  color: var(--el-text-color-secondary);
-  margin-top: 2px;
+  font-size: var(--fs-caption);
+  color: var(--pen-faint);
+  margin-top: var(--space-0-5);
+}
+
+.trade-aggregates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--pen-border);
+  color: var(--pen-muted);
+  font-size: var(--fs-sub);
+}
+
+.trade-aggregates strong {
+  color: var(--pen-ink);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 </style>

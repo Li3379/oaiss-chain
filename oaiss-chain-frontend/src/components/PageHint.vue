@@ -26,21 +26,22 @@ defineProps<{
 <style scoped>
 .page-hint {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
-  padding: 10px 16px;
-  border: 1px solid var(--color-border);
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-bottom: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--pen-note-bd);
   border-radius: var(--radius-card);
-  background: var(--color-surface);
-  color: var(--color-text-muted);
-  font-size: var(--text-sm);
+  background: var(--pen-note-bg);
+  color: var(--pen-muted);
+  font-size: var(--fs-sub);
   line-height: 1.6;
 }
 
 .page-hint__icon {
   flex-shrink: 0;
-  color: var(--color-accent);
+  margin-top: 1px;
+  color: var(--pen-ink);
 }
 
 .page-hint__text {

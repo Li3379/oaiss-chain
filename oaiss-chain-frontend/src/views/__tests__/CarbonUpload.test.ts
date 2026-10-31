@@ -7,6 +7,7 @@ vi.mock('../../api/carbon', () => ({
   createReport: vi.fn(() => Promise.resolve()),
   deleteReport: vi.fn(() => Promise.resolve()),
   submitReport: vi.fn(() => Promise.resolve()),
+  getAiReportAnalysis: vi.fn(),
 }))
 
 vi.mock('element-plus', async (importOriginal) => {
@@ -19,7 +20,7 @@ vi.mock('element-plus', async (importOriginal) => {
 })
 
 import CarbonUpload from '../enterprise/CarbonUpload.vue'
-import { getMyReports, createReport, deleteReport, submitReport } from '../../api/carbon'
+import { getMyReports, createReport, deleteReport, submitReport, getAiReportAnalysis } from '../../api/carbon'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const stubs = {
@@ -88,6 +89,11 @@ const stubs = {
   'el-option': {
     template: '<option :value="value"><slot /></option>',
     props: ['label', 'value'],
+  },
+  'el-alert': {
+    template: '<div class="el-alert" :data-testid="$attrs[\'data-testid\']">{{ title }}|{{ description }}</div>',
+    props: ['title', 'description', 'type', 'closable', 'showIcon'],
+    inheritAttrs: false,
   },
 }
 
@@ -191,6 +197,57 @@ describe('CarbonUpload.vue', () => {
 
     expect(wrapper.find('[data-testid="create-emission"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="structured-emission"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('排放量为 0 时不再伪造基准值，并渲染「数据不足」提示', async () => {
+    vi.mocked(getAiReportAnalysis).mockResolvedValueOnce({
+      report_id: 1,
+      summary: '报告（1）没有可用的排放量数据',
+      key_findings: [],
+      reduction_suggestions: [],
+      full_text: '【数据不足，无法生成诊断】',
+      analysis_hash: 'a'.repeat(64),
+      model_used: 'builtin-rule-engine',
+      insufficient_data: true,
+      insufficient_data_reason: '报告（1）没有可用的排放量数据：排放总量与 emission_details 均为空或为 0',
+    })
+
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    const vm = wrapper.vm as unknown as {
+      onGenerateAiAnalysis: (report: Record<string, unknown>) => Promise<void>
+    }
+    await vm.onGenerateAiAnalysis({ id: 1, totalEmission: 0, emissionData: '' })
+    await flushPromises()
+
+    // 绝不再把 370.5 / 250.5 / 120.0 作为兜底发给模型
+    const payload = vi.mocked(getAiReportAnalysis).mock.calls[0][0]
+    expect(payload.total_emission).toBe(0)
+    expect(payload.scope1_emission).toBe(0)
+    expect(payload.scope2_emission).toBe(0)
+    expect(payload.desulf_emission).toBe(0)
+
+    await flushPromises()
+    expect(wrapper.find('[data-testid="ai-insufficient-data"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('模型调用失败时显示错误提示而不是空报告', async () => {
+    vi.mocked(getAiReportAnalysis).mockRejectedValueOnce(new Error('ml down'))
+
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    const vm = wrapper.vm as unknown as {
+      onGenerateAiAnalysis: (report: Record<string, unknown>) => Promise<void>
+    }
+    await vm.onGenerateAiAnalysis({ id: 2, totalEmission: 100, emissionData: '' })
+    await flushPromises()
+
+    expect(ElMessage.error).toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="ai-analysis-error"]').exists()).toBe(true)
     wrapper.unmount()
   })
 })

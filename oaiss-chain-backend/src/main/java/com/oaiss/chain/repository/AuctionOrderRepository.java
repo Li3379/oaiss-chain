@@ -58,4 +58,9 @@ public interface AuctionOrderRepository extends JpaRepository<AuctionOrder, Long
      * 检查用户在指定方向和状态下是否存在有效挂单（防范自成交/洗售交易）
      */
     boolean existsByUserIdAndDirectionAndStatusInAndDeletedFalse(Long userId, Integer direction, List<Integer> statuses);
+
+    /**
+     * 统计指定方向处于给定状态的挂单数（撮合控制台盘口规模展示）
+     */
+    long countByDirectionAndStatusInAndDeletedFalse(Integer direction, List<Integer> statuses);
 }

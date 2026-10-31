@@ -70,7 +70,8 @@ describe('DataStatistics.vue', () => {
     const wrapper = mountComponent()
     await flushPromises()
     expect(wrapper.find('.stats-page').exists()).toBe(true)
-    expect(wrapper.find('.stats-grid').exists()).toBe(true)
+    // pen 壳层迁移后，指标卡由 StatStrip 渲染，旧的 .stats-grid 已不存在
+    expect(wrapper.find('.pen-stat-strip').exists()).toBe(true)
     expect(wrapper.find('.chart-box').exists()).toBe(true)
     wrapper.unmount()
   })

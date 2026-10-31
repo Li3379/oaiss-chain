@@ -574,6 +574,68 @@ class CreditScoreServiceTest {
         assertTrue(response.getContent().isEmpty());
     }
 
+    // ==================== getScoresByUserIds ====================
+
+    @Test
+    @DisplayName("批量查询用户信誉分 - 正常解析用户→企业→信誉分")
+    void getScoresByUserIds_Success() {
+        Enterprise e1 = Enterprise.builder().userId(1L).build();
+        e1.setId(11L);
+        Enterprise e2 = Enterprise.builder().userId(2L).build();
+        e2.setId(22L);
+        CreditScore cs1 = CreditScore.builder().enterpriseId(11L).score(90).build();
+        CreditScore cs2 = CreditScore.builder().enterpriseId(22L).score(60).build();
+
+        when(enterpriseRepository.findByUserIdInAndDeletedFalse(anyCollection()))
+                .thenReturn(List.of(e1, e2));
+        when(creditScoreRepository.findByEnterpriseIdInAndDeletedFalse(anyCollection()))
+                .thenReturn(List.of(cs1, cs2));
+
+        var result = creditScoreService.getScoresByUserIds(java.util.Set.of(1L, 2L));
+
+        assertEquals(2, result.size());
+        assertEquals(90, result.get(1L));
+        assertEquals(60, result.get(2L));
+    }
+
+    @Test
+    @DisplayName("批量查询用户信誉分 - 无用户或企业时返回空Map（调用方按中性分处理）")
+    void getScoresByUserIds_NoEnterprise_ReturnsEmpty() {
+        when(enterpriseRepository.findByUserIdInAndDeletedFalse(anyCollection()))
+                .thenReturn(Collections.emptyList());
+
+        assertTrue(creditScoreService.getScoresByUserIds(java.util.Set.of(99L)).isEmpty());
+        verify(creditScoreRepository, never()).findByEnterpriseIdInAndDeletedFalse(anyCollection());
+    }
+
+    @Test
+    @DisplayName("批量查询用户信誉分 - 空入参不查库")
+    void getScoresByUserIds_EmptyInput_ReturnsEmpty() {
+        assertTrue(creditScoreService.getScoresByUserIds(Collections.emptySet()).isEmpty());
+        verify(enterpriseRepository, never()).findByUserIdInAndDeletedFalse(anyCollection());
+    }
+
+    @Test
+    @DisplayName("批量查询用户信誉分 - 企业无评分记录则不返回该用户（中性分由调用方兜底）")
+    void getScoresByUserIds_MissingScoreEntry_OmitsUser() {
+        Enterprise e1 = Enterprise.builder().userId(1L).build();
+        e1.setId(11L);
+        Enterprise e2 = Enterprise.builder().userId(2L).build();
+        e2.setId(22L);
+        CreditScore cs1 = CreditScore.builder().enterpriseId(11L).score(88).build();
+
+        when(enterpriseRepository.findByUserIdInAndDeletedFalse(anyCollection()))
+                .thenReturn(List.of(e1, e2));
+        when(creditScoreRepository.findByEnterpriseIdInAndDeletedFalse(anyCollection()))
+                .thenReturn(List.of(cs1));
+
+        var result = creditScoreService.getScoresByUserIds(java.util.Set.of(1L, 2L));
+
+        assertEquals(1, result.size());
+        assertEquals(88, result.get(1L));
+        assertFalse(result.containsKey(2L));
+    }
+
     // ==================== Helper ====================
 
     private CreditEvent buildCreditEvent(Long id, int eventType, int points, int before, int after, Long triggeredBy) {

@@ -175,6 +175,9 @@ public final class ErrorCode {
     /** 挂单已存在 */
     public static final int ORDER_ALREADY_EXISTS = 4011;
 
+    /** 信誉分过低被限制交易 */
+    public static final int CREDIT_TRADE_RESTRICTED = 4012;
+
     // ==================== 区块链模块错误 (5xxx) ====================
     
     /** 区块链连接失败 */

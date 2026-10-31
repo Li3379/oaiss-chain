@@ -93,7 +93,7 @@ describe('CarbonNeutralDetail.vue', () => {
   it('组件正确渲染', async () => {
     const wrapper = mountDetail()
     await flush()
-    expect(wrapper.find('.page-container').exists()).toBe(true)
+    expect(wrapper.find('.pen-page-head').exists()).toBe(true)
     expect(wrapper.find('.detail-page').exists()).toBe(true)
     wrapper.unmount()
   })

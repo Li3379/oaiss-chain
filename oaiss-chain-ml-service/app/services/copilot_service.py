@@ -27,20 +27,31 @@ logger = logging.getLogger(__name__)
 class CopilotService:
     """Service providing generative carbon report analysis, policy QA, and procurement advice."""
 
+    #: 未启用 / 不可达 LLM 时，响应体 model_used 的如实标注
+    RULE_ENGINE_NAME = "builtin-rule-engine (GB/T 32150-2015, 未调用大模型)"
+
     def __init__(self) -> None:
-        self.api_base = getattr(settings, "llm_api_base", "https://api.deepseek.com/v1")
-        self.api_key = getattr(settings, "llm_api_key", "")
-        self.model_name = getattr(settings, "llm_model", "deepseek-chat")
-        self.ollama_base = getattr(settings, "ollama_base_url", "http://host.docker.internal:11434/v1")
+        self.api_base = settings.llm_api_base
+        self.api_key = settings.llm_api_key
+        self.model_name = settings.llm_model
+        self.ollama_base = settings.ollama_base_url
+        self.ollama_model = settings.ollama_model
+        self.timeout = settings.llm_timeout_seconds
+
+    def _llm_targets(self) -> List[Tuple[str, str, str]]:
+        """仅在显式配置后才会产生 LLM 调用目标；不做隐式本机探测。"""
+        targets: List[Tuple[str, str, str]] = []
+        if self.api_key:
+            targets.append((self.api_base, self.api_key, self.model_name))
+        if self.ollama_base:
+            targets.append((self.ollama_base, "ollama", self.ollama_model))
+        return targets
 
     def _call_llm_if_available(self, system_prompt: str, user_prompt: str) -> tuple[str | None, str]:
         """Call external or local LLM if configured and accessible; return (content, model_used)."""
-        targets = []
-        if self.api_key:
-            targets.append((self.api_base, self.api_key, self.model_name))
-        # Prioritize local Ollama instances
-        targets.append(("http://host.docker.internal:11434/v1", "ollama", "qwen2.5:7b"))
-        targets.append(("http://localhost:11434/v1", "ollama", "qwen2.5:7b"))
+        targets = self._llm_targets()
+        if not targets:
+            logger.debug("No LLM configured (LLM_API_KEY / OLLAMA_BASE_URL empty), using built-in rule engine")
 
         for base_url, key, model in targets:
             try:
@@ -55,7 +66,7 @@ class CopilotService:
                     "temperature": 0.3,
                     "max_tokens": 1000,
                 }
-                with httpx.Client(timeout=45.0) as client:
+                with httpx.Client(timeout=self.timeout) as client:
                     resp = client.post(url, headers=headers, json=payload)
                     if resp.status_code == 200:
                         data = resp.json()
@@ -65,7 +76,27 @@ class CopilotService:
             except Exception as e:
                 logger.debug("LLM endpoint %s not available (%s), continuing fallback", base_url, e)
 
-        return None, "DualCarbon-Expert-v1.0 (GB/T 32150-2015)"
+        return None, self.RULE_ENGINE_NAME
+
+    def _insufficient_data_response(self, req: ReportAnalysisRequest) -> ReportAnalysisResponse:
+        """排放量为空/为零时如实返回「无法诊断」，不生成任何推算数值。"""
+        message = (
+            f"报告（{req.report_id if req.report_id is not None else '未提供编号'}）没有可用的排放量数据："
+            f"排放总量与 emission_details 均为空或为 0，无法进行排放结构归因分析。"
+            "请企业先完成碳核算并回填排放数据后重新发起诊断。"
+        )
+        full_text = f"【数据不足，无法生成诊断】\n\n{message}"
+        return ReportAnalysisResponse(
+            report_id=req.report_id,
+            summary=message,
+            key_findings=[],
+            reduction_suggestions=[],
+            full_text=full_text,
+            analysis_hash=hashlib.sha256(full_text.encode("utf-8")).hexdigest(),
+            model_used=self.RULE_ENGINE_NAME,
+            insufficient_data=True,
+            insufficient_data_reason=message,
+        )
 
     def generate_report_analysis(self, req: ReportAnalysisRequest) -> ReportAnalysisResponse:
         """Generate structured carbon audit and emission diagnosis report."""
@@ -78,18 +109,19 @@ class CopilotService:
         if total <= 0 and req.emission_details:
             try:
                 ed = req.emission_details if isinstance(req.emission_details, dict) else json.loads(str(req.emission_details))
-                total = float(ed.get("totalEmission", ed.get("total_emission", 0)))
+                total = float(ed.get("totalEmission", ed.get("total_emission", 0)) or 0)
                 s1 = float(ed.get("scope1", 0) if isinstance(ed.get("scope1"), (int, float)) else 0)
                 s2 = float(ed.get("scope2", 0) if isinstance(ed.get("scope2"), (int, float)) else 0)
+                if desulf <= 0 and isinstance(ed.get("desulf"), (int, float)):
+                    desulf = float(ed.get("desulf"))
             except Exception:
                 pass
 
-        # 兜底避免 0.00 显示
+        # 数据不足：绝不编造排放量冒充模型结论，直接返回可识别的「无法诊断」结果。
+        # 此前这里会把 total/s1/s2/desulf 填充为 370.50/250.50/120.00/22.00，
+        # 导致数据库里缺少排放量的报告被渲染成一份看似真实的诊断报告。
         if total <= 0:
-            total = 370.50
-            s1 = 250.50
-            s2 = 120.00
-            desulf = 22.00
+            return self._insufficient_data_response(req)
 
         s1_pct = round((s1 / total) * 100, 1)
         s2_pct = round((s2 / total) * 100, 1)
@@ -120,16 +152,16 @@ class CopilotService:
         if not llm_text:
             summary = (
                 f"本期（{req.accounting_period}）{req.enterprise_name}经核定温室气体排放总量为 {total:,.2f} tCO₂e。"
-                f"结构分析显示，{primary_source}为最核心排放源，占比达 {max(s1_pct, s2_pct)}%。"
-                f"范围一直接排放与外购电间接排放结构基本吻合典型工业企业用能特征，脱硫过程副产排放受控。"
+                f"结构分析显示，{primary_source}为占比最高的排放源，占比达 {max(s1_pct, s2_pct)}%。"
+                f"以下结论均由内置规则引擎依据上述申报数值计算得出，未经过第三方复核。"
             )
             key_findings = [
                 f"主要排放源锁定：{primary_source}贡献了主要的碳负荷（共 {max(s1, s2):,.2f} 吨，占比 {max(s1_pct, s2_pct)}%）。",
-                f"范围二电力清洁度：外购电力排放量为 {s2:,.2f} 吨，受区域电网平均排放因子影响显著，绿电消纳尚存提升空间。",
-                f"脱硫过程转化：脱硫工序产生碳排放 {desulf:,.2f} 吨（占比 {desulf_pct}%），石灰石/碳酸盐消耗处于国标受控区间。",
+                f"范围二电力清洁度：外购电力排放量为 {s2:,.2f} 吨，受区域电网平均排放因子影响，绿电消纳比例需以企业购电凭证核实。",
+                f"脱硫过程转化：脱硫工序申报碳排放 {desulf:,.2f} 吨（占比 {desulf_pct}%），石灰石/碳酸盐消耗台账需由核查员另行核对。",
             ]
             reduction_suggestions = [
-                "针对范围一燃烧优化：建议对锅炉燃烧系统引入风煤动态闭环优化，加强飞灰炉渣含碳量监测，预计可压降燃煤消耗 1.5%~2.8%。",
+                "针对范围一燃烧优化：建议对锅炉燃烧系统引入风煤动态闭环优化，加强飞灰炉渣含碳量监测（节煤幅度须经能效测试确认）。",
                 "针对范围二间接排放：推荐参与绿色电力交易（绿证绿电），采购屋顶分布式光伏或平价绿电抵扣外购电排放因子。",
                 "数字化与资产管理：建立月度排放核算追踪台账，严控工艺指标波动，确保履约期前锁定碳配额安全边际。",
             ]
@@ -176,7 +208,7 @@ class CopilotService:
             summary = summary_part if summary_part else full_text[:220] + "..."
             key_findings = findings_part if len(findings_part) >= 2 else [
                 f"主要排放源锁定为 {primary_source}（占比 {max(s1_pct, s2_pct)}%）。",
-                f"核算数据经过 GB/T 32150-2015 合规校验，范围一直接与范围二间接排放结构清晰。",
+                f"范围一 {s1:,.2f} 吨与范围二 {s2:,.2f} 吨均已填报，可按 GB/T 32150-2015 口径复核。",
             ]
             reduction_suggestions = suggestions_part if len(suggestions_part) >= 2 else [
                 "推进风机与水泵变频调速节能改造，压减厂用电率。",

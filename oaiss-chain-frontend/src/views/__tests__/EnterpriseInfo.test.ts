@@ -109,7 +109,8 @@ describe('EnterpriseInfo.vue', () => {
   it('renders loading state', () => {
     const wrapper = mount(EnterpriseInfo, { global: { stubs } })
     expect(wrapper.exists()).toBe(true)
-    expect(wrapper.find('.el-card').exists()).toBe(true)
+    // 页面骨架已由 el-card 迁移为 pen 面板，断言落点随之改为面板容器
+    expect(wrapper.find('.pen-panel').exists()).toBe(true)
     wrapper.unmount()
   })
 

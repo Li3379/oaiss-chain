@@ -8,6 +8,7 @@ import com.oaiss.chain.exception.BusinessException;
 import com.oaiss.chain.repository.CarbonReportRepository;
 import com.oaiss.chain.repository.EnterpriseRepository;
 import com.oaiss.chain.repository.ThirdPartyOrgRepository;
+import com.oaiss.chain.repository.TransactionRepository;
 import com.oaiss.chain.security.JwtUserDetails;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +36,7 @@ public class ThirdPartyService {
     private final ThirdPartyOrgRepository thirdPartyOrgRepository;
     private final CarbonReportRepository carbonReportRepository;
     private final EnterpriseRepository enterpriseRepository;
+    private final TransactionRepository transactionRepository;
 
     /**
      * 获取当前第三方机构信息
@@ -108,6 +110,21 @@ public class ThirdPartyService {
         stats.put("pendingReports", pendingReports);
         stats.put("approvedReports", approvedReports);
         stats.put("rejectedReports", rejectedReports);
+
+        // 交易维度聚合：监管看板需要穿透核查市场活跃度与成交规模。
+        // 复用既有 Repository 能力（分页取总数 + 全市场累计汇总查询），不新增自定义 SQL。
+        long totalTrades = transactionRepository.findByDeletedFalse(
+                PageRequest.of(0, 1)).getTotalElements();
+        java.math.BigDecimal totalTradeQuantity = java.util.Optional
+                .ofNullable(transactionRepository.sumTotalQuantity())
+                .orElse(java.math.BigDecimal.ZERO);
+        java.math.BigDecimal totalTradeAmount = java.util.Optional
+                .ofNullable(transactionRepository.sumTotalAmount())
+                .orElse(java.math.BigDecimal.ZERO);
+
+        stats.put("totalTrades", totalTrades);
+        stats.put("totalTradeQuantity", totalTradeQuantity);
+        stats.put("totalTradeAmount", totalTradeAmount);
 
         return ApiResponse.success(stats);
     }

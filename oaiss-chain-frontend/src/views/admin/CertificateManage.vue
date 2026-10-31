@@ -22,9 +22,10 @@
  *     * GET    /api/v1/credit/ranking                          -> getScoreRanking()
  * ==============================================================================
  */
-import { onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { CircleCheck, CircleClose, Document, Stamp } from '@element-plus/icons-vue'
 import {
   getEnterpriseAdmissionList,
   issueEnterpriseAdmission,
@@ -35,6 +36,9 @@ import {
 } from '../../api/admin'
 import type { EnterpriseAdmissionResponse, ReviewerQualificationResponse } from '../../types'
 import { formatDateTime } from '../../utils/format'
+import PageHeader from '../../components/pen/PageHeader.vue'
+import StatStrip from '../../components/pen/StatStrip.vue'
+import DataPanel from '../../components/pen/DataPanel.vue'
 import PageHint from '../../components/PageHint.vue'
 import { getScoreRanking } from '../../api/credit'
 import StatusTag from '../../components/StatusTag.vue'
@@ -192,6 +196,48 @@ const getStatusText = (status: number) => (
   status === 1 ? t('certificateManage.active') : t('certificateManage.revoked')
 )
 
+/** 首屏统计条：全部由已加载的各 Tab 列表推导，不新增接口请求 */
+const overviewStats = computed(() => {
+  const admission = admissionList.value
+  const activeAdmission = admission.filter((row) => Number(row.status) === 1).length
+  const revokedAdmission = admission.filter((row) => Number(row.status) !== 1).length
+
+  return [
+    {
+      label: t('certificateManage.statAdmission'),
+      value: admissionTotal.value,
+      unit: t('certificateManage.statUnitCerts'),
+      delta: t('certificateManage.statAdmissionHint', { count: admission.length }),
+      tone: 'neu' as const,
+      icon: Document,
+    },
+    {
+      label: t('certificateManage.statAdmissionActive'),
+      value: activeAdmission,
+      unit: t('certificateManage.statUnitCerts'),
+      delta: t('certificateManage.statAdmissionActiveHint'),
+      tone: 'pos' as const,
+      icon: CircleCheck,
+    },
+    {
+      label: t('certificateManage.statAdmissionRevoked'),
+      value: revokedAdmission,
+      unit: t('certificateManage.statUnitCerts'),
+      delta: t('certificateManage.statAdmissionRevokedHint'),
+      tone: revokedAdmission > 0 ? ('neg' as const) : ('neu' as const),
+      icon: CircleClose,
+    },
+    {
+      label: t('certificateManage.statQualification'),
+      value: qualificationTotal.value,
+      unit: t('certificateManage.statUnitCerts'),
+      delta: t('certificateManage.statQualificationHint', { count: qualificationList.value.length }),
+      tone: 'neu' as const,
+      icon: Stamp,
+    },
+  ]
+})
+
 function onAdmissionSizeChange(size: number): void {
   admissionPageSize.value = size
   admissionPage.value = 1
@@ -220,25 +266,30 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="certificate-page">
-    <el-card class="section-card" shadow="never">
-      <el-breadcrumb separator="/">
-        <el-breadcrumb-item>{{ t('certificateManage.breadcrumbAdmin') }}</el-breadcrumb-item>
-        <el-breadcrumb-item>{{ t('certificateManage.breadcrumbCertificate') }}</el-breadcrumb-item>
-      </el-breadcrumb>
-    </el-card>
+  <section class="certificate-page pen-enter">
+    <PageHeader
+      :title="t('certificateManage.title')"
+      :description="t('certificateManage.description')"
+      :crumbs="[t('certificateManage.breadcrumbAdmin'), t('certificateManage.breadcrumbCertificate')]"
+    />
 
     <PageHint :text="t('pageHints.certificateManage')" />
 
-    <el-card class="section-card" shadow="never">
-      <el-tabs v-model="activeTab" @tab-change="onTabChange">
-        <el-tab-pane :label="t('certificateManage.tabAdmission')" name="admission">
-          <div style="margin-bottom: 14px;">
+    <StatStrip :items="overviewStats" :loading="admissionLoading || qualificationLoading" />
+
+    <el-tabs v-model="activeTab" class="certificate-tabs" @tab-change="onTabChange">
+      <el-tab-pane :label="t('certificateManage.tabAdmission')" name="admission">
+        <DataPanel
+          :title="t('certificateManage.panelAdmissionTitle')"
+          :meta="t('certificateManage.panelAdmissionMeta', { total: admissionTotal })"
+        >
+          <template #actions>
             <el-button type="primary" @click="openIssueDialog('admission')">
               {{ t('certificateManage.issue') }}
             </el-button>
-          </div>
-          <el-table :data="admissionList" border v-loading="admissionLoading">
+          </template>
+
+          <el-table :data="admissionList" v-loading="admissionLoading">
             <template #empty>
               <EmptyHint
                 :description="t('nextSteps.emptyCertificatesTip')"
@@ -268,7 +319,8 @@ onMounted(() => {
               </template>
             </el-table-column>
           </el-table>
-          <div class="pagination-row">
+
+          <template #footer>
             <el-pagination
               v-model:current-page="admissionPage"
               v-model:page-size="admissionPageSize"
@@ -279,16 +331,22 @@ onMounted(() => {
               @size-change="onAdmissionSizeChange"
               @current-change="onAdmissionCurrentChange"
             />
-          </div>
-        </el-tab-pane>
+          </template>
+        </DataPanel>
+      </el-tab-pane>
 
-        <el-tab-pane :label="t('certificateManage.tabQualification')" name="qualification">
-          <div style="margin-bottom: 14px;">
+      <el-tab-pane :label="t('certificateManage.tabQualification')" name="qualification">
+        <DataPanel
+          :title="t('certificateManage.panelQualificationTitle')"
+          :meta="t('certificateManage.panelQualificationMeta', { total: qualificationTotal })"
+        >
+          <template #actions>
             <el-button type="primary" @click="issueDialogVisible = true; issueType = 'qualification'">
               {{ t('certificateManage.issue') }}
             </el-button>
-          </div>
-          <el-table :data="qualificationList" border v-loading="qualificationLoading">
+          </template>
+
+          <el-table :data="qualificationList" v-loading="qualificationLoading">
             <template #empty>
               <EmptyHint
                 :description="t('nextSteps.emptyCertificatesTip')"
@@ -319,7 +377,8 @@ onMounted(() => {
               </template>
             </el-table-column>
           </el-table>
-          <div class="pagination-row">
+
+          <template #footer>
             <el-pagination
               v-model:current-page="qualificationPage"
               v-model:page-size="qualificationPageSize"
@@ -330,10 +389,10 @@ onMounted(() => {
               @size-change="onQualificationSizeChange"
               @current-change="onQualificationCurrentChange"
             />
-          </div>
-        </el-tab-pane>
-      </el-tabs>
-    </el-card>
+          </template>
+        </DataPanel>
+      </el-tab-pane>
+    </el-tabs>
 
     <el-dialog v-model="issueDialogVisible" :title="t('certificateManage.issue')" width="400px">
       <el-form v-if="issueType === 'admission'">
@@ -373,17 +432,10 @@ onMounted(() => {
 .certificate-page {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-5);
 }
 
-.section-card {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-}
-
-.pagination-row {
-  margin-top: 14px;
-  display: flex;
-  justify-content: flex-end;
+.certificate-tabs :deep(.el-tabs__header) {
+  margin-bottom: var(--space-4);
 }
 </style>

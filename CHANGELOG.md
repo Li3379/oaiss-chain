@@ -2,6 +2,104 @@
 
 All notable optimizations to the OAISS CHAIN platform are documented here.
 
+## [1.6.0] - 2026-10-30
+
+### 全链路闭环修复 + 实机验收 + 测试基础设施治理
+
+**背景**：逐页面×角色的闭环检阅发现，多个「文档声称已实现」的能力在界面上没有入口，流程走到某一步即永久停滞。本轮接通 5 条断链，并在真实环境（MySQL/Redis/MinIO/Fabric 全栈）逐条实机验收。
+
+#### 一、碳中和项目生命周期打通（三处断链）
+
+后端状态机完整，但前端缺三个入口：
+
+- **审核入口缺失**：`POST /carbon-neutral/{id}/review` 前端零引用 → 企业提交后永远停在 `status=1`。
+  审核员端 `ProjectReview.vue` 扩为**双 Tab**（待审核 / 待核证），「待审核」每行提供通过/驳回。
+- **申请核证入口缺失**：企业端无按钮把 `verificationStatus` 推到 1 → 审核员核证工单池恒为空。
+  `CarbonNeutral.vue` 与 `CarbonNeutralDetail.vue` 新增「申请核证」（弹窗录入核证机构 ID）。
+- **完成认证入口缺失**：`POST /{id}/certify` 前端零引用 → `certStatus` 永远到不了 2。
+  「待核证」Tab 增设「已核证待认证」区块，录入证书编号完成签发。
+- **修正逻辑错位**：`canCertify` 原按 `status===3` 判断，后端要求 `verificationStatus===2`，点击必报 3003。
+- **修正契约缺陷**：三个 api 包装器不传请求体，与后端 DTO 的 `@NotNull` 冲突，调用必 400。
+
+**实机验收**：项目 0→6 全链路 8/8 步通过，终态 `status=4 / verificationStatus=2 / certStatus=2`。
+
+#### 二、附件三重断链（安全相关）
+
+- **权限注解自相矛盾**：`/file/download` 与 `/file/presigned-url` 注解写死 `ENTERPRISE, ADMIN`，把 REVIEWER 挡在外面；而同类 `checkDownloadPermission()` 内部早已写好 `userType==2/3` 放行分支——**那段代码永远不可达**。注解改为四角色，属主/归属校验与 Fail-Closed 语义全部保留。
+- **存的是不可访问地址**：上传落库的是 MinIO 无签名直连 URL（桶私有，打开必 403）。改为同时保存 `objectName`，保留 `url` 兼容历史数据。
+- **审核弹窗无附件区块**：仅用布尔值生成一句文案，审核员看不到凭据却被引导点「通过」。新增附件区块：文件名、大小、SHA-256，下载走预签名链接；老数据从 URL 反推 `objectName`。
+
+**实机验收**：预签名 URL 含 `X-Amz-Signature`，真实 GET 返回 200 + 文件内容；审核员访问 `/file/list` 仍 403。
+
+#### 三、信誉分接入交易链（原为「只写不读」死数据）
+
+- **前置风控闸门**：`TradeService` 与 `DoubleAuctionService` 四个挂单入口接入 `checkTradePermission`。
+- **闸门必须先于自成交检查**：否则冻结账户会先收到「挂单方向冲突」这类次要提示。
+- **同价信誉优先**：撮合保持价格优先，仅同价位时以信誉分降序为次级键；查不到按中性 50 处理。
+
+**实机验收**：信誉压至 0（FROZEN）后，买卖双向挂单均返回 `4012`。
+
+#### 四、监管交易穿透 + 市场搜索匿名化
+
+- **监管端原本看不到任何交易**：不是权限问题（`TradeController` 早已放行 THIRD_PARTY），是产品层没接线。
+  `ThirdPartyService` 新增交易笔数/总量/总额聚合；`Monitor.vue` 新增只读交易流水面板（含上链哈希与完成时间）。
+- **需求 3.3.2 匿名化零实现**：`SearchService.searchTrades` 按角色分流——ADMIN/THIRD_PARTY 保留实名，
+  ENTERPRISE/REVIEWER 返回 `匿名企业-<8位HEX>`（SHA-256(固定盐 + enterpriseId)，跨记录恒等、同笔交易两侧不同）。
+- 新增通用搜索页 `/search`（四角色可访问，双 Tab），四角色菜单与图标栏同步配齐五字段。
+
+**实机验收**：同一笔交易，企业看到 `匿名企业-4D088839`，监管看到 `孙六`；监管面板 81 笔、137,506 tCO₂e、191,526.01 元。
+
+#### 五、AI 输出诚实化
+
+- **删除伪造兜底**：ML 服务 `total<=0` 时凭空填充 `370.50/250.50/120.00/22.00`，改为 `insufficient_data=true` + 原因说明。
+- **审核页「AI 预审」是硬编码假结论**：本地三元表达式拼出「AI 建议通过」却从未调用模型。改为诚实的「**规则预检（非 AI 模型）**」并附免责说明。
+- **LLM 配置显式化**：`llm_api_*` 从 `getattr` 兜底提升为 `config.py` 正式字段，未配置即标注走内置规则引擎。
+
+#### 六、文档归一
+
+- i18n 计数在四份活文档里为 1441/1826 等多个值，统一到脚本实测 **2039**。
+- 架构规格书端点数字 146/139/134 三方并存，统一到 **148**。
+- 补 3 处状态机/权限矩阵事实说明（`UNDER_REVIEW` 不可达、`FAILED` 从不写入、两行权限与 `@PreAuthorize` 不符）。
+
+#### 七、测试基础设施治理
+
+| 缺陷 | 影响 | 修复 |
+|---|---|---|
+| `db-config.sh` 路径少一级 | 4 个脚本直接退出 | `$SCRIPT_DIR/../db-config.sh` |
+| `aop-test.sh` 的 `WORK_DIR` / `start-backend.sh` 路径错 | 无法定位源码，误停后端 | `../..` 与 `../start-backend.sh` |
+| `edge-test.sh` 的 `WORK_DIR` 少一级 | i18n 检查恒失败 4 项 | `../..` |
+| `double-auction-test.sh` 的 `SERVICE_FILE` 少一级 | `@Transactional` 检查恒失败 | `../../` |
+| 全部 23 个脚本假设「登录无需验证码」 | 默认配置下必然登录失败 | `.env.example` 补 `SECURITY_CAPTCHA_ENABLED` 并文档化 |
+| `carbon-report-test.sh` 断言审核后 `status==3` | 方案 A 自动上链后为 5 | 接受 3 或 5 |
+| `double-auction-test.sh` 未重置碳币余额 | 买入挂单因余额不足 4001 | 补余额重置 |
+
+**API 集成测试最终结果**：22/23 脚本全绿，累计 220 项断言通过。
+
+#### 门禁与验证
+
+- `doc-verify.mjs` ✅ 16/16（148 端点 / 23 Controller / 25 Entity / 24 表 / 2039 i18n）
+- `role-matrix-verify.mjs` ✅ / `i18n-verify.mjs` ✅
+- `vue-tsc` ✅ 0 error / `vitest` ✅ **380 passed**
+- 前端生产构建 ✅ 2.13s / 后端 `package` ✅ 117 MB jar
+- ML `pytest` ✅ **46 passed**
+- `closure-audit.mjs` ✅ 结构性完整 / `validate-prod-env.mjs` ✅
+
+**已知遗留**：`CarbonNeutralProjectControllerTest` 两个用例与 `BusinessScenarioTest` 集成用例在**基线即失败**（已用 stash 复跑验证），与本轮改动无关，需另行修夹具。
+
+## [1.5.3] - 2026-10-28
+
+### 双向拍卖 CDA 自动撮合闭环（闭合缺陷 C-2 / D-03）
+
+**问题**：撮合引擎是「批量集合竞价」，必须有外部时钟驱动，但项目里 `POST /auction/match` 是唯一出口且仅 ADMIN 可调、管理员端又没有对应页面。结果是企业挂单后**永远不会成交**，`TradingMarket.vue` 的「等待下次撮合」文案实际在承诺一个不存在的机制。文档《系统设计与架构规格书》§4.5.1 却写着「系统自动撮合匹配」，与实现不符。
+
+- **新增自动撮合时钟**：`AuctionMatchingScheduler` —— `@Scheduled` 每 30 秒调用 `executeMatching()` 出清一轮，`initialDelay` 60 秒避开启动预热。与手动端点共享 `@DistributedLock(key='auction:matching')`，多实例/并发触发天然不会重复结算。
+- **系统身份审计**：定时触发无 HTTP 请求，`@AuditLog` 切面不生效，故调度器在**真正产生成交时**手工落一条 `OperationLog`（`SYSTEM-AUCTION-MATCHER`，含笔数与累计成交量）；无成交不写，避免每 30 秒刷屏。
+- **新增管理员撮合控制台** `/admin/trading/matching`（`views/admin/AuctionMatching.vue`）：运行态状态条（自动撮合开关 / 出清周期 / 买盘卖盘待撮合数 / 上次成交时间，15 秒自刷新）+【立即撮合】手动补触发 + 全站成交明细表。
+- **新增端点**：`GET /auction/matching-status`（运行态）、`GET /auction/all-results`（全平台成交明细，ADMIN；企业侧 `/auction/results` 仍只返回本人成交，不暴露交易对手）。端点总数 146 → 148。
+- **文案纠偏**：企业交易大厅新增「平台每 30 秒自动撮合」提示条，`matchGuideText` 改为说明自动周期；成交通知补注「系统自动撮合」。
+- **测试**：后端新增 `AuctionMatchingSchedulerTest`（8 例：定时注解存在性、开关生效链路、审计聚合量、锁竞争与异常兜底）+ `DoubleAuctionControllerTest` 补 2 例新端点；前端新增 `AuctionMatching.test.ts`（5 例：挂载加载、成功/空/失败三态、连点防抖）。
+- **门禁**：doc-verify 148 端点 / 38 Service / 1731 i18n 全绿；role-matrix-verify 全绿；style-guard 0 violation；vue-tsc 0 error；vitest 361 passed；后端拍卖域 67 tests 全绿。
+
 ## [1.5.2] - 2026-09-10
 
 ### 核心链路细究深磨：碳核算与 Fabric 存证全流程体验与密码学语义重塑

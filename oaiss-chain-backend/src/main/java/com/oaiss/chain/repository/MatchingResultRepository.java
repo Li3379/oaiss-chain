@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Optional;
+
 /**
  * 撮合结果 Repository
  *
@@ -24,4 +26,9 @@ public interface MatchingResultRepository extends JpaRepository<MatchingResult, 
      * 分页查询所有撮合结果
      */
     Page<MatchingResult> findByDeletedFalse(Pageable pageable);
+
+    /**
+     * 查询最近一条撮合结果（撮合控制台展示「上次出清时间」）
+     */
+    Optional<MatchingResult> findFirstByDeletedFalseOrderByCreatedAtDesc();
 }

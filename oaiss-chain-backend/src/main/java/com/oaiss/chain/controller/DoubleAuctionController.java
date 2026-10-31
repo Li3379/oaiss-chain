@@ -2,9 +2,11 @@ package com.oaiss.chain.controller;
 
 import com.oaiss.chain.dto.AuctionOrderRequest;
 import com.oaiss.chain.dto.AuctionOrderResponse;
+import com.oaiss.chain.dto.AuctionMatchingStatusResponse;
 import com.oaiss.chain.dto.ApiResponse;
 import com.oaiss.chain.dto.MatchingResultResponse;
 import com.oaiss.chain.security.JwtUserDetails;
+import com.oaiss.chain.service.AuctionMatchingScheduler;
 import com.oaiss.chain.service.DoubleAuctionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -27,9 +29,13 @@ import com.oaiss.chain.annotation.AuditLog;
  * 【服务角色】：企业用户 (ENTERPRISE)、系统管理员 (ADMIN)
  * 【对应前端页面与路由】：
  *   - 双向拍卖交易大厅: views/enterprise/TradingMarket.vue -> 路由: /enterprise/trading/market
+ *   - 撮合控制台: views/admin/AuctionMatching.vue -> 路由: /admin/trading/matching
  *   - 订单管理页面: views/enterprise/OrdersManage.vue -> 路由: /enterprise/orders/manage
  *   - 企业数据综合大屏: views/enterprise/CompanyDashboard.vue -> 路由: /enterprise/company/dashboard
  * 【调用前端 API 模块】：src/api/auction.ts
+ * 【撮合驱动】：
+ *   - 主路径：AuctionMatchingScheduler 每 30 秒自动出清一轮（无需任何人工操作）
+ *   - 兜底：本 Controller 的 POST /match，管理员在控制台点击【立即撮合】时调用
  * ==============================================================================
  */
 @RestController
@@ -39,6 +45,7 @@ import com.oaiss.chain.annotation.AuditLog;
 public class DoubleAuctionController {
 
     private final DoubleAuctionService doubleAuctionService;
+    private final AuctionMatchingScheduler auctionMatchingScheduler;
 
     /**
      * 【业务功能】：企业提交碳配额双向竞价买入挂单（买盘申报价与申购量）
@@ -87,23 +94,69 @@ public class DoubleAuctionController {
     }
 
     /**
-     * 【业务功能】：管理员或撮合定时器触发双向拍卖撮合算法执行（K-Double Auction 机制出清）
-     * 【对应前端页面】：views/enterprise/TradingMarket.vue (或后台撮合定时任务)
+     * 【业务功能】：管理员手动立即触发一轮撮合出清（自动撮合的兜底与演示入口）
+     * 【对应前端页面】：views/admin/AuctionMatching.vue (/admin/trading/matching)
      * 【对应前端API】：api/auction.ts -> executeMatching()
-     * 【可见UI操作】：点击【执行撮合】按钮手动出清或由撮合守护线程自动触发
+     * 【可见UI操作】：在撮合控制台点击【立即撮合】按钮
+     * 【说明】：平台默认每 30 秒自动撮合一次（AuctionMatchingScheduler），本端点是
+     *         "不必等待下一个周期，立刻出清一轮" 的手动补触发；与定时任务共享
+     *         同一把 Redis 分布式锁，天然不会重复撮合。
      */
     @AuditLog(module = "双向拍卖", action = "EXECUTEMATCHING", description = "双向拍卖 EXECUTEMATCHING")
     @PostMapping("/match")
-    @Operation(summary = "执行撮合", description = "执行双向拍卖撮合算法，按价格优先、时间优先原则匹配买卖挂单")
+    @Operation(summary = "执行撮合", description = "手动立即执行一轮双向拍卖撮合。系统默认每 30 秒自动撮合，本接口用于无需等待周期的即时出清")
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "撮合执行成功"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "未授权访问"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "仅管理员可执行撮合")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "仅管理员可执行撮合"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "另一轮撮合正在进行")
     })
     @SecurityRequirement(name = "Bearer Authentication")
     @PreAuthorize("hasRole('ADMIN')")
     public ApiResponse<List<MatchingResultResponse>> executeMatching() {
         return ApiResponse.success(doubleAuctionService.executeMatching());
+    }
+
+    /**
+     * 【业务功能】：查询自动撮合运行态与当前盘口待撮合规模
+     * 【对应前端页面】：views/admin/AuctionMatching.vue (/admin/trading/matching)
+     * 【对应前端API】：api/auction.ts -> getMatchingStatus()
+     * 【可见UI操作】：撮合控制台顶部状态条展示「自动撮合：每 30 秒」「买盘待撮合 N 单」
+     */
+    @GetMapping("/matching-status")
+    @Operation(summary = "查询撮合运行态", description = "返回自动撮合开关、间隔、买卖盘待撮合挂单数与最近一次成交时间")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "查询成功"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "仅管理员可查询")
+    })
+    @SecurityRequirement(name = "Bearer Authentication")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<AuctionMatchingStatusResponse> getMatchingStatus() {
+        return ApiResponse.success(doubleAuctionService.getMatchingStatus(
+                auctionMatchingScheduler.isAutoMatchingEnabled(),
+                auctionMatchingScheduler.getIntervalMs()));
+    }
+
+    /**
+     * 【业务功能】：管理员查询全平台撮合成交明细（不限本人）
+     * 【对应前端页面】：views/admin/AuctionMatching.vue (/admin/trading/matching)
+     * 【对应前端API】：api/auction.ts -> getAllMatchResults()
+     * 【可见UI操作】：撮合控制台下方「全站成交明细」表格
+     * 【说明】：企业侧 GET /auction/results 只返回与本人相关的成交；
+     *         本端点返回全局，故单独授权 ADMIN，避免企业看到他人交易对手。
+     */
+    @GetMapping("/all-results")
+    @Operation(summary = "查询全平台撮合结果", description = "管理员查询全平台撮合成交明细，用于撮合控制台监控")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "查询成功"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "仅管理员可查询")
+    })
+    @SecurityRequirement(name = "Bearer Authentication")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<Page<MatchingResultResponse>> listAllMatchingResults(
+            @Parameter(description = "页码（从1开始）", example = "1") @RequestParam(defaultValue = "1") Integer page,
+            @Parameter(description = "每页大小", example = "20") @RequestParam(defaultValue = "20") Integer size) {
+        return ApiResponse.success(doubleAuctionService.listAllMatchingResults(page, size));
     }
 
     /**

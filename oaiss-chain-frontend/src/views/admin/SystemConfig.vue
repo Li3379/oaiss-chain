@@ -17,8 +17,13 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
+import { CircleCheck, CircleClose, Setting, Tickets } from '@element-plus/icons-vue'
 import { getConfig } from '../../api/admin'
 import type { AdminConfigResponse } from '../../types'
+import PageHeader from '../../components/pen/PageHeader.vue'
+import StatStrip from '../../components/pen/StatStrip.vue'
+import FilterBar from '../../components/pen/FilterBar.vue'
+import DataPanel from '../../components/pen/DataPanel.vue'
 import PageHint from '../../components/PageHint.vue'
 
 const { t } = useI18n()
@@ -86,6 +91,49 @@ const pagedData = computed(() => {
   return filteredData.value.slice(start, start + pageSize.value)
 })
 
+/** 首屏统计条：全部由已加载的配置项推导，不新增接口请求 */
+const overviewStats = computed(() => {
+  const rows = configList.value
+  const enabled = rows.filter((row) => row.value === 'true').length
+  const disabled = rows.filter((row) => row.value === 'false').length
+  const version = rows.find((row) => row.name === 'version')?.value ?? '-'
+
+  return [
+    {
+      label: t('systemConfig.statTotalConfigs'),
+      value: rows.length,
+      unit: t('systemConfig.statUnitItems'),
+      delta: t('systemConfig.statTotalHint'),
+      tone: 'neu' as const,
+      icon: Tickets,
+    },
+    {
+      label: t('systemConfig.statEnabledSwitches'),
+      value: enabled,
+      unit: t('systemConfig.statUnitSwitches'),
+      delta: t('systemConfig.statEnabledHint'),
+      tone: enabled > 0 ? ('pos' as const) : ('neu' as const),
+      icon: CircleCheck,
+    },
+    {
+      label: t('systemConfig.statDisabledSwitches'),
+      value: disabled,
+      unit: t('systemConfig.statUnitSwitches'),
+      delta: t('systemConfig.statDisabledHint'),
+      tone: disabled > 0 ? ('neg' as const) : ('neu' as const),
+      icon: CircleClose,
+    },
+    {
+      label: t('systemConfig.statVersion'),
+      value: version,
+      unit: '',
+      delta: t('systemConfig.statVersionHint'),
+      tone: 'neu' as const,
+      icon: Setting,
+    },
+  ]
+})
+
 const loadConfigs = async () => {
   try {
     loading.value = true
@@ -118,44 +166,44 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="config-page">
-    <el-card class="section-card" shadow="never">
-      <el-breadcrumb separator="/">
-        <el-breadcrumb-item>{{ t('systemConfig.breadcrumbSystem') }}</el-breadcrumb-item>
-        <el-breadcrumb-item>{{ t('systemConfig.breadcrumbConfig') }}</el-breadcrumb-item>
-      </el-breadcrumb>
-    </el-card>
+  <section class="config-page pen-enter">
+    <PageHeader
+      :title="t('systemConfig.title')"
+      :description="t('systemConfig.description')"
+      :crumbs="[t('systemConfig.breadcrumbSystem'), t('systemConfig.breadcrumbConfig')]"
+    />
 
     <PageHint :text="t('pageHints.systemConfig')" />
 
-    <el-card class="section-card" shadow="never">
-      <el-form :inline="true" class="search-form">
-        <el-form-item :label="t('systemConfig.searchDesc')">
-          <el-input v-model="searchForm.description" :placeholder="t('systemConfig.enterDesc')" clearable />
-        </el-form-item>
+    <StatStrip :items="overviewStats" :loading="loading" />
 
-        <el-form-item :label="t('systemConfig.searchName')">
-          <el-input v-model="searchForm.name" :placeholder="t('systemConfig.enterName')" clearable />
-        </el-form-item>
+    <FilterBar :aria-label="t('systemConfig.filterLabel')">
+      <label class="pen-field">
+        <span class="pen-field__label">{{ t('systemConfig.searchDesc') }}</span>
+        <el-input v-model="searchForm.description" :placeholder="t('systemConfig.enterDesc')" clearable @keyup.enter="onQuery" />
+      </label>
 
-        <el-form-item>
-          <el-button type="primary" @click="onQuery">{{ t('common.search') }}</el-button>
-          <el-button plain @click="loadConfigs">{{ t('common.refresh') }}</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+      <label class="pen-field">
+        <span class="pen-field__label">{{ t('systemConfig.searchName') }}</span>
+        <el-input v-model="searchForm.name" :placeholder="t('systemConfig.enterName')" clearable @keyup.enter="onQuery" />
+      </label>
 
-    <el-card class="section-card" shadow="never">
-      <div class="table-tip">{{ t('common.total', { count: total }) }}</div>
+      <el-button type="primary" @click="onQuery">{{ t('common.search') }}</el-button>
+      <el-button @click="loadConfigs">{{ t('common.refresh') }}</el-button>
+    </FilterBar>
 
-      <el-table :data="pagedData" border v-loading="loading">
+    <DataPanel
+      :title="t('systemConfig.panelTitle')"
+      :meta="t('common.total', { count: total })"
+    >
+      <el-table :data="pagedData" v-loading="loading">
         <el-table-column prop="description" :label="t('systemConfig.searchDesc')" min-width="220" />
         <el-table-column prop="name" :label="t('systemConfig.searchName')" min-width="180" />
         <el-table-column prop="value" :label="t('systemConfig.colConfigValue')" min-width="220" show-overflow-tooltip />
         <el-table-column prop="updatedBy" :label="t('systemConfig.colUpdatedBy')" min-width="120" />
       </el-table>
 
-      <div class="pagination-row">
+      <template #footer>
         <el-pagination
           v-model:current-page="page"
           v-model:page-size="pageSize"
@@ -166,8 +214,8 @@ onMounted(() => {
           @size-change="onSizeChange"
           @current-change="onCurrentChange"
         />
-      </div>
-    </el-card>
+      </template>
+    </DataPanel>
   </section>
 </template>
 
@@ -175,28 +223,6 @@ onMounted(() => {
 .config-page {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-}
-
-.section-card {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-}
-
-.search-form {
-  display: flex;
-  flex-wrap: wrap;
-}
-
-.table-tip {
-  margin-bottom: 10px;
-  color: var(--color-text-muted);
-  font-size: var(--text-sm);
-}
-
-.pagination-row {
-  margin-top: 14px;
-  display: flex;
-  justify-content: flex-end;
+  gap: var(--space-5);
 }
 </style>

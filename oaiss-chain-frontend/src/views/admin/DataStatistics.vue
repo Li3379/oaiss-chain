@@ -14,12 +14,15 @@
  *     * GET /api/v1/admin/dashboard  -> getDashboard() 获取系统仪表盘数据
  * ==============================================================================
  */
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { User, OfficeBuilding, DocumentChecked, UserFilled } from '@element-plus/icons-vue'
 import echarts from '../../utils/echarts'
 import { getStatistics } from '../../api/admin'
+import PageHeader from '../../components/pen/PageHeader.vue'
+import StatStrip from '../../components/pen/StatStrip.vue'
+import DataPanel from '../../components/pen/DataPanel.vue'
 import PageHint from '../../components/PageHint.vue'
 
 const { t, locale } = useI18n()
@@ -54,6 +57,48 @@ const getUserTypeDistribution = computed(() => {
     { name: t('dataStatistics.pieThirdParty'), value: statistics.value.thirdPartyCount },
     { name: t('dataStatistics.pieAdmin'), value: statistics.value.totalUsers - statistics.value.enterpriseCount - statistics.value.reviewerCount - statistics.value.thirdPartyCount },
   ].filter(item => item.value > 0)
+})
+
+/** 首屏统计条：全部由已加载的统计接口返回值推导，不新增接口请求 */
+const overviewStats = computed(() => {
+  const s = statistics.value
+  const adminCount = Math.max(0, s.totalUsers - s.enterpriseCount - s.reviewerCount - s.thirdPartyCount)
+  const enterpriseShare = s.totalUsers > 0 ? Number(((s.enterpriseCount / s.totalUsers) * 100).toFixed(1)) : 0
+
+  return [
+    {
+      label: t('dataStatistics.statTotalUsers'),
+      value: s.totalUsers,
+      unit: t('dataStatistics.statUnitUsers'),
+      delta: t('dataStatistics.statAdminHint', { count: adminCount }),
+      tone: 'neu' as const,
+      icon: User,
+    },
+    {
+      label: t('dataStatistics.statEnterpriseCount'),
+      value: s.enterpriseCount,
+      unit: t('dataStatistics.statUnitEnterprises'),
+      delta: t('dataStatistics.statShareHint', { count: enterpriseShare }),
+      tone: 'pos' as const,
+      icon: OfficeBuilding,
+    },
+    {
+      label: t('dataStatistics.statAuditorCount'),
+      value: s.reviewerCount,
+      unit: t('dataStatistics.statUnitUsers'),
+      delta: t('dataStatistics.statAuditorHint'),
+      tone: 'neu' as const,
+      icon: DocumentChecked,
+    },
+    {
+      label: t('dataStatistics.statThirdPartyCount'),
+      value: s.thirdPartyCount,
+      unit: t('dataStatistics.statUnitEnterprises'),
+      delta: t('dataStatistics.statThirdPartyHint'),
+      tone: 'neu' as const,
+      icon: UserFilled,
+    },
+  ]
 })
 
 const renderChart = async () => {
@@ -125,53 +170,25 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="stats-page">
-    <el-card class="section-card" shadow="never">
-      <el-breadcrumb separator="/">
-        <el-breadcrumb-item>{{ t('dataStatistics.breadcrumbDataManage') }}</el-breadcrumb-item>
-        <el-breadcrumb-item>{{ t('dataStatistics.breadcrumbStatistics') }}</el-breadcrumb-item>
-      </el-breadcrumb>
-    </el-card>
+  <section class="stats-page pen-enter">
+    <PageHeader
+      :title="t('dataStatistics.title')"
+      :description="t('dataStatistics.description')"
+      :crumbs="[t('dataStatistics.breadcrumbDataManage'), t('dataStatistics.breadcrumbStatistics')]"
+    />
 
     <PageHint :text="t('pageHints.dataStatistics')" />
 
-    <div class="stats-grid">
-      <el-card class="stat-card" shadow="never" v-loading="loading">
-        <el-statistic :title="t('dataStatistics.statTotalUsers')" :value="statistics.totalUsers">
-          <template #prefix>
-            <el-icon><User /></el-icon>
-          </template>
-        </el-statistic>
-      </el-card>
+    <StatStrip :items="overviewStats" :loading="loading" />
 
-      <el-card class="stat-card" shadow="never" v-loading="loading">
-        <el-statistic :title="t('dataStatistics.statEnterpriseCount')" :value="statistics.enterpriseCount">
-          <template #prefix>
-            <el-icon><OfficeBuilding /></el-icon>
-          </template>
-        </el-statistic>
-      </el-card>
-
-      <el-card class="stat-card" shadow="never" v-loading="loading">
-        <el-statistic :title="t('dataStatistics.statAuditorCount')" :value="statistics.reviewerCount">
-          <template #prefix>
-            <el-icon><DocumentChecked /></el-icon>
-          </template>
-        </el-statistic>
-      </el-card>
-
-      <el-card class="stat-card" shadow="never" v-loading="loading">
-        <el-statistic :title="t('dataStatistics.statThirdPartyCount')" :value="statistics.thirdPartyCount">
-          <template #prefix>
-            <el-icon><UserFilled /></el-icon>
-          </template>
-        </el-statistic>
-      </el-card>
-    </div>
-
-    <el-card class="chart-card" shadow="never">
-      <div ref="chartRef" class="chart-box" />
-    </el-card>
+    <DataPanel
+      :title="t('dataStatistics.panelTitle')"
+      :meta="t('dataStatistics.panelMeta', { total: statistics.totalUsers })"
+    >
+      <div class="chart-wrap">
+        <div ref="chartRef" class="chart-box" />
+      </div>
+    </DataPanel>
   </section>
 </template>
 
@@ -179,34 +196,15 @@ onBeforeUnmount(() => {
 .stats-page {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-5);
 }
 
-.section-card,
-.stat-card,
-.chart-card {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 14px;
-}
-
-.stat-card {
-  padding: 20px;
+.chart-wrap {
+  padding: var(--space-4);
 }
 
 .chart-box {
   width: 100%;
   height: 400px;
-}
-
-@media (max-width: 768px) {
-  .stats-grid {
-    grid-template-columns: 1fr;
-  }
 }
 </style>

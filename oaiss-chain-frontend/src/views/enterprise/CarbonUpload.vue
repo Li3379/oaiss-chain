@@ -26,14 +26,17 @@
  */
 import { reactive, ref, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowRight, CopyDocument, Cpu, DataAnalysis, Document, Key, Link, Lock, Paperclip, Search, TrendCharts, Warning } from '@element-plus/icons-vue'
+import { ArrowRight, Clock, CopyDocument, Cpu, DataAnalysis, Document, Key, Link, Lock, Paperclip, Search, TrendCharts, Warning } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { getMyReports, createReport, deleteReport, submitReport, getReport, getAiReportAnalysis, type AiReportAnalysisResponse } from '../../api/carbon'
 import { getKeyPair } from '../../api/signature'
 import { uploadFile } from '../../api/file'
 import type { CarbonReportResponse, RsaKeyPairResponse } from '../../types'
 import { formatDateTime, formatNumber } from '../../utils/format'
-import PageHint from '../../components/PageHint.vue'
+import PageHeader from '../../components/pen/PageHeader.vue'
+import StatStrip from '../../components/pen/StatStrip.vue'
+import FilterBar from '../../components/pen/FilterBar.vue'
+import DataPanel from '../../components/pen/DataPanel.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import EmissionDataPanel from '../../components/EmissionDataPanel.vue'
 import TermTip from '../../components/TermTip.vue'
@@ -44,16 +47,19 @@ const { t } = useI18n()
 const aiAnalysisDialogVisible = ref(false)
 const aiAnalysisLoading = ref(false)
 const aiAnalysisData = ref<AiReportAnalysisResponse | null>(null)
+const aiAnalysisError = ref('')
 
 const onGenerateAiAnalysis = async (report: CarbonReportResponse | null) => {
   if (!report) return
   aiAnalysisDialogVisible.value = true
   aiAnalysisLoading.value = true
   aiAnalysisData.value = null
+  aiAnalysisError.value = ''
 
   let totalEm = Number(report.totalEmission) || 0
   let s1 = Number(report.scope1Emission) || 0
   let s2 = Number(report.scope2Emission) || 0
+  let desulf = 0
 
   // 深度解析：若表字段为0，从结构化 emissionData 中反向提取真实排放量
   if (totalEm === 0 && report.emissionData) {
@@ -62,6 +68,7 @@ const onGenerateAiAnalysis = async (report: CarbonReportResponse | null) => {
       if (typeof ed.totalEmission === 'number' && ed.totalEmission > 0) totalEm = ed.totalEmission
       if (typeof ed.scope1 === 'number' && ed.scope1 > 0) s1 = ed.scope1
       if (typeof ed.scope2 === 'number' && ed.scope2 > 0) s2 = ed.scope2
+      if (typeof ed.desulf === 'number' && ed.desulf > 0) desulf = ed.desulf
       if (Array.isArray(ed.scope1)) {
         s1 = ed.scope1.reduce((sum: number, it: any) => sum + (Number(it.activity_data) || 0) * (Number(it.emission_factor) || 0), 0)
       }
@@ -74,26 +81,28 @@ const onGenerateAiAnalysis = async (report: CarbonReportResponse | null) => {
     }
   }
 
-  // 典型基准兜底，彻底杜绝 0.00 吨产生的失真体验
+  // 不再用基准值兜底：没有排放量就如实上报 0，由 ML 服务返回「数据不足，无法生成诊断」
   if (totalEm === 0) {
-    totalEm = 370.5
-    s1 = 250.5
-    s2 = 120.0
+    s1 = 0
+    s2 = 0
+    desulf = 0
   }
 
   try {
     const res = await getAiReportAnalysis({
       report_id: report.id,
-      enterprise_name: report.enterpriseName || '绿色能源科技有限公司',
-      accounting_period: report.accountingPeriod || '2026-Q4',
+      // 企业名/周期缺失时如实传空，不再用虚构的企业名与周期填充诊断文本
+      enterprise_name: report.enterpriseName || '',
+      accounting_period: report.accountingPeriod || '',
       total_emission: totalEm,
       scope1_emission: s1,
       scope2_emission: s2,
-      desulf_emission: 22.0,
+      desulf_emission: desulf,
       emission_details: report.emissionData,
     })
     aiAnalysisData.value = res
   } catch {
+    aiAnalysisError.value = t('carbonUpload.aiAnalysisFailed')
     ElMessage.error(t('carbonUpload.aiAnalysisFailed'))
   } finally {
     aiAnalysisLoading.value = false
@@ -101,7 +110,8 @@ const onGenerateAiAnalysis = async (report: CarbonReportResponse | null) => {
 }
 
 const copyAiAnalysisText = () => {
-  if (aiAnalysisData.value?.full_text) {
+  // 数据不足时不提供可复制的「报告全文」，避免把说明文字当成诊断结论传播
+  if (aiAnalysisData.value?.full_text && !aiAnalysisData.value.insufficient_data) {
     navigator.clipboard.writeText(aiAnalysisData.value.full_text)
     ElMessage.success(t('carbonUpload.copiedAiAnalysis'))
   }
@@ -130,7 +140,9 @@ const formModel = reactive({
 })
 
 /* ---------- 附件：真实文件上传与 SHA-256 存证指纹计算 ---------- */
-type UploadedAttachment = { name: string; url: string; size: number; hash?: string }
+// objectName 是 MinIO 对象的真实主键，审核端凭它换取预签名链接；
+// url 仍保留落库以兼容历史数据（未签名直连地址在私有桶下不可访问，仅作留档）
+type UploadedAttachment = { name: string; objectName: string; url: string; size: number; hash?: string }
 const attachmentList = ref<UploadedAttachment[]>([])
 const attachmentUploading = ref(false)
 
@@ -152,7 +164,7 @@ function getReportStepIndex(status: number): number {
 
 const syncAttachments = () => {
   formModel.attachments = attachmentList.value.length > 0
-    ? JSON.stringify(attachmentList.value.map(({ name, url, size, hash }) => ({ name, url, size, hash })))
+    ? JSON.stringify(attachmentList.value.map(({ name, objectName, url, size, hash }) => ({ name, objectName, url, size, hash })))
     : ''
 }
 
@@ -165,6 +177,7 @@ const onAttachmentUpload = async (options: { file: File }) => {
     ])
     attachmentList.value.push({
       name: options.file.name,
+      objectName: result.objectName,
       url: result.url,
       size: result.size,
       hash: fileHash,
@@ -397,6 +410,63 @@ const fetchData = async () => {
 }
 
 const onQuery = () => { currentPage.value = 1; fetchData() }
+
+const onResetQuery = () => {
+  searchForm.title = ''
+  searchForm.accountingPeriod = ''
+  currentPage.value = 1
+  fetchData()
+}
+
+/* ---------- 批量送审：勾选草稿报告后一次性提交 ---------- */
+const selectedIds = ref<number[]>([])
+const batchSubmitting = ref(false)
+
+function toggleRowSelect(id: number, checked: boolean) {
+  if (checked) {
+    if (!selectedIds.value.includes(id)) selectedIds.value.push(id)
+  } else {
+    selectedIds.value = selectedIds.value.filter((x) => x !== id)
+  }
+}
+
+/** 页头右上角按钮：索引 0 = 批量送审（索引 1 = 创建，由页面内按钮承担） */
+async function onHeaderAction(index: number) {
+  if (index === 0) await onBatchSubmit()
+  else openAddDialog()
+}
+
+async function onBatchSubmit() {
+  if (batchSubmitting.value) return
+  if (selectedIds.value.length === 0) {
+    ElMessage.warning(t('carbonUpload.batchNoneSelected'))
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      t('carbonUpload.batchConfirm', { count: selectedIds.value.length }),
+      t('common.confirm'),
+      { type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  batchSubmitting.value = true
+  let ok = 0
+  for (const id of [...selectedIds.value]) {
+    try {
+      await submitReport(id)
+      ok += 1
+    } catch {
+      // 单条失败不阻断其余条目，最终按成功数汇总提示
+    }
+  }
+  batchSubmitting.value = false
+  selectedIds.value = []
+  if (ok > 0) ElMessage.success(t('carbonUpload.batchSuccess', { count: ok }))
+  if (ok < 1) ElMessage.error(t('carbonUpload.batchFailed'))
+  await fetchData()
+}
 const onSizeChange = (size: number) => { pageSize.value = size; currentPage.value = 1; fetchData() }
 const onCurrentChange = (page: number) => { currentPage.value = page; fetchData() }
 
@@ -458,6 +528,50 @@ const onDeleteReport = async (row: CarbonReportResponse) => {
   }
 }
 
+/** 首屏统计条：全部由已加载的本页数据推导，不新增接口请求 */
+const overviewStats = computed(() => {
+  const rows = tableData.value
+  const totalEmission = rows.reduce((sum, r) => sum + (Number(r.totalEmission) || 0), 0)
+  const pending = rows.filter((r) => r.status === 1 || r.status === 2).length
+  const onChain = rows.filter((r) => r.status === 5).length
+  const signed = rows.filter((r) => !!r.signatureData).length
+
+  return [
+    {
+      label: t('carbonUpload.statTotalEmission'),
+      value: Number(totalEmission.toFixed(1)),
+      unit: 'tCO2e',
+      delta: t('carbonUpload.statRowsCount', { count: total.value }),
+      tone: 'neu' as const,
+      icon: DataAnalysis,
+    },
+    {
+      label: t('carbonUpload.statPending'),
+      value: pending,
+      unit: t('carbonUpload.statUnitReports'),
+      delta: t('carbonUpload.statPendingHint'),
+      tone: pending > 0 ? ('neu' as const) : ('pos' as const),
+      icon: Clock,
+    },
+    {
+      label: t('carbonUpload.statOnChain'),
+      value: onChain,
+      unit: t('carbonUpload.statUnitReports'),
+      delta: t('carbonUpload.statOnChainHint'),
+      tone: 'pos' as const,
+      icon: Link,
+    },
+    {
+      label: t('carbonUpload.statSigned'),
+      value: `${signed}/${rows.length || 0}`,
+      unit: '',
+      delta: t('carbonUpload.statSignedHint'),
+      tone: signed > 0 ? ('pos' as const) : ('neu' as const),
+      icon: Key,
+    },
+  ]
+})
+
 const viewDetail = async (row: CarbonReportResponse) => {
   detailLoading.value = true
   detailDialogVisible.value = true
@@ -496,33 +610,38 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="upload-page">
-    <el-card class="section-card" shadow="never">
-      <el-breadcrumb separator="/">
-        <el-breadcrumb-item>{{ t('carbonUpload.breadcrumbAccounting') }}</el-breadcrumb-item>
-        <el-breadcrumb-item>{{ t('carbonUpload.breadcrumbUpload') }}</el-breadcrumb-item>
-      </el-breadcrumb>
-    </el-card>
+  <section class="upload-page pen-enter">
+    <PageHeader
+      :title="t('carbonUpload.pageTitle')"
+      :description="t('pageHints.carbonUpload')"
+      :crumbs="[t('carbonUpload.breadcrumbAccounting'), t('carbonUpload.breadcrumbUpload')]"
+      :actions="[
+        { label: t('carbonUpload.btnBatchSubmit'), variant: 'default', icon: Document, disabled: batchSubmitting },
+        { label: t('common.create'), variant: 'primary' },
+      ]"
+      @action="onHeaderAction"
+    />
 
-    <PageHint :text="t('pageHints.carbonUpload')" />
+    <StatStrip :items="overviewStats" :loading="loading" />
 
-    <el-card class="section-card" shadow="never">
-      <el-form :inline="true" :model="searchForm" class="search-form">
-        <el-form-item :label="t('carbonUpload.colReportTitle')">
-          <el-input v-model="searchForm.title" :placeholder="t('carbonUpload.enterReportTitle')" clearable />
-        </el-form-item>
-        <el-form-item :label="t('carbonUpload.colAccountingPeriod')">
-          <el-input v-model="searchForm.accountingPeriod" :placeholder="t('carbonUpload.enterAccountingPeriod')" clearable />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="onQuery">{{ t('common.search') }}</el-button>
-          <el-button type="primary" @click="openAddDialog">{{ t('common.create') }}</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+    <FilterBar :aria-label="t('carbonUpload.filterLabel')">
+      <label class="pen-field">
+        <span class="pen-field__label">{{ t('carbonUpload.colReportTitle') }}</span>
+        <el-input v-model="searchForm.title" :placeholder="t('carbonUpload.enterReportTitle')" clearable @keyup.enter="onQuery" />
+      </label>
+      <label class="pen-field">
+        <span class="pen-field__label">{{ t('carbonUpload.colAccountingPeriod') }}</span>
+        <el-input v-model="searchForm.accountingPeriod" :placeholder="t('carbonUpload.enterAccountingPeriod')" clearable @keyup.enter="onQuery" />
+      </label>
+      <el-button type="primary" @click="onQuery">{{ t('common.search') }}</el-button>
+      <el-button @click="onResetQuery">{{ t('common.reset') }}</el-button>
+    </FilterBar>
 
-    <el-card class="section-card" shadow="never">
-      <el-table :data="tableData" border v-loading="loading">
+    <DataPanel
+      :title="t('carbonUpload.panelTitle')"
+      :meta="t('carbonUpload.panelMeta', { total })"
+    >
+      <el-table :data="tableData" v-loading="loading" @row-dblclick="viewDetail">
         <template #empty>
           <EmptyHint
             :description="t('carbonUpload.emptyText')"
@@ -559,26 +678,34 @@ onMounted(() => {
         </el-table-column>
         <el-table-column :label="t('common.operation')" width="200" fixed="right">
           <template #default="{ row }">
+            <span v-if="selectedIds.includes(row.id)" class="row-selected-mark" aria-hidden="true" />
+            <el-checkbox
+              v-if="row.status === 0"
+              :model-value="selectedIds.includes(row.id)"
+              :aria-label="`${t('carbonUpload.selectRow')} ${row.reportNo}`"
+              @change="(v: boolean) => toggleRowSelect(row.id, v)"
+            />
+            <span v-else class="row-selected-placeholder" aria-hidden="true" />
             <el-button link type="primary" @click="viewDetail(row)">{{ t('carbonUpload.viewDetail') }}</el-button>
             <el-button v-if="row.status === 0" link type="primary" @click="openSubmitConfirm(row)">{{ t('common.submit') }}</el-button>
             <el-button v-if="row.status === 0" link type="danger" @click="onDeleteReport(row)">{{ t('common.delete') }}</el-button>
           </template>
         </el-table-column>
       </el-table>
-    </el-card>
 
-    <el-card class="section-card" shadow="never">
-      <el-pagination
-        v-model:current-page="currentPage"
-        v-model:page-size="pageSize"
-        background
+      <template #footer>
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          background
         :page-sizes="[10, 20, 50]"
-        layout="total, sizes, prev, pager, next, jumper"
-        :total="total"
-        @size-change="onSizeChange"
-        @current-change="onCurrentChange"
-      />
-    </el-card>
+          layout="total, sizes, prev, pager, next, jumper"
+          :total="total"
+          @size-change="onSizeChange"
+          @current-change="onCurrentChange"
+        />
+      </template>
+    </DataPanel>
 
     <el-dialog v-model="dialogVisible" :title="t('carbonUpload.dialogCreate')" width="760px" destroy-on-close>
       <el-form ref="formRef" :model="formModel" :rules="formRules" label-width="120px" scroll-to-error>
@@ -795,7 +922,28 @@ onMounted(() => {
       destroy-on-close
     >
       <div v-loading="aiAnalysisLoading" style="min-height: 200px;">
-        <template v-if="aiAnalysisData">
+        <!-- 数据不足：明确告知无法诊断，不渲染空报告 -->
+        <el-alert
+          v-if="aiAnalysisData?.insufficient_data"
+          data-testid="ai-insufficient-data"
+          type="warning"
+          :closable="false"
+          show-icon
+          :title="t('carbonUpload.aiInsufficientTitle')"
+          :description="aiAnalysisData.insufficient_data_reason || aiAnalysisData.summary"
+        />
+
+        <!-- 请求失败：给出可重试的提示 -->
+        <el-alert
+          v-else-if="aiAnalysisError"
+          data-testid="ai-analysis-error"
+          type="error"
+          :closable="false"
+          show-icon
+          :title="aiAnalysisError"
+        />
+
+        <template v-else-if="aiAnalysisData">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding: 10px 14px; background: var(--color-status-info-soft); border: 1px solid var(--color-status-info-soft); border-radius: 6px;">
             <span style="font-size: 13px; color: var(--color-chart-1); display: inline-flex; align-items: center; gap: 6px;">
               <el-icon><Cpu /></el-icon>
@@ -856,7 +1004,15 @@ onMounted(() => {
       </div>
       <template #footer>
         <el-button @click="aiAnalysisDialogVisible = false">{{ t('common.close') }}</el-button>
-        <el-button type="primary" :icon="CopyDocument" :disabled="!aiAnalysisData" @click="copyAiAnalysisText">
+        <el-button @click="onGenerateAiAnalysis(detailData)" :loading="aiAnalysisLoading" :disabled="!detailData">
+          {{ t('carbonUpload.retryAiAnalysis') }}
+        </el-button>
+        <el-button
+          type="primary"
+          :icon="CopyDocument"
+          :disabled="!aiAnalysisData || aiAnalysisData.insufficient_data"
+          @click="copyAiAnalysisText"
+        >
           {{ t('carbonUpload.btnCopyAiAnalysis') }}
         </el-button>
       </template>
@@ -921,22 +1077,22 @@ onMounted(() => {
 .upload-page {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-5);
 }
 
 .section-card {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-card);
 }
 
-.search-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+/* 操作列：勾选框与操作链接同一行基线对齐 */
+.row-selected-mark {
+  display: none;
 }
 
-.search-form :deep(.el-form-item) {
-  margin-bottom: 8px;
+.row-selected-placeholder {
+  display: inline-block;
+  width: 14px;
 }
 
 /* ---------- 排放数据结构化编辑器 ---------- */
@@ -988,17 +1144,43 @@ onMounted(() => {
   font-size: var(--text-sm);
 }
 
+/* 排放行：用 flex 而非固定列数的 grid——"常见预设"下拉是可选渲染的，
+   写死 5 条轨道时第 6 个子元素会掉到第二行，把删除按钮挤到错误位置 */
 .scope-row {
-  display: grid;
-  grid-template-columns: minmax(120px, 1.2fr) minmax(110px, 1fr) 16px minmax(110px, 1fr) auto;
+  display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
 }
 
+.scope-row .el-select {
+  flex: 0 0 140px;
+  width: 140px;
+}
+
+.scope-row .row-name {
+  flex: 1 1 120px;
+  min-width: 0;
+}
+
+/* Element Plus 给 el-input-number 写死了 width:150px，会撑破轨道并压住 × */
+.scope-row .row-num {
+  flex: 1 1 110px;
+  width: auto;
+  min-width: 0;
+}
+
 .row-times {
+  flex: 0 0 auto;
   text-align: center;
   color: var(--color-text-muted);
+}
+
+.row-remove {
+  flex: 0 0 auto;
+  margin-left: auto;
+  white-space: nowrap;
 }
 
 .scope-empty {
@@ -1045,7 +1227,14 @@ onMounted(() => {
   }
 
   .scope-row {
-    grid-template-columns: 1fr;
+    flex-wrap: wrap;
+  }
+
+  .scope-row .el-select,
+  .scope-row .row-name,
+  .scope-row .row-num {
+    flex: 1 1 100%;
+    width: 100%;
   }
 
   .row-times {

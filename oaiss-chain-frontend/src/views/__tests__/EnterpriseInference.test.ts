@@ -92,7 +92,8 @@ describe('EnterpriseInference.vue', () => {
   it('renders loading state', () => {
     const wrapper = mount(EnterpriseInference, { global: { stubs } })
     expect(wrapper.exists()).toBe(true)
-    expect(wrapper.find('.el-card').exists()).toBe(true)
+    // 页面骨架迁移为 pen 面板：断言落点改为面板容器
+    expect(wrapper.find('.pen-stat-strip').exists() || wrapper.find('.pen-panel').exists()).toBe(true)
     wrapper.unmount()
   })
 
@@ -101,7 +102,8 @@ describe('EnterpriseInference.vue', () => {
     await flushPromises()
     expect(getEnterpriseInference).toHaveBeenCalledWith(1)
     expect(wrapper.find('.el-tag').exists()).toBe(true)
-    expect(wrapper.find('.el-progress').exists()).toBe(true)
+    // 置信度等指标由 pen 统计条承载（原 el-progress 卡片已合并进 StatStrip）
+    expect(wrapper.find('.pen-stat-strip').exists()).toBe(true)
     wrapper.unmount()
   })
 
@@ -135,7 +137,7 @@ describe('EnterpriseInference.vue', () => {
     vi.mocked(useAppStore).mockReturnValueOnce({ enterpriseId: null, loggedIn: false, role: null, username: '', userId: null } as never)
     const wrapper = mount(EnterpriseInference, { global: { stubs } })
     await flushPromises()
-    expect(wrapper.find('.el-empty').exists() || wrapper.find('.el-card').exists()).toBe(true)
+    expect(wrapper.find('.el-empty').exists() || wrapper.find('.pen-panel').exists()).toBe(true)
     wrapper.unmount()
   })
 })

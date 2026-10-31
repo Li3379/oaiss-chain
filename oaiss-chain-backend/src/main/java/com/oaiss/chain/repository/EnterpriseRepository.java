@@ -6,6 +6,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -25,6 +27,11 @@ public interface EnterpriseRepository extends JpaRepository<Enterprise, Long> {
      * 根据用户ID查找企业（未删除）
      */
     Optional<Enterprise> findByUserIdAndDeletedFalse(Long userId);
+
+    /**
+     * 根据用户ID集合批量查找未删除企业（撮合排序批量解析信誉分，避免 N+1 查询）
+     */
+    List<Enterprise> findByUserIdInAndDeletedFalse(Collection<Long> userIds);
 
     /**
      * 根据信用代码查找企业

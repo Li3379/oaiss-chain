@@ -5,6 +5,7 @@ import com.oaiss.chain.dto.SearchResponse;
 import com.oaiss.chain.entity.CarbonReport;
 import com.oaiss.chain.entity.Enterprise;
 import com.oaiss.chain.entity.Transaction;
+import com.oaiss.chain.entity.User;
 import com.oaiss.chain.exception.BusinessException;
 import com.oaiss.chain.repository.CarbonReportRepository;
 import com.oaiss.chain.repository.EnterpriseRepository;
@@ -182,6 +183,155 @@ class SearchServiceTest {
         assertNotNull(result);
         assertEquals(1, result.getContent().size());
         verify(transactionRepository).searchWithUserBound(eq(100L), eq(null), eq(null), eq(null), eq(null), any(Pageable.class));
+    }
+
+    @Test
+    @DisplayName("搜索交易记录-企业用户看到的买卖双方为脱敏别名，同一企业跨记录稳定")
+    void testSearchTradesEnterpriseUserMasked() {
+        // Given：同一卖方参与两笔交易，卖方显示名必须一致
+        Transaction secondTrade = Transaction.builder()
+                .tradeNo("TX20240101002")
+                .tradeType(2)
+                .sellerId(1L)
+                .buyerId(3L)
+                .quantity(new BigDecimal("10.00"))
+                .unitPrice(new BigDecimal("60.00"))
+                .totalAmount(new BigDecimal("600.00"))
+                .status(2)
+                .build();
+        secondTrade.setId(2L);
+
+        JwtUserDetails entUser = JwtUserDetails.builder()
+                .userId(1L)
+                .username("enterprise001")
+                .roles(List.of("ENTERPRISE"))
+                .build();
+        Page<Transaction> page = new PageImpl<>(List.of(testTransaction, secondTrade));
+        when(transactionRepository.searchWithUserBound(eq(1L), eq(null), eq(null), eq(null), eq(null), any(Pageable.class)))
+                .thenReturn(page);
+
+        // 交易表存用户 ID：1L -> 企业 11L，2L -> 企业 22L，3L -> 企业 33L
+        when(enterpriseRepository.findByUserIdInAndDeletedFalse(any()))
+                .thenReturn(List.of(enterprise(11L, 1L), enterprise(22L, 2L), enterprise(33L, 3L)));
+
+        // When
+        Page<SearchResponse.TradeSummary> result =
+            searchService.searchTrades(entUser, null, null, null, null, 1, 10);
+
+        // Then
+        List<SearchResponse.TradeSummary> rows = result.getContent();
+        assertEquals(2, rows.size());
+        for (SearchResponse.TradeSummary row : rows) {
+            assertTrue(row.getSellerName().startsWith("匿名企业-"), "企业角色看到真实名称即为越权");
+            assertTrue(row.getBuyerName().startsWith("匿名企业-"));
+        }
+        // 同一企业跨记录必须映射到同一别名
+        assertEquals(rows.get(0).getSellerName(), rows.get(1).getSellerName());
+        // 同一笔交易内买卖双方别名必然不同
+        assertNotEquals(rows.get(0).getSellerName(), rows.get(0).getBuyerName());
+        // 不泄露任何真实企业名称
+        verifyNoInteractions(userRepository);
+    }
+
+    @Test
+    @DisplayName("搜索交易记录-审核员同样只看到脱敏别名")
+    void testSearchTradesReviewerMasked() {
+        JwtUserDetails reviewer = JwtUserDetails.builder()
+                .userId(200L)
+                .username("reviewer001")
+                .roles(List.of("REVIEWER"))
+                .build();
+        Page<Transaction> page = new PageImpl<>(List.of(testTransaction));
+        // 审核员不受租户边界限制，但同样只看脱敏数据
+        when(transactionRepository.searchWithUserBound(eq(null), eq(null), eq(null), eq(null), eq(null), any(Pageable.class)))
+                .thenReturn(page);
+        when(enterpriseRepository.findByUserIdInAndDeletedFalse(any()))
+                .thenReturn(List.of(enterprise(11L, 1L), enterprise(22L, 2L)));
+
+        Page<SearchResponse.TradeSummary> result =
+            searchService.searchTrades(reviewer, null, null, null, null, 1, 10);
+
+        assertEquals(1, result.getContent().size());
+        assertTrue(result.getContent().get(0).getSellerName().startsWith("匿名企业-"));
+        assertTrue(result.getContent().get(0).getBuyerName().startsWith("匿名企业-"));
+    }
+
+    @Test
+    @DisplayName("搜索交易记录-管理员与第三方监管可见真实企业名称")
+    void testSearchTradesRegulatorSeesRealNames() {
+        User seller = new User();
+        seller.setId(1L);
+        seller.setRealName("华能发电有限公司");
+        User buyer = new User();
+        buyer.setId(2L);
+        buyer.setRealName("国网能源有限公司");
+
+        for (JwtUserDetails regulator : List.of(
+                JwtUserDetails.builder().userId(900L).username("admin").roles(List.of("ADMIN")).build(),
+                JwtUserDetails.builder().userId(901L).username("thirdparty001").roles(List.of("THIRD_PARTY")).build())) {
+
+            reset(transactionRepository, userRepository);
+            when(transactionRepository.searchWithUserBound(any(), any(), any(), any(), any(), any(Pageable.class)))
+                    .thenReturn(new PageImpl<>(List.of(testTransaction)));
+            when(userRepository.findAllById(any())).thenReturn(List.of(seller, buyer));
+
+            Page<SearchResponse.TradeSummary> result =
+                    searchService.searchTrades(regulator, null, null, null, null, 1, 10);
+
+            assertEquals(1, result.getContent().size());
+            assertEquals("华能发电有限公司", result.getContent().get(0).getSellerName());
+            assertEquals("国网能源有限公司", result.getContent().get(0).getBuyerName());
+            // 监管穿透不需要任何脱敏映射
+            verify(enterpriseRepository, never()).findByUserIdInAndDeletedFalse(any());
+        }
+    }
+
+    @Test
+    @DisplayName("搜索交易记录-无当前用户（内部调用）时按脱敏口径返回，不泄露真实名称")
+    void testSearchTradesAnonymousByDefault() {
+        Page<Transaction> page = new PageImpl<>(List.of(testTransaction));
+        when(transactionRepository.searchWithUserBound(eq(null), eq(null), eq(null), eq(null), eq(null), any(Pageable.class)))
+                .thenReturn(page);
+        when(enterpriseRepository.findByUserIdInAndDeletedFalse(any()))
+                .thenReturn(List.of(enterprise(11L, 1L), enterprise(22L, 2L)));
+
+        Page<SearchResponse.TradeSummary> result = searchService.searchTrades(null, null, null, null, 1, 10);
+
+        assertTrue(result.getContent().get(0).getSellerName().startsWith("匿名企业-"));
+        verifyNoInteractions(userRepository);
+    }
+
+    @Test
+    @DisplayName("搜索交易记录-拍卖挂单买方待定时名称为「待定」而非匿名别名")
+    void testSearchTradesPendingBuyerName() {
+        Transaction auctionOrder = Transaction.builder()
+                .tradeNo("TX-AUCTION-001")
+                .tradeType(1)
+                .sellerId(1L)
+                .buyerId(0L)
+                .quantity(new BigDecimal("100.00"))
+                .unitPrice(new BigDecimal("50.00"))
+                .totalAmount(new BigDecimal("5000.00"))
+                .status(0)
+                .build();
+        auctionOrder.setId(9L);
+
+        when(transactionRepository.searchWithUserBound(any(), any(), any(), any(), any(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(auctionOrder)));
+        when(enterpriseRepository.findByUserIdInAndDeletedFalse(any()))
+                .thenReturn(List.of(enterprise(11L, 1L)));
+
+        Page<SearchResponse.TradeSummary> result = searchService.searchTrades(null, null, null, null, 1, 10);
+
+        assertEquals("待定", result.getContent().get(0).getBuyerName());
+        assertTrue(result.getContent().get(0).getSellerName().startsWith("匿名企业-"));
+    }
+
+    private static Enterprise enterprise(Long enterpriseId, Long userId) {
+        Enterprise enterprise = new Enterprise();
+        enterprise.setId(enterpriseId);
+        enterprise.setUserId(userId);
+        return enterprise;
     }
 
     @Test

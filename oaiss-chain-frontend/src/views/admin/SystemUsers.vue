@@ -18,8 +18,13 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { CircleCheck, CircleClose, Operation, User } from '@element-plus/icons-vue'
 import { getUserList, updateUserStatus } from '../../api/admin'
 import { formatDateTime } from '../../utils/format'
+import PageHeader from '../../components/pen/PageHeader.vue'
+import StatStrip from '../../components/pen/StatStrip.vue'
+import FilterBar from '../../components/pen/FilterBar.vue'
+import DataPanel from '../../components/pen/DataPanel.vue'
 import PageHint from '../../components/PageHint.vue'
 import StatusTag from '../../components/StatusTag.vue'
 
@@ -141,44 +146,90 @@ const getStatusText = (status: number) => (
   status === 1 ? t('systemUsers.statusEnabled') : t('systemUsers.statusDisabled')
 )
 
+/** 首屏统计条：全部由已加载的本页用户数据推导，不新增接口请求 */
+const overviewStats = computed(() => {
+  const rows = userList.value
+  const enabled = rows.filter((row) => row.status === 1).length
+  const disabled = rows.filter((row) => row.status !== 1).length
+  const enterprises = rows.filter((row) => row.userType === 1).length
+  const privileged = rows.filter((row) => row.userType === 3 || row.userType === 4).length
+
+  return [
+    {
+      label: t('systemUsers.statTotalUsers'),
+      value: total.value,
+      unit: t('systemUsers.statUnitUsers'),
+      delta: t('systemUsers.statTotalUsersHint', { count: rows.length }),
+      tone: 'neu' as const,
+      icon: User,
+    },
+    {
+      label: t('systemUsers.statEnabled'),
+      value: enabled,
+      unit: t('systemUsers.statUnitUsers'),
+      delta: t('systemUsers.statEnabledHint'),
+      tone: enabled > 0 ? ('pos' as const) : ('neu' as const),
+      icon: CircleCheck,
+    },
+    {
+      label: t('systemUsers.statDisabled'),
+      value: disabled,
+      unit: t('systemUsers.statUnitUsers'),
+      delta: t('systemUsers.statDisabledHint'),
+      tone: disabled > 0 ? ('neg' as const) : ('neu' as const),
+      icon: CircleClose,
+    },
+    {
+      label: t('systemUsers.statEnterprises'),
+      value: enterprises,
+      unit: t('systemUsers.statUnitEnterprises'),
+      delta: t('systemUsers.statEnterprisesHint', { count: privileged }),
+      tone: 'neu' as const,
+      icon: Operation,
+    },
+  ]
+})
+
 onMounted(() => {
   fetchData()
 })
 </script>
 
 <template>
-  <section class="users-page">
-    <el-card class="section-card" shadow="never">
-      <el-breadcrumb separator="/">
-        <el-breadcrumb-item>{{ t('systemUsers.breadcrumbSystem') }}</el-breadcrumb-item>
-        <el-breadcrumb-item>{{ t('systemUsers.breadcrumbUsers') }}</el-breadcrumb-item>
-      </el-breadcrumb>
-    </el-card>
+  <section class="users-page pen-enter">
+    <PageHeader
+      :title="t('menu.userManage')"
+      :description="t('systemUsers.pageDescription')"
+      :crumbs="[t('systemUsers.breadcrumbSystem'), t('systemUsers.breadcrumbUsers')]"
+    />
 
     <PageHint :text="t('pageHints.systemUsers')" />
 
-    <el-card class="section-card" shadow="never">
-      <el-form :inline="true" class="search-form">
-        <el-form-item :label="t('systemUsers.colUserType')">
-          <el-select v-model="searchForm.userType" :placeholder="t('systemUsers.typeAll')" style="width: 140px" clearable>
-            <el-option v-for="item in userTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
-        </el-form-item>
+    <StatStrip :items="overviewStats" :loading="loading" />
 
-        <el-form-item :label="t('common.status')">
-          <el-select v-model="searchForm.status" :placeholder="t('systemUsers.typeAll')" style="width: 140px" clearable>
-            <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
-        </el-form-item>
+    <FilterBar :aria-label="t('systemUsers.filterLabel')">
+      <label class="pen-field">
+        <span class="pen-field__label">{{ t('systemUsers.colUserType') }}</span>
+        <el-select v-model="searchForm.userType" :placeholder="t('systemUsers.typeAll')" style="width: 140px" clearable>
+          <el-option v-for="item in userTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
+        </el-select>
+      </label>
 
-        <el-form-item>
-          <el-button type="primary" @click="onQuery">{{ t('common.search') }}</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+      <label class="pen-field">
+        <span class="pen-field__label">{{ t('common.status') }}</span>
+        <el-select v-model="searchForm.status" :placeholder="t('systemUsers.typeAll')" style="width: 140px" clearable>
+          <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
+        </el-select>
+      </label>
 
-    <el-card class="section-card" shadow="never">
-      <el-table :data="userList" border v-loading="loading">
+      <el-button type="primary" @click="onQuery">{{ t('common.search') }}</el-button>
+    </FilterBar>
+
+    <DataPanel
+      :title="t('systemUsers.panelTitle')"
+      :meta="t('systemUsers.panelMeta', { total })"
+    >
+      <el-table :data="userList" v-loading="loading">
         <el-table-column prop="username" :label="t('systemUsers.colUsername')" min-width="120" />
         <el-table-column prop="email" :label="t('systemUsers.colEmail')" min-width="180" />
         <el-table-column prop="userType" :label="t('systemUsers.colUserType')" min-width="120">
@@ -210,7 +261,7 @@ onMounted(() => {
         </el-table-column>
       </el-table>
 
-      <div class="pagination-row">
+      <template #footer>
         <el-pagination
           v-model:current-page="currentPage"
           v-model:page-size="pageSize"
@@ -221,8 +272,8 @@ onMounted(() => {
           @size-change="onSizeChange"
           @current-change="onCurrentChange"
         />
-      </div>
-    </el-card>
+      </template>
+    </DataPanel>
   </section>
 </template>
 
@@ -230,22 +281,6 @@ onMounted(() => {
 .users-page {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-}
-
-.section-card {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-}
-
-.search-form {
-  display: flex;
-  flex-wrap: wrap;
-}
-
-.pagination-row {
-  margin-top: 14px;
-  display: flex;
-  justify-content: flex-end;
+  gap: var(--space-4);
 }
 </style>

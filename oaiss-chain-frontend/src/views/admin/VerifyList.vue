@@ -1,46 +1,58 @@
 <template>
-  <PageContainer :title="t('verifyList.title')" :description="t('verifyList.description')">
-    <PageHint :text="t('pageHints.verifyList')" />
-    <el-card class="section-card" shadow="never" v-loading="statsLoading">
-      <div class="stats-row">
-        <el-statistic :title="t('verifyList.statPending')" :value="stats.pending" />
-        <el-statistic :title="t('verifyList.statApproved')" :value="stats.approved" />
-        <el-statistic :title="t('verifyList.statRejected')" :value="stats.rejected" />
-        <div class="status-cell">
-          <div class="status-label">{{ t('verifyList.blockchainStatus') }}</div>
-          <el-tag :type="blockchainHealthy ? 'success' : 'danger'" size="large">
-            {{ blockchainStatus }}
-          </el-tag>
-        </div>
-      </div>
-    </el-card>
+  <section class="verify-page pen-enter">
+    <PageHeader
+      :title="t('verifyList.title')"
+      :description="t('verifyList.description')"
+      :crumbs="[t('verifyList.breadcrumbAdmin'), t('verifyList.breadcrumbVerify')]"
+    />
 
-    <el-card class="section-card" shadow="never">
-      <div class="search-row">
+    <PageHint :text="t('pageHints.verifyList')" />
+
+    <StatStrip :items="overviewStats" :loading="statsLoading || loading" />
+
+    <FilterBar :aria-label="t('verifyList.filterLabel')">
+      <label class="pen-field">
+        <span class="pen-field__label">{{ t('verifyList.colStatus') }}</span>
         <el-select v-model="statusFilter" :placeholder="t('verifyList.colStatus')" clearable style="width: 180px">
           <el-option :label="t('verifyList.statusPendingCertification')" :value="3" />
           <el-option :label="t('verifyList.statusApproved')" :value="5" />
           <el-option :label="t('verifyList.statusRejected')" :value="4" />
           <el-option :label="t('verifyList.statusPending')" :value="1" />
         </el-select>
-        <el-input v-model="keyword" :placeholder="t('common.enterKeyword')" clearable style="width: 300px" />
-        <el-button type="primary" @click="loadReports">{{ t('common.search') }}</el-button>
-        <el-button
-          type="success"
-          :disabled="!selectedReports.length"
-          :loading="batchCertifying"
-          @click="handleBatchCertify"
-        >
-          {{ t('verifyList.btnBatchApprove') }} {{ selectedReports.length ? `(${selectedReports.length})` : '' }}
-        </el-button>
-      </div>
-    </el-card>
+      </label>
 
-    <el-card class="section-card" shadow="never">
+      <label class="pen-field">
+        <span class="pen-field__label">{{ t('common.keyword') }}</span>
+        <el-input v-model="keyword" :placeholder="t('common.enterKeyword')" clearable style="width: 300px" />
+      </label>
+
+      <el-button type="primary" @click="loadReports">{{ t('common.search') }}</el-button>
+      <el-button
+        type="success"
+        :disabled="!selectedReports.length"
+        :loading="batchCertifying"
+        @click="handleBatchCertify"
+      >
+        {{ t('verifyList.btnBatchApprove') }} {{ selectedReports.length ? `(${selectedReports.length})` : '' }}
+      </el-button>
+    </FilterBar>
+
+    <DataPanel
+      :title="t('verifyList.panelTitle')"
+      :meta="t('verifyList.panelMeta', { total })"
+    >
+      <template #actions>
+        <span class="stats-row">
+          <span class="status-label">{{ t('verifyList.blockchainStatus') }}</span>
+          <el-tag :type="blockchainHealthy ? 'success' : 'danger'">
+            {{ blockchainStatus }}
+          </el-tag>
+        </span>
+      </template>
+
       <el-table
         :data="reports"
         :loading="loading"
-        border
         :empty-text="t('verifyList.emptyText')"
         @selection-change="handleSelectionChange"
       >
@@ -85,7 +97,7 @@
         </el-table-column>
       </el-table>
 
-      <div class="pager-row">
+      <template #footer>
         <el-pagination
           v-model:current-page="currentPage"
           v-model:page-size="pageSize"
@@ -96,8 +108,8 @@
           @size-change="onSizeChange"
           @current-change="onCurrentChange"
         />
-      </div>
-    </el-card>
+      </template>
+    </DataPanel>
 
     <el-dialog v-model="detailVisible" :title="t('verifyList.title')" width="700px">
       <el-descriptions v-if="currentReport" :column="2" border>
@@ -127,15 +139,15 @@
         <EmissionDataPanel :data="currentReport.emissionData" />
       </div>
     </el-dialog>
-  </PageContainer>
+  </section>
 </template>
 
 <script setup lang="ts">
 /**
  * ==============================================================================
- * 【页面模块】：管理员端 - 碳报告终审认证与批量上链存证 (Verify List)
- * 【路由地址】：/admin/verify/list
- * 【访问权限】：ROLE_ADMIN (系统管理员)
+ * 【页面模块】：审核员端 - 碳报告上链补救与批量存证 (Verify List)
+ * 【路由地址】：/auditor/verify/list（唯一入口）
+ * 【访问权限】：ROLE_REVIEWER（主体）/ ROLE_ADMIN（仅直接 URL 兜底，无独立菜单）
  * 【界面可见功能】：
  *   1. 待审/已认证/已驳回状态指标卡片与底层区块链运行健康度指示灯
  *   2. 报告筛选栏：按状态（待认证/已上链/已驳回/待初审）与关键字检索
@@ -143,13 +155,17 @@
  *   4. 批量上链补救：勾选多条记录后点击【批量上链补救】，批量调用 Fabric 存证
  *
  * 【方案 A 说明（2026-10-21）】：上链已并入审核通过流程（POST /carbon/review 自动上链），
- * 本页面承担「自动上链失败的幂等补救」职责，由审核员使用（管理员保留兜底访问）。
+ * 本页面承担「自动上链失败的幂等补救」职责，由审核员使用。
  *   5. 报告审查详情对话框：查看范围一/二/三排放、审查意见与结构化排放面板
+ *
+ * 【单入口说明（2026-10-28）】：管理员端原有「认证列表」(/admin/verify/list) 与本页
+ * 渲染同一组件、同一动作，属功能重复，已随菜单与路由一并取消；管理员仍可通过
+ * 直接 URL 访问本页作为运维兜底（无需第二条路由）。
  * 【对应后端 Controller & API】：
  *   - CarbonController:
  *     * GET  /api/v1/carbon/reports       -> getReportList() 分页查询全平台报告
- *     * POST /api/v1/carbon/certify       -> certifyReport() 单条终审上链
- *     * POST /api/v1/carbon/certify/batch -> batchCertifyReports() 批量上链认证
+ *     * POST /api/v1/carbon/certify       -> certifyReport() 单条上链补救
+ *     * POST /api/v1/carbon/certify/batch -> batchCertifyReports() 批量上链补救
  *   - BlockchainController:
  *     * GET  /api/v1/blockchain/status    -> getStatus() 获取底层区块链运行状态
  * ==============================================================================
@@ -157,11 +173,15 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { CircleClose, Link, Refresh, TrendCharts } from '@element-plus/icons-vue'
 import { batchCertifyReports, certifyReport, getReportList } from '../../api/carbon'
 import { getStatus } from '../../api/blockchain'
 import type { CarbonReportResponse } from '../../types'
 import { formatDateTime } from '../../utils/format'
-import PageContainer from '../../components/PageContainer.vue'
+import PageHeader from '../../components/pen/PageHeader.vue'
+import StatStrip from '../../components/pen/StatStrip.vue'
+import FilterBar from '../../components/pen/FilterBar.vue'
+import DataPanel from '../../components/pen/DataPanel.vue'
 import TermTip from '../../components/TermTip.vue'
 import EmissionDataPanel from '../../components/EmissionDataPanel.vue'
 import PageHint from '../../components/PageHint.vue'
@@ -248,6 +268,48 @@ function recomputeStats(rows: ReportRow[]): void {
     rejected: rows.filter((row) => Number(row.status) === 4).length,
   }
 }
+
+/** 首屏统计条：全部由已加载的本页数据与区块链状态推导，不新增接口请求 */
+const overviewStats = computed(() => {
+  const { pending, approved, rejected } = stats.value
+  const reviewed = approved + rejected
+  const passRate = reviewed > 0 ? Number(((approved / reviewed) * 100).toFixed(1)) : 0
+
+  return [
+    {
+      label: t('verifyList.statPending'),
+      value: pending,
+      unit: t('verifyList.statUnitReports'),
+      delta: t('verifyList.statPendingHint'),
+      tone: pending > 0 ? ('neu' as const) : ('pos' as const),
+      icon: Refresh,
+    },
+    {
+      label: t('verifyList.statApproved'),
+      value: approved,
+      unit: t('verifyList.statUnitReports'),
+      delta: `${t('verifyList.statApprovedHint')} · ${passRate}%`,
+      tone: 'pos' as const,
+      icon: Link,
+    },
+    {
+      label: t('verifyList.statRejected'),
+      value: rejected,
+      unit: t('verifyList.statUnitReports'),
+      delta: t('verifyList.statRejectedHint'),
+      tone: rejected > 0 ? ('neg' as const) : ('neu' as const),
+      icon: CircleClose,
+    },
+    {
+      label: t('verifyList.statPassRate'),
+      value: passRate,
+      unit: '%',
+      delta: t('verifyList.statPassRateHint', { reviewed }),
+      tone: passRate >= 50 ? ('pos' as const) : ('neu' as const),
+      icon: TrendCharts,
+    },
+  ]
+})
 
 async function loadReports(): Promise<void> {
   loading.value = true
@@ -413,48 +475,30 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.section-card {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  margin-bottom: 14px;
+.verify-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
 }
 
 .stats-row {
-  display: flex;
-  gap: 40px;
-  flex-wrap: wrap;
-  align-items: flex-start;
-}
-
-.status-cell {
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .status-label {
-  font-size: var(--text-xs);
-  color: var(--el-text-color-secondary);
-  margin-bottom: 4px;
-}
-
-.search-row {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.pager-row {
-  margin-top: 14px;
-  display: flex;
-  justify-content: flex-end;
+  font-size: var(--fs-caption);
+  color: var(--pen-faint);
 }
 
 .cert-detail-block {
-  margin-top: 14px;
+  margin-top: var(--space-3);
 }
 
 .cert-detail-title {
   font-weight: 600;
-  margin-bottom: 8px;
-  color: var(--color-text);
+  margin-bottom: var(--space-2);
+  color: var(--pen-ink);
 }
 </style>

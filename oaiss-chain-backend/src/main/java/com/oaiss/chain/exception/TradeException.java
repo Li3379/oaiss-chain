@@ -129,6 +129,13 @@ public class TradeException extends BusinessException {
     }
 
     /**
+     * 信誉分过低/账户冻结导致交易受限
+     */
+    public static TradeException creditTradeRestricted(String message) {
+        return new TradeException(ErrorCode.CREDIT_TRADE_RESTRICTED, message);
+    }
+
+    /**
      * 交易越权-当前用户不是交易参与方
      */
     public static TradeException unauthorizedTrade(Long currentUserId, Long expectedUserId) {

@@ -3,9 +3,11 @@ package com.oaiss.chain.service;
 import com.oaiss.chain.dto.ApiResponse;
 import com.oaiss.chain.entity.CarbonReport;
 import com.oaiss.chain.entity.ThirdPartyOrg;
+import com.oaiss.chain.entity.Transaction;
 import com.oaiss.chain.exception.BusinessException;
 import com.oaiss.chain.repository.CarbonReportRepository;
 import com.oaiss.chain.repository.ThirdPartyOrgRepository;
+import com.oaiss.chain.repository.TransactionRepository;
 import com.oaiss.chain.security.JwtUserDetails;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -18,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
 import java.util.Collections;
@@ -40,6 +43,8 @@ class ThirdPartyServiceTest {
     private ThirdPartyOrgRepository thirdPartyOrgRepository;
     @Mock
     private CarbonReportRepository carbonReportRepository;
+    @Mock
+    private TransactionRepository transactionRepository;
 
     @InjectMocks
     private ThirdPartyService thirdPartyService;
@@ -133,6 +138,8 @@ class ThirdPartyServiceTest {
                 .thenReturn(new PageImpl<>(Collections.emptyList()));
         when(carbonReportRepository.findByStatusInAndDeletedFalse(anyList(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(Collections.emptyList()));
+        when(transactionRepository.findByDeletedFalse(any(Pageable.class)))
+                .thenReturn(new PageImpl<>(Collections.emptyList()));
 
         ApiResponse<Map<String, Object>> result = thirdPartyService.getStatistics(currentUser);
 
@@ -143,6 +150,57 @@ class ThirdPartyServiceTest {
         assertEquals(2, stats.get("accessLevel"));
         assertEquals(0L, stats.get("totalReports"));
         assertEquals(0L, stats.get("pendingReports"));
+    }
+
+    @Test
+    @DisplayName("获取统计数据 - 含交易维度聚合（笔数/总量/总额）")
+    void getStatistics_ShouldIncludeTradeAggregates() {
+        when(thirdPartyOrgRepository.findByUserIdAndDeletedFalse(1L)).thenReturn(Optional.of(testOrg));
+        when(carbonReportRepository.findByDeletedFalse(any(Pageable.class)))
+                .thenReturn(new PageImpl<>(Collections.emptyList()));
+        when(carbonReportRepository.findByStatusAndDeletedFalse(anyInt(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(Collections.emptyList()));
+        when(carbonReportRepository.findByStatusInAndDeletedFalse(anyList(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(Collections.emptyList()));
+
+        Transaction sample = Transaction.builder()
+                .tradeNo("TX-1").tradeType(2).sellerId(1L).buyerId(2L)
+                .quantity(new java.math.BigDecimal("100.0000"))
+                .unitPrice(new java.math.BigDecimal("50.00"))
+                .totalAmount(new java.math.BigDecimal("5000.00"))
+                .status(2).build();
+        when(transactionRepository.findByDeletedFalse(any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(sample), PageRequest.of(0, 1), 37L));
+        when(transactionRepository.sumTotalQuantity()).thenReturn(new java.math.BigDecimal("125000.5000"));
+        when(transactionRepository.sumTotalAmount()).thenReturn(new java.math.BigDecimal("6250025.00"));
+
+        Map<String, Object> stats = thirdPartyService.getStatistics(currentUser).getData();
+
+        assertEquals(37L, stats.get("totalTrades"));
+        assertEquals(new java.math.BigDecimal("125000.5000"), stats.get("totalTradeQuantity"));
+        assertEquals(new java.math.BigDecimal("6250025.00"), stats.get("totalTradeAmount"));
+    }
+
+    @Test
+    @DisplayName("获取统计数据 - 交易聚合零数据时兜底为 0 而非 null")
+    void getStatistics_TradeAggregatesNullSafe() {
+        when(thirdPartyOrgRepository.findByUserIdAndDeletedFalse(1L)).thenReturn(Optional.of(testOrg));
+        when(carbonReportRepository.findByDeletedFalse(any(Pageable.class)))
+                .thenReturn(new PageImpl<>(Collections.emptyList()));
+        when(carbonReportRepository.findByStatusAndDeletedFalse(anyInt(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(Collections.emptyList()));
+        when(carbonReportRepository.findByStatusInAndDeletedFalse(anyList(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(Collections.emptyList()));
+        when(transactionRepository.findByDeletedFalse(any(Pageable.class)))
+                .thenReturn(new PageImpl<>(Collections.emptyList()));
+        when(transactionRepository.sumTotalQuantity()).thenReturn(null);
+        when(transactionRepository.sumTotalAmount()).thenReturn(null);
+
+        Map<String, Object> stats = thirdPartyService.getStatistics(currentUser).getData();
+
+        assertEquals(0L, stats.get("totalTrades"));
+        assertEquals(java.math.BigDecimal.ZERO, stats.get("totalTradeQuantity"));
+        assertEquals(java.math.BigDecimal.ZERO, stats.get("totalTradeAmount"));
     }
 
     // ==================== updateContact ====================

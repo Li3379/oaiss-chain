@@ -6,6 +6,7 @@ import com.oaiss.chain.dto.AuctionOrderResponse;
 import com.oaiss.chain.dto.MatchingResultResponse;
 import com.oaiss.chain.security.JwtTokenProvider;
 import com.oaiss.chain.security.JwtUserDetails;
+import com.oaiss.chain.service.AuctionMatchingScheduler;
 import com.oaiss.chain.service.DoubleAuctionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -45,6 +46,9 @@ class DoubleAuctionControllerTest {
 
     @MockBean
     private DoubleAuctionService doubleAuctionService;
+
+    @MockBean
+    private AuctionMatchingScheduler auctionMatchingScheduler;
 
     @MockBean
     private JwtTokenProvider jwtTokenProvider;
@@ -284,5 +288,56 @@ class DoubleAuctionControllerTest {
                 .andExpect(jsonPath("$.code").value(200));
 
         verify(doubleAuctionService).listMatchingResults(any(JwtUserDetails.class), eq(1), eq(20));
+    }
+
+    @Test
+    @DisplayName("查询撮合运行态：返回自动撮合开关与间隔")
+    void testGetMatchingStatusSuccess() throws Exception {
+        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
+                adminUser, null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+        SecurityContextHolder.getContext().setAuthentication(auth);
+
+        when(auctionMatchingScheduler.isAutoMatchingEnabled()).thenReturn(true);
+        when(auctionMatchingScheduler.getIntervalMs()).thenReturn(30000L);
+        when(doubleAuctionService.getMatchingStatus(true, 30000L))
+                .thenReturn(com.oaiss.chain.dto.AuctionMatchingStatusResponse.builder()
+                        .autoMatchingEnabled(true)
+                        .intervalSeconds(30L)
+                        .pendingBuyOrders(3L)
+                        .pendingSellOrders(2L)
+                        .build());
+
+        mockMvc.perform(get("/auction/matching-status"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.autoMatchingEnabled").value(true))
+                .andExpect(jsonPath("$.data.intervalSeconds").value(30))
+                .andExpect(jsonPath("$.data.pendingBuyOrders").value(3));
+
+        verify(doubleAuctionService).getMatchingStatus(true, 30000L);
+    }
+
+    @Test
+    @DisplayName("查询全平台撮合结果成功（管理员控制台）")
+    void testListAllMatchingResultsSuccess() throws Exception {
+        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
+                adminUser, null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+        SecurityContextHolder.getContext().setAuthentication(auth);
+
+        MatchingResultResponse result = MatchingResultResponse.builder()
+                .id(9L)
+                .matchNo("MT20250101001")
+                .matchedQuantity(new BigDecimal("50"))
+                .settlementPrice(new BigDecimal("60.00"))
+                .build();
+        when(doubleAuctionService.listAllMatchingResults(1, 20))
+                .thenReturn(new PageImpl<>(List.of(result)));
+
+        mockMvc.perform(get("/auction/all-results"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.content[0].id").value(9));
+
+        verify(doubleAuctionService).listAllMatchingResults(1, 20);
     }
 }

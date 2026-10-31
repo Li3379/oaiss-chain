@@ -145,23 +145,26 @@ const routes: RouteRecordRaw[] = [
       },
       {
         // 方案 A：上链触发者 = 审核员审核通过（系统自动上链）。
-        // 本页面上链入口从管理员端迁移到审核员端，承担「自动上链失败的幂等补救」职责。
+        // 本页面是「自动上链失败的幂等补救」的**唯一入口**（ADMIN 仅保留直接 URL 兜底，
+        // 不再提供独立的管理员页面，避免同一组件出现两个功能重复的菜单项）。
         path: 'auditor/verify/list',
         name: 'AuditorVerifyList',
         component: () => import('../views/admin/VerifyList.vue'),
         meta: { title: '上链补救', roles: [ROLE.REVIEWER, ROLE.ADMIN] },
       },
       {
-        path: 'admin/verify/list',
-        name: 'AdminVerifyList',
-        component: () => import('../views/admin/VerifyList.vue'),
-        meta: { title: '认证列表', roles: [ROLE.ADMIN] },
-      },
-      {
         path: 'third-party/monitor',
         name: 'ThirdPartyMonitor',
         component: () => import('../views/third-party/Monitor.vue'),
         meta: { title: '监管面板', roles: [ROLE.THIRD_PARTY] },
+      },
+      {
+        // 需求 3.3.2 市场信息查询入口：四角色共用，企业/审核员检索到匿名交易记录，
+        // 管理员/第三方监管可按真实主体穿透核查（脱敏口径由后端按角色决定）。
+        path: 'search',
+        name: 'Search',
+        component: () => import('../views/Search.vue'),
+        meta: { title: '搜索查询', roles: [ROLE.ENTERPRISE, ROLE.REVIEWER, ROLE.THIRD_PARTY, ROLE.ADMIN] },
       },
       {
         path: 'admin/system/users',
@@ -192,6 +195,13 @@ const routes: RouteRecordRaw[] = [
         name: 'AdminCertificates',
         component: () => import('../views/admin/CertificateManage.vue'),
         meta: { title: '证书管理', roles: [ROLE.ADMIN] },
+      },
+      {
+        // 撮合控制台：平台默认每 30 秒自动撮合，本页面用于观察运行态 + 手动立即出清一轮。
+        path: 'admin/trading/matching',
+        name: 'AdminAuctionMatching',
+        component: () => import('../views/admin/AuctionMatching.vue'),
+        meta: { title: '撮合控制台', roles: [ROLE.ADMIN] },
       },
     ],
   },

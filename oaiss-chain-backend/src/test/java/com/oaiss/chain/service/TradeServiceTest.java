@@ -30,6 +30,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
@@ -58,6 +59,9 @@ class TradeServiceTest {
 
     @Mock
     private CarbonCoinService carbonCoinService;
+
+    @Mock
+    private CreditScoreService creditScoreService;
 
     @Mock
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
@@ -111,6 +115,9 @@ class TradeServiceTest {
         tradeRequest.setBuyerId(2L);
         tradeRequest.setQuantity(new BigDecimal("100.00"));
         tradeRequest.setUnitPrice(new BigDecimal("50.00"));
+
+        // 默认信誉分正常放行；限制态由各用例单独覆写
+        lenient().when(creditScoreService.checkTradePermission(anyLong())).thenReturn(true);
     }
 
     @Test
@@ -989,5 +996,47 @@ class TradeServiceTest {
         Page<TradeResponse> result = tradeService.listMyTrades(
                 currentUser, null, null, null, null, "SELLER", null, null, 1, 10);
         assertNotNull(result);
+    }
+
+    // ==================== 信誉分交易闸门 ====================
+
+    @Test
+    @DisplayName("P2P交易-信誉分被限制交易时拒绝创建")
+    void testCreateP2PTradeFailCreditRestricted() {
+        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(sellerEnterprise));
+        when(creditScoreService.checkTradePermission(1L)).thenReturn(false);
+
+        TradeException ex = assertThrows(TradeException.class,
+                () -> tradeService.createP2PTrade(currentUser, tradeRequest));
+
+        assertEquals(com.oaiss.chain.constant.ErrorCode.CREDIT_TRADE_RESTRICTED, ex.getCode());
+        assertTrue(ex.getMessage().contains("信誉分过低"));
+        verify(transactionRepository, never()).save(any());
+        // 闸门必须在冻结配额之前拦截
+        assertEquals(new BigDecimal("500.00"), sellerEnterprise.getCarbonTradable());
+    }
+
+    @Test
+    @DisplayName("P2P交易-账户被冻结时拒绝创建")
+    void testCreateP2PTradeFailAccountFrozen() {
+        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(sellerEnterprise));
+        when(creditScoreService.checkTradePermission(1L)).thenReturn(false);
+
+        assertThrows(TradeException.class, () -> tradeService.createP2PTrade(currentUser, tradeRequest));
+        verify(enterpriseRepository, never()).save(any(Enterprise.class));
+    }
+
+    @Test
+    @DisplayName("拍卖挂单-信誉分被限制交易时拒绝创建")
+    void testCreateAuctionOrderFailCreditRestricted() {
+        tradeRequest.setTradeType(TradeTypeEnum.AUCTION.getCode());
+        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(sellerEnterprise));
+        when(creditScoreService.checkTradePermission(1L)).thenReturn(false);
+
+        TradeException ex = assertThrows(TradeException.class,
+                () -> tradeService.createAuctionOrder(currentUser, tradeRequest));
+
+        assertEquals(com.oaiss.chain.constant.ErrorCode.CREDIT_TRADE_RESTRICTED, ex.getCode());
+        verify(transactionRepository, never()).save(any());
     }
 }

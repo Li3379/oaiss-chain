@@ -22,10 +22,11 @@
  * ==============================================================================
  */
 import { computed, onMounted, ref } from 'vue'
-import { CircleCheck, CircleClose, Cpu, Key, Warning } from '@element-plus/icons-vue'
+import { CircleCheck, CircleClose, Cpu, Key, Odometer, Warning } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { reviewReport } from '../../api/carbon'
+import { getPresignedUrl } from '../../api/file'
 import {
   getMyReviewerQualification,
   getPendingReports,
@@ -40,6 +41,9 @@ import type {
   ReviewerStatisticsResponse,
 } from '../../types'
 import { formatDateTime, formatNumber } from '../../utils/format'
+import PageHeader from '../../components/pen/PageHeader.vue'
+import StatStrip from '../../components/pen/StatStrip.vue'
+import DataPanel from '../../components/pen/DataPanel.vue'
 import PageHint from '../../components/PageHint.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import TermTip from '../../components/TermTip.vue'
@@ -99,34 +103,141 @@ const reviewingRow = ref<ReviewerTableRow | null>(null)
 const rowSignatureValid = computed<boolean | null | undefined>(() => reviewingRow.value?.signatureValid)
 const rowHasSignature = computed(() => Boolean(reviewingRow.value?.signatureData))
 
-// AI 智能辅助预审与参数方差分析
-const aiPreAudit = computed(() => {
+/* ---------- 佐证附件：解析 attachments 并换取预签名链接 ---------- */
+// 新数据落库为 [{ name, objectName, url, size, hash }]；历史数据只有 url（未签名直连地址），
+// 因此 objectName 缺失时从 URL 的 /{bucket}/ 之后反推，推不出来则禁用下载并提示。
+type ReviewAttachment = {
+  name: string
+  objectName: string
+  size: number
+  hash?: string
+  downloadable: boolean
+}
+
+/** 从裸直连 URL 反推 MinIO objectName：MinIO 为 path-style，首段是桶名，其后均为对象键 */
+function inferObjectNameFromUrl(rawUrl: string): string {
+  if (!rawUrl) return ''
+  let pathname = ''
+  try {
+    pathname = new URL(rawUrl, window.location.origin).pathname
+  } catch {
+    return ''
+  }
+  const segments = pathname.split('/').filter(Boolean)
+  if (segments.length < 2) return ''
+  return segments
+    .slice(1)
+    .map((segment) => {
+      try {
+        return decodeURIComponent(segment)
+      } catch {
+        return segment
+      }
+    })
+    .join('/')
+}
+
+const reviewAttachments = computed<ReviewAttachment[]>(() => {
+  const raw = reviewingRow.value?.attachments
+  if (!raw) return []
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return []
+  }
+  if (!Array.isArray(parsed)) return []
+
+  return parsed.flatMap((item, index): ReviewAttachment[] => {
+    // 兼容最早期的「纯 URL 字符串数组」形态，与对象形态走同一套反推逻辑
+    const record: Record<string, unknown> = typeof item === 'string'
+      ? { url: item }
+      : item && typeof item === 'object'
+        ? (item as Record<string, unknown>)
+        : {}
+    if (Object.keys(record).length === 0) return []
+    const url = typeof record.url === 'string' ? record.url : ''
+    const explicitObjectName = typeof record.objectName === 'string' ? record.objectName.trim() : ''
+    const objectName = explicitObjectName || inferObjectNameFromUrl(url)
+    const size = Number(record.size)
+
+    return [{
+      name: typeof record.name === 'string' && record.name.trim()
+        ? record.name
+        : objectName.split('/').pop() || `attachment-${index + 1}`,
+      objectName,
+      size: Number.isFinite(size) ? size : 0,
+      hash: typeof record.hash === 'string' ? record.hash : undefined,
+      downloadable: Boolean(objectName),
+    }]
+  })
+})
+
+const attachmentDownloading = ref('')
+
+function formatAttachmentSize(size: number): string {
+  if (!size || size < 0) return '-'
+  if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`
+  if (size >= 1024) return `${(size / 1024).toFixed(0)} KB`
+  return `${size} B`
+}
+
+/** 下载走预签名链接：私有桶裸 URL 无签名必 403，只有临时签名地址可读 */
+async function onDownloadAttachment(attachment: ReviewAttachment): Promise<void> {
+  if (!attachment.downloadable || attachmentDownloading.value) return
+  attachmentDownloading.value = attachment.objectName
+  try {
+    const signedUrl = await getPresignedUrl(attachment.objectName)
+    const link = document.createElement('a')
+    link.href = signedUrl
+    link.target = '_blank'
+    link.rel = 'noopener noreferrer'
+    link.download = attachment.name
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  } catch {
+    ElMessage.error(t('auditList.attachmentDownloadFailed'))
+  } finally {
+    attachmentDownloading.value = ''
+  }
+}
+
+// 规则预检（非 AI 模型）：仅根据「验签结果 + 排放量 + 佐证附件」三类确定性事实生成提示，
+// 不做推断、不调用任何模型端点。审核结论必须由审核员自行判断。
+const rulePrecheck = computed(() => {
   if (!reviewingRow.value) return null
   const sigOk = reviewingRow.value.signatureValid !== false
   const total = Number(reviewingRow.value.totalEmission) || 0
-  const hasAttachments = Boolean(reviewingRow.value.attachments)
+  const hasAttachments = reviewAttachments.value.length > 0
 
   return {
-    status: sigOk ? 'RECOMMEND_APPROVE' : 'REQUIRE_VERIFICATION',
-    statusText: sigOk ? 'AI 建议通过' : 'AI 提示存疑',
+    status: sigOk ? 'CHECK_PASS' : 'CHECK_ATTENTION',
+    statusText: sigOk ? t('auditList.rulePrecheckPass') : t('auditList.rulePrecheckAttention'),
     statusType: (sigOk ? 'success' : 'warning') as 'success' | 'warning',
     findings: [
-      sigOk ? '数字签名 SHA256withRSA 与企业公钥比对有效，未见报文篡改痕迹。' : '数字签名未通过公钥数学验签，可能存在离线修改或公钥重置。',
-      total > 0 ? `申报排放量 (${total.toFixed(2)} tCO₂e) 符合所属行业工况合理分布范围。` : '填报排放量异常偏低，需核验计量表具原始底单。',
-      hasAttachments ? '佐证附件完整且已生成 SHA-256 存证指纹，符合国标核验要求。' : '未附带化验单附件，建议审核员在批注中要求补充留档。',
+      sigOk
+        ? t('auditList.ruleFindingSignatureOk')
+        : t('auditList.ruleFindingSignatureInvalid'),
+      total > 0
+        ? t('auditList.ruleFindingTotalPresent', { total: total.toFixed(2) })
+        : t('auditList.ruleFindingTotalMissing'),
+      hasAttachments
+        ? t('auditList.ruleFindingAttachmentsPresent', { count: reviewAttachments.value.length })
+        : t('auditList.ruleFindingAttachmentsMissing'),
     ],
     recommendedComment: sigOk
-      ? '经 GB/T 32150 国标模型校验与数字签名核查，各项排碳参数处于合理公差范围，核准予以合规通过并推进上链。'
-      : '经核对，该份报告数据或签名校验存在疑问，请核实原始化验单与计量底单后重新提交。',
+      ? t('auditList.ruleCommentSignatureOk')
+      : t('auditList.ruleCommentSignatureInvalid'),
   }
 })
 
-const applyAiPreAuditComment = () => {
-  if (aiPreAudit.value) {
-    reviewForm.value.approved = aiPreAudit.value.status === 'RECOMMEND_APPROVE'
-    reviewForm.value.comment = aiPreAudit.value.recommendedComment
-    ElMessage.success(t('auditList.appliedAiCommentTip'))
-  }
+/** 仅把预检说明填入批注框，不代替审核员做通过/驳回的选择 */
+const applyRulePrecheckComment = () => {
+  if (!rulePrecheck.value) return
+  reviewForm.value.comment = rulePrecheck.value.recommendedComment
+  ElMessage.success(t('auditList.appliedRulePrecheckTip'))
 }
 
 const REVIEWABLE_STATUSES = new Set([1, 2])
@@ -331,6 +442,48 @@ async function fetchQualificationStatus(): Promise<void> {
   }
 }
 
+/** 首屏统计条：全部由已加载的核查绩效与本页工单推导，不新增接口请求 */
+const overviewStats = computed(() => {
+  const rows = tableData.value
+  const pendingRows = rows.filter((row) => REVIEWABLE_STATUSES.has(Number(row.status))).length
+  const stats = normalizedStatistics.value
+  const decided = stats.approvedCount + stats.rejectedCount
+
+  return [
+    {
+      label: t('auditList.statTotalReviews'),
+      value: stats.totalReviews,
+      unit: t('auditList.statUnitReports'),
+      delta: t('auditList.statTotalReviewsHint', { count: pendingRows }),
+      tone: 'neu' as const,
+      icon: Odometer,
+    },
+    {
+      label: t('auditList.statApproved'),
+      value: stats.approvedCount,
+      unit: t('auditList.statUnitReports'),
+      delta: t('auditList.statApprovedHint'),
+      tone: stats.approvedCount > 0 ? ('pos' as const) : ('neu' as const),
+      icon: CircleCheck,
+    },
+    {
+      label: t('auditList.statRejected'),
+      value: stats.rejectedCount,
+      unit: t('auditList.statUnitReports'),
+      delta: t('auditList.statRejectedHint'),
+      tone: stats.rejectedCount > 0 ? ('neg' as const) : ('neu' as const),
+      icon: CircleClose,
+    },
+    {
+      label: t('auditList.statPassRate'),
+      value: stats.approvalRate,
+      delta: t('auditList.statPassRateHint', { count: decided }),
+      tone: decided > 0 ? ('pos' as const) : ('neu' as const),
+      icon: Key,
+    },
+  ]
+})
+
 onMounted(() => {
   void fetchData()
   void fetchQualificationStatus()
@@ -340,8 +493,16 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="audit-page">
-    <el-card class="section-card" shadow="never">
+  <section class="audit-page pen-enter">
+    <PageHeader
+      :title="t('menu.carbonEmissionData')"
+      :description="t('auditList.pageDescription')"
+      :crumbs="[t('auditList.breadcrumbAudit'), t('auditList.breadcrumbData')]"
+    />
+
+    <PageHint :text="t('pageHints.auditList')" />
+
+    <div class="reviewer-strip">
       <el-space>
         <span>{{ t('certificateManage.myQualification') }}:</span>
         <el-tag :type="qualificationStatusType">{{ qualificationStatusText }}</el-tag>
@@ -352,32 +513,20 @@ onMounted(() => {
       <div v-if="reviewerIdentityLine" class="identity-line">
         {{ reviewerIdentityLine }}
       </div>
-    </el-card>
+    </div>
 
-    <el-card v-if="statisticsData" class="section-card" shadow="never">
-      <el-space :size="30">
-        <span>{{ t('auditList.totalReviews') }}: <strong>{{ normalizedStatistics.totalReviews }}</strong></span>
-        <span>{{ t('auditList.approvedCount') }}: <strong>{{ normalizedStatistics.approvedCount }}</strong></span>
-        <span>{{ t('auditList.rejectedCount') }}: <strong>{{ normalizedStatistics.rejectedCount }}</strong></span>
-        <span>{{ t('auditList.approvalRate') }}: <strong>{{ normalizedStatistics.approvalRate }}</strong></span>
-      </el-space>
-    </el-card>
+    <StatStrip :items="overviewStats" :loading="loading" />
 
-    <el-card class="section-card" shadow="never">
-      <el-breadcrumb separator="/">
-        <el-breadcrumb-item>{{ t('auditList.breadcrumbAudit') }}</el-breadcrumb-item>
-        <el-breadcrumb-item>{{ t('auditList.breadcrumbData') }}</el-breadcrumb-item>
-      </el-breadcrumb>
-    </el-card>
+    <el-tabs v-model="activeTab" @tab-change="onTabChange">
+      <el-tab-pane :label="t('auditList.tabPending')" name="pending" />
+      <el-tab-pane :label="t('auditList.tabAllReports')" name="all" />
+    </el-tabs>
 
-    <PageHint :text="t('pageHints.auditList')" />
-
-    <el-card class="section-card" shadow="never">
-      <el-tabs v-model="activeTab" @tab-change="onTabChange">
-        <el-tab-pane :label="t('auditList.tabPending')" name="pending" />
-        <el-tab-pane :label="t('auditList.tabAllReports')" name="all" />
-      </el-tabs>
-      <el-table :data="tableData" border v-loading="loading">
+    <DataPanel
+      :title="t('auditList.panelTitle')"
+      :meta="t('auditList.panelMeta', { total })"
+    >
+      <el-table :data="tableData" v-loading="loading">
         <el-table-column prop="reportNo" :label="t('auditList.colReportNo')" min-width="180" show-overflow-tooltip />
         <el-table-column prop="enterpriseName" :label="t('auditList.colEnterpriseName')" min-width="180" />
         <el-table-column prop="title" :label="t('auditList.colReportTitle')" min-width="200" show-overflow-tooltip />
@@ -416,12 +565,12 @@ onMounted(() => {
             >
               {{ t('auditList.reviewAction') }}
             </el-button>
-            <span v-else style="color: var(--color-text-muted);">-</span>
+            <span v-else class="empty-op">-</span>
           </template>
         </el-table-column>
       </el-table>
 
-      <div class="pagination-row">
+      <template #footer>
         <el-pagination
           v-model:current-page="currentPage"
           v-model:page-size="pageSize"
@@ -432,8 +581,8 @@ onMounted(() => {
           @size-change="onSizeChange"
           @current-change="onCurrentChange"
         />
-      </div>
-    </el-card>
+      </template>
+    </DataPanel>
 
     <el-dialog v-model="reviewDialogVisible" :title="t('auditList.dialogTitle')" width="600px" destroy-on-close>
       <el-form label-width="110px">
@@ -455,22 +604,55 @@ onMounted(() => {
           >{{ t('auditList.invalidApproveHint') }}</span>
         </el-form-item>
 
-        <!-- AI 智能辅助预审与参数方差分析卡片 -->
-        <div v-if="aiPreAudit" class="ai-preaudit-card">
+        <!-- 佐证附件区块：审核员必须能看见并下载企业上传的凭据，再决定通过/驳回 -->
+        <el-form-item :label="t('auditList.labelAttachments')">
+          <div class="review-attachments" data-testid="review-attachments">
+            <div v-if="reviewAttachments.length === 0" class="review-attachments__empty">
+              {{ t('auditList.attachmentsEmpty') }}
+            </div>
+            <ul v-else class="review-attachments__list">
+              <li v-for="(item, index) in reviewAttachments" :key="item.objectName || index" class="review-attachments__item">
+                <div class="review-attachments__meta">
+                  <span class="review-attachments__name" :title="item.name">{{ item.name }}</span>
+                  <span class="review-attachments__size">{{ formatAttachmentSize(item.size) }}</span>
+                  <span v-if="item.hash" class="review-attachments__hash" :title="item.hash">
+                    SHA-256: {{ item.hash.slice(0, 12) }}…{{ item.hash.slice(-8) }}
+                  </span>
+                </div>
+                <el-button
+                  link
+                  type="primary"
+                  :loading="attachmentDownloading === item.objectName"
+                  :disabled="!item.downloadable"
+                  @click="onDownloadAttachment(item)"
+                >
+                  {{ t('auditList.attachmentDownload') }}
+                </el-button>
+              </li>
+            </ul>
+            <p v-if="reviewAttachments.some((item) => !item.downloadable)" class="review-attachments__warn">
+              {{ t('auditList.attachmentUnresolvable') }}
+            </p>
+          </div>
+        </el-form-item>
+
+        <!-- 规则预检卡片：确定性事实核对，非 AI 模型结论 -->
+        <div v-if="rulePrecheck" class="ai-preaudit-card" data-testid="rule-precheck">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <div style="display: inline-flex; align-items: center; gap: 6px;">
                 <el-icon color="var(--color-chart-1)" :size="15"><Cpu /></el-icon>
-                <strong style="color: var(--color-text); font-size: 13.5px;">{{ t('auditList.aiPreAuditTitle') }}</strong>
+                <strong style="color: var(--color-text); font-size: 13.5px;">{{ t('auditList.rulePrecheckTitle') }}</strong>
               </div>
-              <el-tag :type="aiPreAudit.statusType" size="small">{{ aiPreAudit.statusText }}</el-tag>
+              <el-tag :type="rulePrecheck.statusType" size="small">{{ rulePrecheck.statusText }}</el-tag>
             </div>
-            <el-button size="small" type="primary" link @click="applyAiPreAuditComment">
-              {{ t('auditList.btnAdoptAiComment') }}
+            <el-button size="small" type="primary" link @click="applyRulePrecheckComment">
+              {{ t('auditList.btnAdoptRuleComment') }}
             </el-button>
           </div>
+          <p class="rule-precheck-note">{{ t('auditList.rulePrecheckNote') }}</p>
           <div style="font-size: 12px; color: var(--color-text-muted); line-height: 1.6;">
-            <div v-for="(f, idx) in aiPreAudit.findings" :key="idx" style="margin-bottom: 2px;">
+            <div v-for="(f, idx) in rulePrecheck.findings" :key="idx" style="margin-bottom: 2px;">
               • {{ f }}
             </div>
           </div>
@@ -531,66 +713,129 @@ onMounted(() => {
 .audit-page {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-4);
 }
 
-.section-card {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-}
-
-.pagination-row {
-  margin-top: 14px;
+.reviewer-strip {
   display: flex;
-  justify-content: flex-end;
-}
-
-.signature-warn {
-  margin-left: 10px;
-  color: var(--el-color-danger);
-  font-size: var(--text-sm);
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--fs-sub);
+  color: var(--pen-muted);
 }
 
 .identity-line,
 .identity-sub {
-  color: var(--color-text-muted);
-  font-size: var(--text-sm);
+  color: var(--pen-muted);
+  font-size: var(--fs-sub);
 }
 
-.identity-line {
-  margin-top: 10px;
+.empty-op {
+  color: var(--pen-faint);
+}
+
+.signature-warn {
+  margin-left: var(--space-2-5);
+  color: var(--pen-danger);
+  font-size: var(--fs-sub);
 }
 
 .reject-credit-notice {
-  margin-top: 6px;
-  font-size: var(--text-sm);
-  color: var(--el-color-danger);
+  margin-top: var(--space-1-5);
+  font-size: var(--fs-sub);
+  color: var(--pen-danger);
 }
 
 .quick-reasons-panel {
   width: 100%;
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
 }
 
 .quick-reasons-title {
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-  margin-right: 8px;
+  font-size: var(--fs-sub);
+  color: var(--pen-muted);
+  margin-right: var(--space-2);
 }
 
 .quick-reasons-tags {
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 4px;
+  gap: var(--space-1-5);
+  margin-top: var(--space-1);
+}
+
+/* ---------- 佐证附件区块 ---------- */
+.review-attachments {
+  width: 100%;
+}
+
+.review-attachments__empty {
+  color: var(--pen-muted);
+  font-size: var(--fs-sub);
+}
+
+.review-attachments__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+}
+
+.review-attachments__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2-5);
+  background: var(--pen-raised);
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-card);
+}
+
+.review-attachments__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.review-attachments__name {
+  color: var(--color-text);
+  font-size: var(--fs-sub);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-attachments__size,
+.review-attachments__hash {
+  color: var(--pen-muted);
+  font-size: var(--fs-sub);
+}
+
+.review-attachments__warn {
+  margin: var(--space-1-5) 0 0;
+  color: var(--pen-danger);
+  font-size: var(--fs-sub);
 }
 
 .ai-preaudit-card {
-  margin: 0 0 16px 110px;
-  padding: 12px 14px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
+  margin: 0 0 var(--space-4) 110px;
+  padding: var(--space-3);
+  background: var(--pen-raised);
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-card);
+}
+
+.rule-precheck-note {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-sub);
+  color: var(--pen-muted);
 }
 
 .quick-reason-tag {

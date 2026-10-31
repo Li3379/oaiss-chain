@@ -161,8 +161,16 @@ public class FileController {
      * 【对应前端页面】：views/auditor/AuditList.vue, CarbonUpload.vue
      * 【对应前端API】：api/file.ts -> downloadFile()
      * 【可见UI操作】：点击附件列表中的【下载原件】图标
+     * 【权限说明】：审核员(REVIEWER, userType=2)与第三方监管(THIRD_PARTY, userType=3)
+     *   承担核查与监管职责，必须能查阅待审报告所附的佐证原件，否则无法在「看到凭据」的前提下
+     *   作出审核结论，因此注解层显式放行这两类角色。
+     *   真正的属主/企业归属校验不在注解层，而是由 checkDownloadPermission() 统一裁决
+     *   （企业用户仅可读自己或本企业文件，元数据缺失一律 Fail-Closed）。
+     *   此前注解只写了 ENTERPRISE/ADMIN，会先于业务层拦截 REVIEWER/THIRD_PARTY，
+     *   使 checkDownloadPermission() 内的 userType==2/3 放行分支永远不可达 —— 此为注解与业务语义
+     *   不一致的实现缺陷，不是权限需求。
      */
-    @PreAuthorize("hasAnyRole('ENTERPRISE', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('ENTERPRISE', 'REVIEWER', 'THIRD_PARTY', 'ADMIN')")
     @AuditLog(module = "文件管理", action = "下载文件", description = "文件管理 下载文件")
     @GetMapping("/download")
     @Operation(
@@ -352,8 +360,11 @@ public class FileController {
      * 【对应前端页面】：views/auditor/AuditList.vue, views/enterprise/CarbonUpload.vue
      * 【对应前端API】：api/file.ts -> getPresignedUrl()
      * 【可见UI操作】：点击附件进行在线预览（图片/PDF）
+     * 【权限说明】：与 GET /file/download 同源放行 REVIEWER/THIRD_PARTY —— 审核员需要临时签名链接
+     *   才能在前端直接打开/下载佐证附件（私有桶的裸 URL 无签名必 403）。
+     *   归属校验同样由 checkDownloadPermission() 负责，注解层只做角色初筛。
      */
-    @PreAuthorize("hasAnyRole('ENTERPRISE', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('ENTERPRISE', 'REVIEWER', 'THIRD_PARTY', 'ADMIN')")
     @AuditLog(module = "文件管理", action = "获取文件预签名URL", description = "文件管理 获取文件预签名URL")
     @GetMapping("/presigned-url")
     @Operation(

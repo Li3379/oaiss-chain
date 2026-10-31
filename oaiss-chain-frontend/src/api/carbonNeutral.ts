@@ -17,6 +17,21 @@ import type {
   PagedItems,
 } from '../types'
 
+/** 企业申请核证请求体：后端 SubmitVerificationRequest 只接受 verifierId（项目ID 走路径） */
+export interface SubmitVerificationRequest {
+  verifierId: number
+}
+
+/** 企业申请认证请求体：后端 ApplyCertificationRequest 要求 certification organization（@NotBlank） */
+export interface ApplyCertificationRequest {
+  certOrg: string
+}
+
+/** 完成认证请求体：后端 CompleteCertificationRequest 要求证书编号（@NotBlank） */
+export interface CompleteCertificationRequest {
+  certNo: string
+}
+
 /**
  * 【业务功能】：多维度检索公开的碳中和项目列表（按项目类型、状态、地区过滤）
  * 【对应前端页面】：CarbonNeutral.vue (/enterprise/carbon-neutral/projects)
@@ -79,11 +94,12 @@ export function startProject(projectId: number): Promise<void> {
 
 /**
  * 【业务功能】：企业向第三方专业核证机构提交现场核查申请
- * 【对应前端页面】：CarbonNeutralDetail.vue
+ * 【对应前端页面】：CarbonNeutralDetail.vue, CarbonNeutral.vue
  * 【界面触发操作】：实施阶段完成周期监测后，点击【申请第三方核证】
  * 【后端对应端点】：CarbonNeutralProjectController -> POST /carbon-neutral/{id}/submit-verification
+ * 注意：后端 SubmitVerificationRequest 只接收 verifierId（项目ID 走路径参数），缺失会 400。
  */
-export function submitVerification(projectId: number, data: ProjectVerificationRequest): Promise<void> {
+export function submitVerification(projectId: number, data: SubmitVerificationRequest): Promise<void> {
   return request.post(`/carbon-neutral/${projectId}/submit-verification`, data)
 }
 
@@ -102,9 +118,10 @@ export function updateMonitoring(projectId: number, data: { monitoringData: Reco
  * 【对应前端页面】：CarbonNeutralDetail.vue
  * 【界面触发操作】：核证合格后，点击【申请签发碳信用】
  * 【后端对应端点】：CarbonNeutralProjectController -> POST /carbon-neutral/{id}/apply-certification
+ * 注意：后端 ApplyCertificationRequest.certOrg 为 @NotBlank，缺失会 400。
  */
-export function applyCertification(projectId: number): Promise<void> {
-  return request.post(`/carbon-neutral/${projectId}/apply-certification`)
+export function applyCertification(projectId: number, data: ApplyCertificationRequest): Promise<void> {
+  return request.post(`/carbon-neutral/${projectId}/apply-certification`, data)
 }
 
 /**
@@ -165,10 +182,11 @@ export function useCredits(projectId: number, data: { amount: number }): Promise
  * 【对应前端页面】：ProjectReview.vue, CertificateManage.vue
  * 【界面触发操作】：点击【完成最终认证签发】
  * 【后端对应端点】：CarbonNeutralProjectController -> POST /carbon-neutral/{id}/certify
+ * 注意：后端 CompleteCertificationRequest.certNo 为 @NotBlank，缺失会 400。
  */
-export function completeCertification(projectId: number): Promise<void> {
+export function completeCertification(projectId: number, data: CompleteCertificationRequest): Promise<void> {
   if (!projectId) return Promise.reject(new Error('项目ID不能为空'))
-  return request.post(`/carbon-neutral/${projectId}/certify`)
+  return request.post(`/carbon-neutral/${projectId}/certify`, data)
 }
 
 /**

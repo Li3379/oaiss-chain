@@ -35,6 +35,9 @@ public class SearchResponse {
 
     /**
      * 交易摘要
+     * <p>
+     * 买卖双方名称字段随查询角色变化：企业/审核员看到的是脱敏别名，
+     * 管理员/第三方监管看到真实企业名称（需求 3.3.2 匿名交易检索）。
      */
     @Data
     @Builder
@@ -45,7 +48,11 @@ public class SearchResponse {
         private String tradeNo;
         private Integer tradeType;
         private Long sellerId;
+        /** 卖方名称：脱敏别名或真实名称（按查询角色决定） */
+        private String sellerName;
         private Long buyerId;
+        /** 买方名称：脱敏别名、真实名称或「待定」 */
+        private String buyerName;
         private BigDecimal quantity;
         private BigDecimal unitPrice;
         private BigDecimal totalAmount;

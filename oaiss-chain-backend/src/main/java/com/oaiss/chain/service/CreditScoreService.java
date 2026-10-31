@@ -22,7 +22,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -288,6 +293,44 @@ public class CreditScoreService {
             return true; // 没有记录默认允许
         }
         return !creditScore.getTradeRestricted() && !creditScore.getAccountFrozen();
+    }
+
+    /**
+     * 批量获取用户所属企业的信誉分（撮合同价次级排序用）
+     * <p>
+     * 查不到用户、企业或信誉分记录的用户不会出现在返回结果中，
+     * 由调用方按中性分处理，避免因数据缺失导致排序报错或排到最后。
+     *
+     * @param userIds 用户ID集合
+     * @return userId -> 信誉分；无法解析的用户不在 Map 中
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, Integer> getScoresByUserIds(Collection<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        // 用户 → 企业 → 信誉分，两跳批量查询，避免逐单 N+1
+        Map<Long, Long> enterpriseIdByUserId = enterpriseRepository.findByUserIdInAndDeletedFalse(userIds).stream()
+                .filter(e -> e.getId() != null && e.getUserId() != null)
+                .collect(Collectors.toMap(Enterprise::getUserId, Enterprise::getId, (first, second) -> first));
+        if (enterpriseIdByUserId.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        Map<Long, Integer> scoreByEnterpriseId = creditScoreRepository
+                .findByEnterpriseIdInAndDeletedFalse(new HashSet<>(enterpriseIdByUserId.values())).stream()
+                .filter(cs -> cs.getScore() != null)
+                .collect(Collectors.toMap(CreditScore::getEnterpriseId, CreditScore::getScore, (first, second) -> first));
+
+        Map<Long, Integer> scoreByUserId = new HashMap<>();
+        enterpriseIdByUserId.forEach((userId, enterpriseId) -> {
+            Integer score = scoreByEnterpriseId.get(enterpriseId);
+            if (score != null) {
+                scoreByUserId.put(userId, score);
+            }
+        });
+        return scoreByUserId;
     }
 
     /**

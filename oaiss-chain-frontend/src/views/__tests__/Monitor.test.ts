@@ -26,6 +26,10 @@ vi.mock('../../api/thirdParty', () => ({
   updateContact: vi.fn(() => Promise.resolve()),
 }))
 
+vi.mock('../../api/trade', () => ({
+  listTrades: vi.fn(() => Promise.resolve({ items: [], total: 0 })),
+}))
+
 vi.mock('element-plus', async (importOriginal) => {
   const actual = (await importOriginal() as any)
   return {
@@ -36,6 +40,7 @@ vi.mock('element-plus', async (importOriginal) => {
 
 import Monitor from '../third-party/Monitor.vue'
 import { getCarbonReports, getOrgInfo, getStatistics, updateContact } from '../../api/thirdParty'
+import { listTrades } from '../../api/trade'
 import { ElMessage } from 'element-plus'
 
 const stubs = {
@@ -106,6 +111,12 @@ describe('Monitor.vue', () => {
     })
     expect(getStatistics).toHaveBeenCalled()
     expect(getOrgInfo).toHaveBeenCalled()
+    expect(listTrades).toHaveBeenCalledWith({
+      page: 1,
+      size: 10,
+      status: undefined,
+      tradeType: undefined,
+    })
     wrapper.unmount()
   })
 
@@ -187,6 +198,88 @@ describe('Monitor.vue', () => {
 
     expect(updateContact).not.toHaveBeenCalled()
     expect(ElMessage.warning).toHaveBeenCalledWith('monitor.contactSaveFailed')
+    wrapper.unmount()
+  })
+
+  it('renders the regulator trade ledger with full trade detail columns', async () => {
+    vi.mocked(listTrades).mockResolvedValueOnce({
+      items: [
+        {
+          id: 1,
+          tradeNo: 'TX-2024-001',
+          tradeType: 2,
+          tradeTypeText: 'P2P交易',
+          sellerId: 1,
+          sellerName: '华能发电有限公司',
+          buyerId: 2,
+          buyerName: '国网能源有限公司',
+          quantity: 100,
+          unitPrice: 50,
+          totalAmount: 5000,
+          reportId: 1,
+          status: 2,
+          statusText: '已完成',
+          remark: '',
+          blockchainTxHash: 'abc123',
+          completedAt: '2026-01-02T10:00:00',
+          createdAt: '2026-01-01T10:00:00',
+        },
+      ],
+      total: 1,
+    } as never)
+
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    expect((wrapper.vm as unknown as { trades: unknown[] }).trades).toHaveLength(1)
+    expect((wrapper.vm as unknown as { tradeTotal: number }).tradeTotal).toBe(1)
+    // 交易类型文案走前端 i18n（en 界面不会混入后端中文）
+    expect((wrapper.vm as unknown as { tradeTypeLabel: (t: number) => string }).tradeTypeLabel(2))
+      .toBe('monitor.tradeTypeP2P')
+    wrapper.unmount()
+  })
+
+  it('forwards the status/trade-type filters to the trade ledger query', async () => {
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    const selects = wrapper.findAll('select')
+    await selects[1].setValue('2')
+    await selects[2].setValue('1')
+    ;(wrapper.vm as unknown as { onTradeSearch: () => void }).onTradeSearch()
+    await flushPromises()
+
+    expect(listTrades).toHaveBeenLastCalledWith({
+      page: 1,
+      size: 10,
+      status: '2',
+      tradeType: '1',
+    })
+    wrapper.unmount()
+  })
+
+  it('keeps the trade ledger read-only (no create/cancel/confirm actions)', async () => {
+    vi.mocked(getStatistics).mockResolvedValueOnce({
+      totalReports: 1,
+      pendingReports: 0,
+      approvedReports: 1,
+      rejectedReports: 0,
+      totalTrades: 1,
+      totalTradeQuantity: 100,
+      totalTradeAmount: 5000,
+      orgName: '监管机构A',
+      accessLevel: 2,
+    })
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    const tradeApi = wrapper.vm as unknown as Record<string, unknown>
+    expect(tradeApi.createP2PTrade).toBeUndefined()
+    expect(tradeApi.cancelTrade).toBeUndefined()
+    expect(tradeApi.confirmTrade).toBeUndefined()
+    // 页面只调用了统计与交易列表这两个读接口
+    expect(listTrades).toHaveBeenCalled()
+    expect((wrapper.vm as unknown as { statistics: { totalTrades?: number } }).statistics.totalTrades).toBe(1)
     wrapper.unmount()
   })
 })

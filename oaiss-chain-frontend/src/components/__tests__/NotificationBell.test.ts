@@ -14,11 +14,14 @@ vi.mock('../../api/notification', () => ({
   markAllAsRead: vi.fn().mockResolvedValue(undefined),
 }))
 
+// 未读数放在模块级 ref，便于在用例中推高以触发「增长 → 弹提示」链路
+const sharedUnread = ref(3)
+
 // 组合式函数契约返回 ref；用普通对象 { value } 会让 watch() 收到非法数据源并告警
 vi.mock('../../composables/useNotificationSocket', () => ({
   useNotificationSocket: () => ({
     connected: ref(true),
-    unreadCount: ref(3),
+    unreadCount: sharedUnread,
     latestNotification: ref(null),
     fetchUnreadCount: vi.fn(),
     disconnect: vi.fn(),
@@ -90,5 +93,37 @@ describe('NotificationBell', () => {
     markAsRead.mockResolvedValueOnce(undefined)
     await mod.markAsRead(42)
     expect(markAsRead).toHaveBeenCalledWith(42)
+  })
+
+  /**
+   * 轮询通道主动提示回归（WS 默认关闭时的成交/审核通知可见性）。
+   *
+   * 背景：撮合由后台定时器自动产生，若只更新未读徽标数字，用户不会注意到
+   * 「挂单已成交」。此处断言「未读数增长 → 拉最新一条 → 弹出提示」这条链。
+   */
+  it('未读数增长时拉取并弹出最新通知（轮询通道兜底提示）', async () => {
+    const mod = await import('../../api/notification')
+    const getNotifications = vi.mocked(mod.getNotifications)
+    getNotifications.mockClear()
+    getNotifications.mockResolvedValue({
+      content: [{ id: 1, title: '拍卖撮合成交', content: '您的拍卖订单已成交 10 吨', isRead: false }],
+    } as never)
+
+    const { useAppStore } = await import('../../store')
+    useAppStore().loggedIn = true
+
+    sharedUnread.value = 3
+    const wrapper = mount(NotificationBell, { global: { stubs } })
+    await Promise.resolve()
+
+    // 首次挂载只记录基线，不补弹历史
+    expect(getNotifications).not.toHaveBeenCalled()
+
+    sharedUnread.value = 4
+    await Promise.resolve()
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(getNotifications).toHaveBeenCalledWith({ pageNum: 1, pageSize: 1 })
+    wrapper.unmount()
   })
 })

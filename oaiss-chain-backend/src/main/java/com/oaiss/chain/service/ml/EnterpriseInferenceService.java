@@ -61,8 +61,9 @@ public class EnterpriseInferenceService {
         List<CarbonReport> reports = carbonReportRepository.findByEnterpriseIdAndDeletedFalse(enterpriseId);
 
         if (reports.isEmpty()) {
+            // 空数据不是故障：前端据此渲染「先填报再推理」的空态引导，而不是报错弹窗。
             throw new BusinessException(
-                    3004, "No carbon reports found for enterprise: " + enterpriseId);
+                    3004, "该企业暂无碳排放报告，无法生成 AI 合规推理，请先填报碳核算报告");
         }
 
         // Compute features from reports
