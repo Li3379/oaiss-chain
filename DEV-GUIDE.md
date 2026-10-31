@@ -26,7 +26,7 @@
 ## 3. 仓库结构
 
 ```
-├── oaiss-chain-backend/    Spring Boot 后端 (23 controllers / 38 services / 26 entities / 25 repos，纯净业务模块)
+├── oaiss-chain-backend/    Spring Boot 后端 (23 controllers / 39 services / 26 entities / 25 repos，纯净业务模块)
 ├── oaiss-chain-frontend/   Vue 3 SPA (22 api modules, views/ 按角色分，纯净前端模块)
 ├── oaiss-chain-ml-service/ FastAPI ML (3 routers: emission/enterprise/market)
 ├── oaiss-chain-chaincode/  Go Fabric 链码
@@ -156,7 +156,7 @@ bash ./scripts/stability-baseline.sh
 |------|-----|------|
 | Controllers | 23 | `controller/*.java` 数（2026-10-20 新增 CopilotController） |
 | REST 端点 | 150 | `@Mapping` 注解总数（+2 撮合控制台查询端点：matching-status / all-results；+2 用户管理端点：创建/删除用户） |
-| Services | 41 | 38 主包 + 3 ml/ |
+| Services | 42 | 39 主包 + 3 ml/ |
 | Entities | 26 | 25 @Entity + BaseEntity |
 | Tables | 25 | 现存 25 张（曾创建 26 张，authenticator 在 V8 DROP 退场） |
 | Repositories | 25 | `repository/*.java` 数 |
