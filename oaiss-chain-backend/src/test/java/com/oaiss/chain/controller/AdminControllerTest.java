@@ -2,6 +2,7 @@ package com.oaiss.chain.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.oaiss.chain.constant.ErrorCode;
+import com.oaiss.chain.constant.ErrorMessage;
 import com.oaiss.chain.entity.AccountPermissionList;
 import com.oaiss.chain.entity.EnterpriseAdmission;
 import com.oaiss.chain.entity.ReviewerQualification;
@@ -60,6 +61,12 @@ class AdminControllerTest {
 
     @MockBean
     private com.oaiss.chain.service.ReviewerQualificationService reviewerQualificationService;
+
+    @MockBean
+    private com.oaiss.chain.service.AdminUserService adminUserService;
+
+    @MockBean
+    private com.oaiss.chain.service.ChainReconciliationService chainReconciliationService;
 
     private User testUser1;
     private User testUser2;
@@ -235,7 +242,7 @@ class AdminControllerTest {
                 .status(0)
                 .build();
         userToEnable.setId(3L);
-        when(userRepository.findById(3L)).thenReturn(Optional.of(userToEnable));
+        when(userRepository.findByIdAndDeletedFalse(3L)).thenReturn(Optional.of(userToEnable));
         when(userRepository.save(any(User.class))).thenReturn(userToEnable);
 
         // When & Then
@@ -244,7 +251,7 @@ class AdminControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
-        verify(userRepository, times(1)).findById(3L);
+        verify(userRepository, times(1)).findByIdAndDeletedFalse(3L);
         verify(userRepository, times(1)).save(any(User.class));
     }
 
@@ -257,7 +264,7 @@ class AdminControllerTest {
                 .status(1)
                 .build();
         userToDisable.setId(1L);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(userToDisable));
+        when(userRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(userToDisable));
         when(userRepository.save(any(User.class))).thenReturn(userToDisable);
 
         // When & Then
@@ -266,7 +273,7 @@ class AdminControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
-        verify(userRepository, times(1)).findById(1L);
+        verify(userRepository, times(1)).findByIdAndDeletedFalse(1L);
         verify(userRepository, times(1)).save(any(User.class));
     }
 
@@ -274,7 +281,7 @@ class AdminControllerTest {
     @DisplayName("更新用户状态-用户不存在")
     void testUpdateUserStatusUserNotFound() throws Exception {
         // Given
-        when(userRepository.findById(999L)).thenReturn(Optional.empty());
+        when(userRepository.findByIdAndDeletedFalse(999L)).thenReturn(Optional.empty());
 
         // When & Then - GlobalExceptionHandler returns 404 for RESOURCE_NOT_FOUND
         mockMvc.perform(put("/admin/users/999/status")
@@ -282,7 +289,7 @@ class AdminControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value(ErrorCode.RESOURCE_NOT_FOUND));
 
-        verify(userRepository, times(1)).findById(999L);
+        verify(userRepository, times(1)).findByIdAndDeletedFalse(999L);
         verify(userRepository, never()).save(any());
     }
 
@@ -449,7 +456,7 @@ class AdminControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
-        verify(enterpriseAdmissionService).revokeCertificate(1L);
+        verify(enterpriseAdmissionService).revokeCertificate(1L, null);
     }
 
     @Test
@@ -492,7 +499,7 @@ class AdminControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
-        verify(reviewerQualificationService).revokeCertificate(2L);
+        verify(reviewerQualificationService).revokeCertificate(2L, null);
     }
 
     @Test
@@ -573,7 +580,7 @@ class AdminControllerTest {
 
         User userToEnable = User.builder().username("admin_user").status(0).build();
         userToEnable.setId(1L);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(userToEnable));
+        when(userRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(userToEnable));
         when(userRepository.save(any(User.class))).thenReturn(userToEnable);
 
         mockMvc.perform(put("/admin/users/1/status")
@@ -621,5 +628,212 @@ class AdminControllerTest {
         verify(userRepository, times(1)).findByStatusAndDeletedFalse(eq(1), any(Pageable.class));
         verify(userRepository, never()).findByUserTypeAndDeletedFalse(any(), any());
         verify(userRepository, never()).findByDeletedFalse(any());
+    }
+
+    // ==================== Create User Tests ====================
+
+    @Test
+    @DisplayName("创建用户-成功创建审核员账号")
+    void testCreateUserSuccess() throws Exception {
+        User created = User.builder()
+                .username("new_reviewer")
+                .userType(2)
+                .status(1)
+                .build();
+        created.setId(9L);
+        when(adminUserService.createUser(any(com.oaiss.chain.dto.AdminCreateUserRequest.class))).thenReturn(created);
+
+        mockMvc.perform(post("/admin/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(java.util.Map.of(
+                                "username", "new_reviewer",
+                                "password", "admin123",
+                                "userType", 2))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(9))
+                .andExpect(jsonPath("$.data.username").value("new_reviewer"));
+
+        verify(adminUserService, times(1)).createUser(any(com.oaiss.chain.dto.AdminCreateUserRequest.class));
+    }
+
+    @Test
+    @DisplayName("创建用户-参数校验失败(用户名为空)返回400")
+    void testCreateUserValidationError() throws Exception {
+        mockMvc.perform(post("/admin/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(java.util.Map.of(
+                                "username", "",
+                                "password", "admin123",
+                                "userType", 2))))
+                .andExpect(status().isBadRequest());
+
+        verify(adminUserService, never()).createUser(any());
+    }
+
+    @Test
+    @DisplayName("创建用户-业务异常透传(禁建管理员)")
+    void testCreateUserAdminTypeForbidden() throws Exception {
+        when(adminUserService.createUser(any(com.oaiss.chain.dto.AdminCreateUserRequest.class)))
+                .thenThrow(new BusinessException(ErrorCode.ADMIN_USER_TYPE_FORBIDDEN, ErrorMessage.ADMIN_USER_TYPE_FORBIDDEN));
+
+        mockMvc.perform(post("/admin/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(java.util.Map.of(
+                                "username", "x_admin",
+                                "password", "admin123",
+                                "userType", 4))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(ErrorCode.ADMIN_USER_TYPE_FORBIDDEN));
+    }
+
+    // ==================== Delete User Tests ====================
+
+    @Test
+    @DisplayName("删除用户-成功(软删除下线语义)")
+    void testDeleteUserSuccess() throws Exception {
+        mockMvc.perform(delete("/admin/users/7"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(adminUserService, times(1)).deleteUser(7L);
+    }
+
+    @Test
+    @DisplayName("删除用户-管理员删除自己应失败")
+    void testDeleteUser_Self_ShouldFail() throws Exception {
+        com.oaiss.chain.security.JwtUserDetails adminUser =
+                com.oaiss.chain.security.JwtUserDetails.builder()
+                        .userId(1L)
+                        .username("admin_user")
+                        .userType(4)
+                        .roles(List.of("ADMIN"))
+                        .enabled(true)
+                        .accountNonExpired(true)
+                        .accountNonLocked(true)
+                        .credentialsNonExpired(true)
+                        .build();
+        org.springframework.security.authentication.UsernamePasswordAuthenticationToken auth =
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                        adminUser, null, adminUser.getAuthorities());
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(auth);
+
+        mockMvc.perform(delete("/admin/users/1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(ErrorCode.CANNOT_DELETE_SELF));
+
+        verify(adminUserService, never()).deleteUser(any());
+    }
+
+    @Test
+    @DisplayName("删除用户-业务异常透传(目标是管理员)")
+    void testDeleteUserAdminTarget() throws Exception {
+        doThrow(new BusinessException(ErrorCode.CANNOT_DELETE_ADMIN, ErrorMessage.CANNOT_DELETE_ADMIN))
+                .when(adminUserService).deleteUser(8L);
+
+        mockMvc.perform(delete("/admin/users/8"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(ErrorCode.CANNOT_DELETE_ADMIN));
+    }
+
+    // ==================== Keyword Search Tests ====================
+
+    @Test
+    @DisplayName("查询用户列表-keyword参数转发仓储组合查询")
+    void testListUsersKeywordForwards() throws Exception {
+        List<User> users = List.of(testUser1);
+        Page<User> userPage = new PageImpl<>(users);
+        when(userRepository.searchUsers(eq("coal"), isNull(), isNull(), any(Pageable.class))).thenReturn(userPage);
+
+        mockMvc.perform(get("/admin/users")
+                        .param("keyword", "coal"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].username").value("enterprise_user"));
+
+        verify(userRepository, times(1)).searchUsers(eq("coal"), isNull(), isNull(), any(Pageable.class));
+    }
+
+    @Test
+@DisplayName("查询用户列表-keyword与userType组合查询")
+    void testListUsersKeywordWithUserType() throws Exception {
+        List<User> users = List.of(testUser1);
+        Page<User> userPage = new PageImpl<>(users);
+        when(userRepository.searchUsers(eq("coal"), eq(1), isNull(), any(Pageable.class))).thenReturn(userPage);
+
+        mockMvc.perform(get("/admin/users")
+                        .param("keyword", "coal")
+                        .param("userType", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(userRepository, times(1)).searchUsers(eq("coal"), eq(1), isNull(), any(Pageable.class));
+    }
+
+    // ==================== Chain Ops (reconciliation / dead letters) ====================
+
+    @Test
+    @DisplayName("链上对账-返回四类差异统计与明细")
+    void testReconcileChainReturnsClassification() throws Exception {
+        var result = com.oaiss.chain.service.ChainReconciliationService.ReconciliationResult.builder()
+                .checked(2).matched(1).missingOnChain(1).contentMismatch(0).unverifiable(0)
+                .details(List.of(java.util.Map.of("reportId", 1, "status", "MATCHED")))
+                .total(2)
+                .build();
+        when(chainReconciliationService.reconcile(1, 10)).thenReturn(result);
+
+        mockMvc.perform(get("/admin/blockchain/reconciliation")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.matched").value(1))
+                .andExpect(jsonPath("$.data.missingOnChain").value(1))
+                .andExpect(jsonPath("$.data.details").isArray());
+
+        verify(chainReconciliationService).reconcile(1, 10);
+    }
+
+    @Test
+    @DisplayName("死信列表-返回分页数据")
+    void testListDeadLetters() throws Exception {
+        com.oaiss.chain.entity.OutboxMessage dead = com.oaiss.chain.entity.OutboxMessage.builder()
+                .messageId("m-1").aggregateType("REPORT").aggregateId(1L)
+                .topic("CreateCarbonReportV2").payload("{}").status("DEAD").retryCount(5).build();
+        dead.setId(1L);
+        Page<com.oaiss.chain.entity.OutboxMessage> page = new PageImpl<>(List.of(dead));
+        when(chainReconciliationService.listDeadLetters(1, 10)).thenReturn(page);
+
+        mockMvc.perform(get("/admin/outbox/dead-letters")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].messageId").value("m-1"))
+                .andExpect(jsonPath("$.data.content[0].status").value("DEAD"));
+
+        verify(chainReconciliationService).listDeadLetters(1, 10);
+    }
+
+    @Test
+    @DisplayName("死信重放-成功返回复位后的消息")
+    void testReplayDeadLetter() throws Exception {
+        com.oaiss.chain.entity.OutboxMessage replayed = com.oaiss.chain.entity.OutboxMessage.builder()
+                .messageId("m-2").aggregateType("REPORT").aggregateId(2L)
+                .topic("CreateCarbonReportV2").payload("{}").status("PENDING").retryCount(0).build();
+        replayed.setId(2L);
+        when(chainReconciliationService.replayDeadLetter(2L)).thenReturn(replayed);
+
+        mockMvc.perform(post("/admin/outbox/{id}/replay", 2L)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PENDING"));
+
+        verify(chainReconciliationService).replayDeadLetter(2L);
+    }
+
+    @Test
+    @DisplayName("死信重放-非 DEAD 状态返回参数错误")
+    void testReplayDeadLetterRejectsNonDead() throws Exception {
+        when(chainReconciliationService.replayDeadLetter(3L))
+                .thenThrow(BusinessException.of(ErrorCode.PARAM_ERROR, "error.outbox.notDead"));
+
+        mockMvc.perform(post("/admin/outbox/{id}/replay", 3L)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest());
     }
 }

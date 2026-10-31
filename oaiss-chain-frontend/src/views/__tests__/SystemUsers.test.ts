@@ -13,6 +13,8 @@ vi.mock('vue-i18n', () => ({
 vi.mock('../../api/admin', () => ({
   getUserList: vi.fn(() => Promise.resolve({ items: [], total: 0 })),
   updateUserStatus: vi.fn(() => Promise.resolve()),
+  createUser: vi.fn(() => Promise.resolve({ id: 9, username: 'new_reviewer' })),
+  deleteUser: vi.fn(() => Promise.resolve()),
 }))
 
 vi.mock('element-plus', async (importOriginal) => {
@@ -25,7 +27,7 @@ vi.mock('element-plus', async (importOriginal) => {
 })
 
 import SystemUsers from '../admin/SystemUsers.vue'
-import { getUserList, updateUserStatus } from '../../api/admin'
+import { createUser, deleteUser, getUserList, updateUserStatus } from '../../api/admin'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const stubs = {
@@ -61,6 +63,11 @@ const stubs = {
   'el-switch': {
     template: '<button role="switch" :aria-checked="modelValue" @click="$emit(\'update:modelValue\', !modelValue)"></button>',
     props: ['modelValue', 'beforeChange', 'inlinePrompt', 'activeText', 'inactiveText'],
+    emits: ['update:modelValue'],
+  },
+  'el-dialog': {
+    template: '<div class="el-dialog-stub" v-if="modelValue"><slot /></div>',
+    props: ['modelValue', 'title', 'width'],
     emits: ['update:modelValue'],
   },
   'el-select': {
@@ -200,6 +207,110 @@ describe('SystemUsers.vue', () => {
     expect(updateUserStatus).toHaveBeenCalledWith(5, 1)
     expect(ElMessage.success).toHaveBeenCalledWith('systemUsers.enableSuccess')
     expect(getUserList).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it('forwards keyword filter to backend search', async () => {
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    const keywordInput = wrapper.findAll('input')[0]
+    await keywordInput.setValue('coal')
+    await wrapper.find('button').trigger('click')
+    await flushPromises()
+
+    expect(getUserList).toHaveBeenNthCalledWith(2, {
+      page: 1,
+      size: 10,
+      keyword: 'coal',
+    })
+    wrapper.unmount()
+  })
+
+  it('creates user through dialog submission and reloads', async () => {
+    vi.mocked(createUser).mockResolvedValueOnce({ id: 9, username: 'new_reviewer' } as never)
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    const vm = wrapper.vm as unknown as {
+      openCreateDialog: () => void
+      createForm: { username: string; password: string; confirmPassword: string; userType: number }
+      submitCreate: () => Promise<void>
+    }
+    vm.openCreateDialog()
+    await flushPromises()
+    vm.createForm.username = 'new_reviewer'
+    vm.createForm.password = 'admin123'
+    vm.createForm.confirmPassword = 'admin123'
+    vm.createForm.userType = 2
+    await vm.submitCreate()
+    await flushPromises()
+
+    expect(createUser).toHaveBeenCalledWith({
+      username: 'new_reviewer',
+      password: 'admin123',
+      userType: 2,
+      realName: '',
+      phone: '',
+      email: '',
+    })
+    expect(ElMessage.success).toHaveBeenCalledWith('systemUsers.createSuccess')
+    expect(getUserList).toHaveBeenCalledTimes(2)
+    expect((wrapper.vm as unknown as { showCreateDialog: boolean }).showCreateDialog).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('blocks create submission when passwords mismatch', async () => {
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    const vm = wrapper.vm as unknown as {
+      openCreateDialog: () => void
+      createForm: { username: string; password: string; confirmPassword: string }
+      submitCreate: () => Promise<void>
+    }
+    vm.openCreateDialog()
+    vm.createForm.username = 'abc'
+    vm.createForm.password = 'a'.repeat(6)
+    vm.createForm.confirmPassword = 'b'.repeat(6)
+    await vm.submitCreate()
+    await flushPromises()
+
+    expect(createUser).not.toHaveBeenCalled()
+    expect(ElMessage.error).toHaveBeenCalledWith('systemUsers.passwordMismatch')
+    wrapper.unmount()
+  })
+
+  it('deletes a user after confirmation and reloads', async () => {
+    vi.mocked(deleteUser).mockResolvedValueOnce(undefined as never)
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    const vm = wrapper.vm as unknown as {
+      handleDelete: (row: { id: number; username?: string; userType: number }) => Promise<void>
+    }
+    await vm.handleDelete({ id: 5, username: 'bad', userType: 1 })
+    await flushPromises()
+
+    expect(ElMessageBox.confirm).toHaveBeenCalled()
+    expect(deleteUser).toHaveBeenCalledWith(5)
+    expect(ElMessage.success).toHaveBeenCalledWith('systemUsers.deleteSuccess')
+    expect(getUserList).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it('refuses deleting admin rows in UI guard', async () => {
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    const vm = wrapper.vm as unknown as {
+      handleDelete: (row: { id: number; username?: string; userType: number }) => Promise<void>
+    }
+    await vm.handleDelete({ id: 2, username: 'root', userType: 4 })
+    await flushPromises()
+
+    expect(ElMessageBox.confirm).not.toHaveBeenCalled()
+    expect(deleteUser).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 })

@@ -20,7 +20,7 @@ import com.oaiss.chain.annotation.DataIsolation;
 
 /**
  * ==============================================================================
- * 【业务模块】：18. 碳币金融资产代币钱包与转账清算 (Carbon Coin Wallet)
+ * 【业务模块】：18. 碳币金融资产代币钱包 (Carbon Coin Wallet)
  * 【服务角色】：企业用户 (ENTERPRISE)、系统管理员 (ADMIN)
  * 【对应前端页面与路由】：
  *   - 碳币账户页面: views/enterprise/CarbonCoin.vue -> 路由: /enterprise/carbon-coin/account
@@ -32,7 +32,7 @@ import com.oaiss.chain.annotation.DataIsolation;
 @RestController
 @RequestMapping("/carbon-coin")
 @RequiredArgsConstructor
-@Tag(name = "18. 碳币交易管理", description = "碳币账户管理、充值、转账、交易流水查询、碳配额购买/出售")
+@Tag(name = "18. 碳币交易管理", description = "碳币账户管理、充值、交易流水查询、碳配额购买/出售")
 public class CarbonCoinController {
 
     private final CarbonCoinService carbonCoinService;
@@ -91,34 +91,10 @@ public class CarbonCoinController {
     }
 
     /**
-     * 【业务功能】：执行企业间碳币点对点转账
-     * 【对应前端页面】：views/enterprise/CarbonCoin.vue (/enterprise/carbon-coin/account)
-     * 【对应前端API】：api/carbonCoin.ts -> transferCoins()
-     * 【可见UI操作】：在“定向转账”对话框输入收款企业ID、转账金额与备注后，点击【确认转账】按钮
-     */
-    @AuditLog(module = "碳币管理", action = "TRANSFER", description = "碳币管理 TRANSFER")
-    @PostMapping("/transfer")
-    @Operation(summary = "碳币转账", description = "向其他用户转账碳币，支持即时到账")
-    @ApiResponses(value = {
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "转账成功"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "转账金额无效或余额不足"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "未授权访问"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "目标用户不存在")
-    })
-    @SecurityRequirement(name = "Bearer Authentication")
-    @PreAuthorize("hasAnyRole('ENTERPRISE', 'ADMIN')")
-    @DataIsolation
-    public ApiResponse<CarbonCoinAccountResponse> transfer(
-            @Parameter(hidden = true) @AuthenticationPrincipal JwtUserDetails currentUser,
-            @Valid @RequestBody CarbonCoinTransferRequest request) {
-        return ApiResponse.success(carbonCoinService.transfer(currentUser.getUserId(), request));
-    }
-
-    /**
-     * 【业务功能】：分页查询碳币账户收支交易明细与转账流水
+     * 【业务功能】：分页查询碳币账户收支交易明细
      * 【对应前端页面】：views/enterprise/CarbonCoin.vue (/enterprise/carbon-coin/account)
      * 【对应前端API】：api/carbonCoin.ts -> getTransactions()
-     * 【可见UI操作】：查看“交易明细”表格，展示充值、扣减、交易结算与转账收支记录
+     * 【可见UI操作】：查看“交易明细”表格，展示充值、扣减与交易结算记录
      */
     @AuditLog(module = "碳币管理", action = "GETTRANSACTIONS", description = "碳币管理 GETTRANSACTIONS")
     @GetMapping("/transactions")
@@ -132,7 +108,7 @@ public class CarbonCoinController {
     @DataIsolation
     public ApiResponse<Page<CarbonCoinTransaction>> getTransactions(
             @Parameter(description = "用户ID（不传则查询当前用户）", example = "1") @RequestParam(required = false) Long userId,
-            @Parameter(description = "交易类型：1-充值, 2-转账, 3-购买配额, 4-出售配额", example = "1") @RequestParam(required = false) Integer txType,
+            @Parameter(description = "交易类型：1-充值, 2-购买配额, 3-出售配额, 4-历史转账遗留值（转账功能已下线）", example = "1") @RequestParam(required = false) Integer txType,
             @Parameter(description = "页码（从1开始）", example = "1") @RequestParam(defaultValue = "1") Integer page,
             @Parameter(description = "每页大小", example = "20") @RequestParam(defaultValue = "20") Integer size,
             @Parameter(hidden = true) @AuthenticationPrincipal JwtUserDetails currentUser) {

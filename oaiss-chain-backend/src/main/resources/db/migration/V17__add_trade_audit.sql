@@ -36,7 +36,8 @@ CREATE TABLE `trade_audit` (
     KEY `idx_trade_audit_status` (`audit_status`, `created_at`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT ='成交审核记录表';
 
--- 3. 碳币流水新增「审核驳回冲正」类型
---    与正常买入/卖出区分，使监管能识别「因审核驳回而回滚」而非新交易
+-- 3. 碳币流水 tx_type 注释更新（4 为历史转账遗留值，功能已下线）
+--    注：方案 A 下待审期资产保持冻结、驳回是解冻而非冲正，故不新增"审核冲正"类型；
+--    驳回产生的资金变动表现为一次普通的解冻（unfreezeBalance），本身不写碳币流水。
 ALTER TABLE `carbon_coin_transaction`
-    MODIFY COLUMN `tx_type` TINYINT NOT NULL COMMENT '交易类型：1-充值 2-购买配额 3-出售配额 4-历史转账 5-审核驳回冲正';
+    MODIFY COLUMN `tx_type` TINYINT NOT NULL COMMENT '交易类型：1-充值 2-购买配额 3-出售配额 4-历史转账（已下线）';

@@ -155,13 +155,13 @@ bash ./scripts/stability-baseline.sh
 | 事实 | 值 | 说明 |
 |------|-----|------|
 | Controllers | 23 | `controller/*.java` 数（2026-10-20 新增 CopilotController） |
-| REST 端点 | 150 | `@Mapping` 注解总数（2026-10-31 去掉 `/blockchain/transaction/{txHash}`、新增 `/blockchain/report/{reportId}`，总数不变） |
-| Services | 46 | 43 主包 + 3 ml/ |
+| REST 端点 | 153 | `@Mapping` 注解总数（2026-10-31 移除 `/blockchain/transaction/{txHash}`，新增 `/blockchain/report/{reportId}`、管理员 `/admin/blockchain/reconciliation`、`/admin/outbox/dead-letters`、`/admin/outbox/{id}/replay`） |
+| Services | 47 | 44 主包 + 3 ml/（2026-10-31 新增 CertificateGateService、ChainReconciliationService） |
 | Entities | 28 | 27 @Entity + BaseEntity |
 | Tables | 27 | 现存 27 张（曾创建 28 张，authenticator 在 V8 DROP 退场） |
 | Repositories | 27 | `repository/*.java` 数 |
 | Flyway 迁移 | V1-V19 | V3 跳过（共 18 个版本；V16=配额流水，V17=成交审核，V18=监管线索，V19=证书撤销） |
-| i18n 词条 | 2126 | zh-CN 与 en-US 严格镜像（`scripts/gates/i18n-verify.mjs` 实测；2026-10-31 移除「交易哈希查询」面板 7 键后 2133→2126） |
+| i18n 词条 | 2182 | zh-CN 与 en-US 严格镜像（`scripts/gates/i18n-verify.mjs` 实测；2026-10-31 移除交易哈希查询面板、新增链上管理与证书吊销原因文案） |
 | 前端 API 模块 | 22 | `src/api/*.ts`（不含 request.ts 与 index.ts） |
 | 枚举 | 9 | `enums/*.java`（UserTypeEnum 等 9 个核心枚举） |
 | 角色 | 4 | ENTERPRISE/REVIEWER/THIRD_PARTY/ADMIN |
@@ -177,7 +177,7 @@ bash ./scripts/stability-baseline.sh
 | ENTERPRISE | 填报核算、RSA 签名、发起交易与挂单 | 不审核、不上链 |
 | REVIEWER | 审核碳报告与项目；**审核通过即触发系统自动上链** | 不管理用户、不签发证书 |
 | THIRD_PARTY | 宏观监管大屏、**穿透式只读核查**、定期核查、下市处罚 | **不参与上链审批**、无任何业务写权限 |
-| ADMIN | 用户管理、准入/资格证签发、系统配置、网络运维 | 不代行上链（仅保留兜底补救） |
+| ADMIN | 用户管理、准入/资格证**签发与吊销**、系统配置、网络运维、**链上对账与死信重放** | 不代行上链（仅保留兜底补救）；**不修改链上数据**（账本不可改） |
 
 **依据**：
 - L1 原始需求：「当数据审核员点击提交碳排放报告后，**系统后台自动将该报告进行上链**」
@@ -187,6 +187,26 @@ bash ./scripts/stability-baseline.sh
 **端点归属**：
 - `POST /carbon/review`（REVIEWER）：审核通过 → 自动上链（主路径）
 - `POST /carbon/certify`（REVIEWER|ADMIN）：**幂等补救入口**，处理自动上链失败的重试与审核后驳回
+
+### 12.1 证书门禁（2026-10-31）
+
+准入证书与审核资格证**不再是展示字段**，而是真正生效的业务约束：
+
+- 唯一判定点：`CertificateGateService`（有效 = `status=1` 且有效期为空或 >= 今天；**无证书即拒绝**）。
+- 已接入：P2P 成交确认（双方）、拍卖挂单与撮合结算、碳报告提交、审核员审核、碳币充值。
+- 错误码：`7001 ADMISSION_REQUIRED` / `7002 QUALIFICATION_REQUIRED`。
+- 吊销留痕：`revoked_at` + `revoke_reason`（V19 迁移，可选 `?reason=` ≤200 字）。
+- **不阻断登录与只读浏览**：吊销后果应当让人看见（横幅 + 写操作被拒），而不是把人锁在门外看不到原因。
+
+### 12.2 链上「还原」的边界
+
+Fabric 账本只读追加，系统**不提供任何改写链上数据的操作**。所谓「还原」只有两种：
+
+| 层级 | 含义 | 入口 |
+|------|------|------|
+| L1 补偿 | 死信重放，让本该上链却没上的记录重新投递 | `POST /admin/outbox/{id}/replay` |
+| L2 对账 | 读回链上快照与本地记录比对，输出差异分类 | `GET /admin/blockchain/reconciliation` |
+| L3 更正 | 追加一条 CORRECTION 记录（需链码升级） | **未实现**，需 chaincode v3 + sequence bump |
 
 > ⚠️ 角色权限语义由 `node scripts/role-matrix-verify.mjs` 自动断言，改代码后必跑。
 

@@ -27,8 +27,9 @@ import java.util.List;
  * <ol>
  *   <li><b>只有待审可裁决</b>——已通过/已驳回再裁决必须失败。这不是幂等，
  *       而是明确拒绝：重复裁决意味着重复结算，钱会凭空多出来</li>
- *   <li><b>驳回必须全额回滚</b>——额度走 QuotaLedgerService、碳币走
- *       CarbonCoinService.refundRejectedTrade，两条路径都留痕</li>
+ *   <li><b>驳回必须解冻而非冲正</b>——待审期资产从未转移（卖方额度一直在挂单冻结里、
+ *       买方碳币一直在冻结里），所以驳回是纯解冻。调用假定转移已发生的
+ *       settleSell/rollback 会造成无中生有，测试用 never() 显式禁止</li>
  *   <li><b>驳回必须扣分并归因</b>——CreditEvent 要能指回这笔交易</li>
  *   <li><b>裁决必须留痕</b>——审核人、时间、意见、命中的风险理由全部落库</li>
  * </ol>

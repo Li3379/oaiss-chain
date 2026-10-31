@@ -81,6 +81,8 @@ public class DoubleAuctionService {
     private final QuotaLedgerService quotaLedgerService;
     private final TradeRiskAssessor tradeRiskAssessor;
     private final TradeAuditService tradeAuditService;
+    /** 准入证书门禁：未签发 / 已吊销 / 已过期都不得挂单与结算 */
+    private final CertificateGateService certificateGateService;
 
     private static final List<Integer> ACTIVE_ORDER_STATUSES = Arrays.asList(
             AuctionOrderStatusEnum.PENDING.getCode(),
@@ -268,6 +270,15 @@ public class DoubleAuctionService {
                     continue;
                 }
 
+                // 证书门禁：挂单时合规、冻结期内却被吊销的对手方不得再成交。
+                // 与自成交拦截同属「跳过该配对」而非整批中断——一笔不合规订单
+                // 不应阻塞市场上其他人的正常出清。
+                if (!isPairAdmitted(buyOrder, sellOrder)) {
+                    log.warn("[CERT-GATE] 撮合跳过证书不合规的挂单: buyOrder={}, sellOrder={}",
+                            buyOrder.getOrderNo(), sellOrder.getOrderNo());
+                    continue;
+                }
+
                 BigDecimal matchQty = buyRemaining.min(sellRemaining);
 
                 // 计算成交价格：(买方价格 + 卖方价格) / 2
@@ -425,10 +436,9 @@ public class DoubleAuctionService {
     }
 
     /**
-     * 信誉分交易准入校验
+     * 交易准入校验（证书 + 信誉分）。
      * <p>
-     * 复用 {@link CreditScoreService#checkTradePermission(Long)} 的既有判定（信誉分低于阈值限制交易、
-     * 账户冻结则禁止交易）。无信誉分记录的企业默认放行，保持与信誉服务一致。
+     * 先判证书再判信誉分：证书是「有没有资格进场」，信誉分是「进场后守不守规矩」。
      *
      * @param enterpriseId 挂单方企业ID
      */
@@ -436,6 +446,7 @@ public class DoubleAuctionService {
         if (enterpriseId == null) {
             return;
         }
+        certificateGateService.assertEnterpriseAdmitted(enterpriseId);
         if (!creditScoreService.checkTradePermission(enterpriseId)) {
             throw TradeException.creditTradeRestricted(
                     "您的信誉分过低，暂不可参与碳交易（账户可能已被限制交易或冻结），请联系平台管理员");
@@ -488,6 +499,25 @@ public class DoubleAuctionService {
             log.warn("[AUCTION-CREDIT] 信誉分批量查询失败，本轮按中性分排序: {}", e.getMessage());
             return java.util.Collections.emptyMap();
         }
+    }
+
+    /**
+     * 判断买卖双方是否都属于「持有效准入证书」的企业。
+     *
+     * <p>挂单只记录 userId，企业归属需要二次解析；解析不到企业时按不合规处理
+     * （宁可跳过一笔也不放行身份不明的结算）。</p>
+     */
+    private boolean isPairAdmitted(AuctionOrder buyOrder, AuctionOrder sellOrder) {
+        return isOrderAdmitted(buyOrder) && isOrderAdmitted(sellOrder);
+    }
+
+    private boolean isOrderAdmitted(AuctionOrder order) {
+        if (order.getUserId() == null) {
+            return false;
+        }
+        return enterpriseRepository.findByUserId(order.getUserId())
+                .map(e -> certificateGateService.isEnterpriseAdmitted(e.getId()))
+                .orElse(false);
     }
 
     /**

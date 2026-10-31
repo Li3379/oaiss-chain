@@ -156,15 +156,16 @@ public class MockBlockchainService implements BlockchainServicePort {
     }
 
     /**
-     * 查询交易信息
+     * 按报告 ID 读回链上 v2 快照。
      *
-     * @param txHash 交易哈希
-     * @return 交易信息（JSON）
+     * <p>Mock 模式没有账本，提交只返回一个哈希、不落任何存储，因此这里恒返回
+     * {@code null}（语义 = 链上查无此记录）。刻意不在 Mock 里伪造一份快照：
+     * 否则开发环境会看到「对账一致」的假象，而真实 Fabric 上未必一致。</p>
      */
-    public String queryTransaction(String txHash) {
-        log.info("[MOCK] Querying transaction: {}", txHash);
-        return String.format("{\"txHash\":\"%s\",\"status\":\"VALID\",\"timestamp\":\"%s\"}", 
-                txHash, LocalDateTime.now());
+    @Override
+    public String queryReportSnapshot(Long reportId) {
+        log.info("[MOCK] Query report snapshot: reportId={} (mock keeps no ledger)", reportId);
+        return null;
     }
 
     /**

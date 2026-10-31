@@ -51,4 +51,16 @@ public class EnterpriseAdmission extends BaseEntity {
     @Column(name = "status", nullable = false)
     @Builder.Default
     private Integer status = 1;
+
+    /**
+     * 吊销时间（仅吊销时写入，用于审计追溯）
+     */
+    @Column(name = "revoked_at")
+    private java.time.LocalDateTime revokedAt;
+
+    /**
+     * 吊销原因（管理员填写，可选）
+     */
+    @Column(name = "revoke_reason", length = 200)
+    private String revokeReason;
 }

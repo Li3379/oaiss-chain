@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
@@ -35,6 +36,8 @@ public class EnterpriseAdmissionService {
     private final EnterpriseRepository enterpriseRepository;
 
     private static final int MAX_CERT_NO_RETRIES = 3;
+    /** 与 V19 迁移的 revoke_reason 列宽保持一致 */
+    private static final int REVOKE_REASON_MAX_LENGTH = 200;
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
@@ -73,20 +76,52 @@ public class EnterpriseAdmissionService {
     }
 
     /**
-     * 吊销准入证书
+     * 吊销准入证书（不记录原因）。
      *
      * @param enterpriseId 企业ID
      */
     @Transactional
     public void revokeCertificate(Long enterpriseId) {
+        revokeCertificate(enterpriseId, null);
+    }
+
+    /**
+     * 吊销准入证书，并留下「何时、为何」的审计痕迹。
+     *
+     * <p>改造前这里只写 {@code status=2}，既无时间也无原因，事后无法回答
+     * 「这张证书是什么时候因为什么被吊销的」。吊销本身已由
+     * {@link CertificateGateService} 变成真正生效的业务约束，留痕是配套动作。</p>
+     *
+     * @param enterpriseId 企业ID
+     * @param reason       吊销原因，可为空；超过 200 字符时按列宽截断
+     */
+    @Transactional
+    public void revokeCertificate(Long enterpriseId, String reason) {
         // Find ACTIVE certificate (D-08)
         EnterpriseAdmission admission = enterpriseAdmissionRepository
-                .findFirstByEnterpriseIdAndStatusAndDeletedFalse(enterpriseId, 1)
+                .findFirstByEnterpriseIdAndStatusAndDeletedFalseOrderByCreatedAtDesc(
+                        enterpriseId, QualificationStatusEnum.ACTIVE.getCode())
                 .orElseThrow(() -> BusinessException.notFound("error.admission.notFound"));
 
         admission.setStatus(QualificationStatusEnum.REVOKED.getCode());
+        admission.setRevokedAt(LocalDateTime.now());
+        admission.setRevokeReason(normalizeReason(reason));
         enterpriseAdmissionRepository.save(admission);
-        log.info("Enterprise admission revoked for enterprise {}", enterpriseId);
+        log.info("Enterprise admission revoked for enterprise {}: reason={}", enterpriseId, admission.getRevokeReason());
+    }
+
+    /** 原因列宽 200；超长直接截断而不是抛错——吊销动作本身不应因备注失败而回滚。 */
+    private static String normalizeReason(String reason) {
+        if (reason == null) {
+            return null;
+        }
+        String trimmed = reason.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        return trimmed.length() > REVOKE_REASON_MAX_LENGTH
+                ? trimmed.substring(0, REVOKE_REASON_MAX_LENGTH)
+                : trimmed;
     }
 
     /**
@@ -108,13 +143,17 @@ public class EnterpriseAdmissionService {
     }
 
     /**
-     * 查询企业自身的准入证书
+     * 查询企业自身的准入证书（按创建时间倒序，最新在前）。
+     *
+     * <p>调用方普遍取 {@code list[0]} 判断「当前证书状态」。此前底层查询无排序，
+     * 吊销后重新签发时下标 0 可能仍是已吊销的旧记录，页面会误显示「已吊销」。</p>
      *
      * @param enterpriseId 企业ID
-     * @return 该企业的所有准入证书
+     * @return 该企业的所有准入证书，最新在前
      */
     public List<EnterpriseAdmission> getMyCertificate(Long enterpriseId) {
-        return enterpriseAdmissionRepository.findByEnterpriseIdAndDeletedFalse(enterpriseId);
+        return enterpriseAdmissionRepository
+                .findByEnterpriseIdAndDeletedFalseOrderByCreatedAtDesc(enterpriseId);
     }
 
     /**

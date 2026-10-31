@@ -2,7 +2,6 @@ package com.oaiss.chain.service;
 
 import com.oaiss.chain.dto.CarbonCoinAccountResponse;
 import com.oaiss.chain.dto.CarbonCoinRechargeRequest;
-import com.oaiss.chain.dto.CarbonCoinTransferRequest;
 import com.oaiss.chain.entity.CarbonCoinAccount;
 import com.oaiss.chain.entity.CarbonCoinTransaction;
 import com.oaiss.chain.exception.BusinessException;
@@ -40,14 +39,19 @@ class CarbonCoinServiceTest {
     @Mock
     private CarbonCoinTransactionRepository transactionRepository;
 
+    @Mock
+    private CertificateGateService certificateGateService;
+
     @InjectMocks
     private CarbonCoinService carbonCoinService;
 
     private CarbonCoinAccount testAccount;
-    private CarbonCoinAccount counterpartAccount;
 
     @BeforeEach
     void setUp() {
+        // 默认放行：既有用例验证的是合规主体的账户行为
+        lenient().doNothing().when(certificateGateService).assertEnterpriseAdmittedByUserId(anyLong());
+
         testAccount = CarbonCoinAccount.builder()
                 .userId(1L)
                 .balance(new BigDecimal("1000.00"))
@@ -56,15 +60,6 @@ class CarbonCoinServiceTest {
                 .status(1)
                 .build();
         testAccount.setId(1L);
-
-        counterpartAccount = CarbonCoinAccount.builder()
-                .userId(2L)
-                .balance(new BigDecimal("500.00"))
-                .totalRecharged(new BigDecimal("500.00"))
-                .totalSpent(BigDecimal.ZERO)
-                .status(1)
-                .build();
-        counterpartAccount.setId(2L);
     }
 
     @Test
@@ -192,74 +187,6 @@ class CarbonCoinServiceTest {
         verify(transactionRepository, times(1)).save(any(CarbonCoinTransaction.class));
     }
 
-    @Test
-    @DisplayName("碳币转账成功")
-    void testTransferSuccess() {
-        // Given
-        CarbonCoinTransferRequest request = new CarbonCoinTransferRequest();
-        request.setCounterpartId(2L);
-        request.setAmount(new BigDecimal("100.00"));
-        request.setRemark("测试转账");
-
-        when(accountRepository.findByUserIdAndDeletedFalse(1L)).thenReturn(Optional.of(testAccount));
-        when(accountRepository.findByUserIdAndDeletedFalse(2L)).thenReturn(Optional.of(counterpartAccount));
-        when(accountRepository.save(any(CarbonCoinAccount.class))).thenReturn(testAccount);
-        when(transactionRepository.save(any(CarbonCoinTransaction.class))).thenReturn(new CarbonCoinTransaction());
-
-        // When
-        CarbonCoinAccountResponse response = carbonCoinService.transfer(1L, request);
-
-        // Then
-        assertNotNull(response);
-        verify(accountRepository, times(2)).save(any(CarbonCoinAccount.class));
-        verify(transactionRepository, times(2)).save(any(CarbonCoinTransaction.class));
-    }
-
-    @Test
-    @DisplayName("碳币转账失败-不能向自己转账")
-    void testTransferFailSelfTransfer() {
-        // Given
-        CarbonCoinTransferRequest request = new CarbonCoinTransferRequest();
-        request.setCounterpartId(1L);
-        request.setAmount(new BigDecimal("100.00"));
-
-        // When & Then
-        assertThrows(BusinessException.class, () -> carbonCoinService.transfer(1L, request));
-        verify(accountRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("碳币转账失败-余额不足")
-    void testTransferFailInsufficientBalance() {
-        // Given
-        CarbonCoinTransferRequest request = new CarbonCoinTransferRequest();
-        request.setCounterpartId(2L);
-        request.setAmount(new BigDecimal("2000.00")); // More than balance (1000)
-
-        when(accountRepository.findByUserIdAndDeletedFalse(1L)).thenReturn(Optional.of(testAccount));
-
-        // When & Then
-        assertThrows(BusinessException.class, () -> carbonCoinService.transfer(1L, request));
-        verify(accountRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("碳币转账失败-对方账户不存在")
-    void testTransferFailCounterpartNotFound() {
-        // Given
-        CarbonCoinTransferRequest request = new CarbonCoinTransferRequest();
-        request.setCounterpartId(999L);
-        request.setAmount(new BigDecimal("100.00"));
-
-        when(accountRepository.findByUserIdAndDeletedFalse(1L)).thenReturn(Optional.of(testAccount));
-        when(accountRepository.findByUserIdAndDeletedFalse(999L)).thenReturn(Optional.empty());
-
-        // When & Then
-        assertThrows(BusinessException.class, () -> carbonCoinService.transfer(1L, request));
-        verify(accountRepository, never()).save(any());
-    }
-
-    @Test
     @DisplayName("查询交易流水")
     void testGetTransactions() {
         // Given
@@ -373,5 +300,19 @@ class CarbonCoinServiceTest {
         assertEquals(new BigDecimal("1200.00"), testAccount.getTotalSpent());
         verify(accountRepository, times(1)).save(testAccount);
         verify(transactionRepository, times(1)).save(any(CarbonCoinTransaction.class));
+    }
+
+    @Test
+    @DisplayName("碳币充值-企业准入证书失效时拒绝，且不产生任何资金变动")
+    void testRechargeBlockedWhenAdmissionInvalid() {
+        doThrow(com.oaiss.chain.exception.BusinessException.of(
+                com.oaiss.chain.constant.ErrorCode.ADMISSION_REQUIRED, "error.admission.required"))
+                .when(certificateGateService).assertEnterpriseAdmittedByUserId(1L);
+
+        assertThrows(com.oaiss.chain.exception.BusinessException.class,
+                () -> carbonCoinService.recharge(1L, new com.oaiss.chain.dto.CarbonCoinRechargeRequest()));
+
+        verify(accountRepository, never()).save(any());
+        verify(transactionRepository, never()).save(any());
     }
 }

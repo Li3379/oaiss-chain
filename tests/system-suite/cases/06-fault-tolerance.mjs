@@ -136,12 +136,12 @@ export const faultToleranceCases = [
   {
     id: 'TC-ROB-012',
     dimension: '异常容错鲁棒性',
-    title: '区块链交易查询-查询伪造哈希安全返回错误',
+    title: '链上快照查询-查询不存在的报告返回空快照而非报错',
     method: 'GET',
-    endpoint: '/blockchain/transaction/0xdeadbeef9999999999999999',
+    endpoint: '/blockchain/report/999999999',
     role: 'enterprise001',
     input: null,
-    expectedStatus: 400
+    expectedStatus: 200
   },
   {
     id: 'TC-ROB-013',

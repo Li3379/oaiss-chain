@@ -19,7 +19,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheck, CircleClose, Operation, User } from '@element-plus/icons-vue'
-import { getUserList, updateUserStatus } from '../../api/admin'
+import { createUser, deleteUser, getUserList, updateUserStatus } from '../../api/admin'
 import { formatDateTime } from '../../utils/format'
 import PageHeader from '../../components/pen/PageHeader.vue'
 import StatStrip from '../../components/pen/StatStrip.vue'
@@ -42,9 +42,11 @@ type UserRow = {
 const searchForm = reactive<{
   userType: '' | number
   status: '' | number
+  keyword: string
 }>({
   userType: '',
   status: '',
+  keyword: '',
 })
 
 const userTypeOptions = computed(() => [
@@ -82,6 +84,7 @@ const fetchData = async () => {
       size: pageSize.value,
       ...(searchForm.userType !== '' && { userType: searchForm.userType }),
       ...(searchForm.status !== '' && { status: searchForm.status }),
+      ...(String(searchForm.keyword).trim() !== '' && { keyword: String(searchForm.keyword).trim() }),
     }
     const response = await getUserList(params)
     userList.value = response.items || []
@@ -92,6 +95,27 @@ const fetchData = async () => {
     loading.value = false
   }
 }
+
+const showCreateDialog = ref(false)
+const submitting = ref(false)
+
+const createForm = reactive<{
+  username: string
+  password: string
+  confirmPassword: string
+  userType: number
+  realName: string
+  phone: string
+  email: string
+}>({
+  username: '',
+  password: '',
+  confirmPassword: '',
+  userType: 1,
+  realName: '',
+  phone: '',
+  email: '',
+})
 
 const onQuery = () => {
   currentPage.value = 1
@@ -145,6 +169,80 @@ const getStatusType = (status: number) => (status === 1 ? 'success' : 'danger')
 const getStatusText = (status: number) => (
   status === 1 ? t('systemUsers.statusEnabled') : t('systemUsers.statusDisabled')
 )
+
+/** 新增用户弹窗：审核员/管理员不可自助注册，本表单是审核员账号的唯一创建通道 */
+const openCreateDialog = () => {
+  createForm.username = ''
+  createForm.password = ''
+  createForm.confirmPassword = ''
+  createForm.userType = 1
+  createForm.realName = ''
+  createForm.phone = ''
+  createForm.email = ''
+  showCreateDialog.value = true
+}
+
+const submitCreate = async () => {
+  if (!createForm.username || createForm.username.length < 3) {
+    ElMessage.error(t('systemUsers.usernameTooShort'))
+    return
+  }
+  if (createForm.password.length < 6) {
+    ElMessage.error(t('systemUsers.passwordTooShort'))
+    return
+  }
+  if (createForm.password !== createForm.confirmPassword) {
+    ElMessage.error(t('systemUsers.passwordMismatch'))
+    return
+  }
+  submitting.value = true
+  try {
+    await createUser({
+      username: createForm.username.trim(),
+      password: createForm.password,
+      userType: createForm.userType,
+      realName: createForm.realName,
+      phone: createForm.phone,
+      email: createForm.email,
+    })
+    ElMessage.success(t('systemUsers.createSuccess'))
+    showCreateDialog.value = false
+    currentPage.value = 1
+    await fetchData()
+  } catch {
+    ElMessage.error(t('systemUsers.createFailed'))
+  } finally {
+    submitting.value = false
+  }
+}
+
+/** 删除=下线语义（原始需求：信誉分不足用户暂时退出系统）；管理员账号前后端双重拒绝 */
+const handleDelete = async (row: UserRow) => {
+  if (row.userType === 4) {
+    ElMessage.warning(t('systemUsers.deleteAdminGuard'))
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      t('systemUsers.deleteConfirm'),
+      t('systemUsers.deleteConfirmTitle'),
+      {
+        confirmButtonText: t('common.confirm'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning',
+      },
+    )
+    await deleteUser(row.id)
+    ElMessage.success(t('systemUsers.deleteSuccess'))
+    await fetchData()
+  } catch (error) {
+    if (error === 'cancel') {
+      return
+    }
+    ElMessage.error(t('systemUsers.deleteFailed'))
+    return
+  }
+}
 
 /** 首屏统计条：全部由已加载的本页用户数据推导，不新增接口请求 */
 const overviewStats = computed(() => {
@@ -209,6 +307,17 @@ onMounted(() => {
 
     <FilterBar :aria-label="t('systemUsers.filterLabel')">
       <label class="pen-field">
+        <span class="pen-field__label">{{ t('systemUsers.keywordPlaceholder') }}</span>
+        <el-input
+          v-model="searchForm.keyword"
+          :placeholder="t('systemUsers.keywordPlaceholder')"
+          :maxlength="50"
+          clearable
+          style="width: 180px"
+        />
+      </label>
+
+      <label class="pen-field">
         <span class="pen-field__label">{{ t('systemUsers.colUserType') }}</span>
         <el-select v-model="searchForm.userType" :placeholder="t('systemUsers.typeAll')" style="width: 140px" clearable>
           <el-option v-for="item in userTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
@@ -223,7 +332,48 @@ onMounted(() => {
       </label>
 
       <el-button type="primary" @click="onQuery">{{ t('common.search') }}</el-button>
+
+      <el-button @click="openCreateDialog">{{ t('systemUsers.createUser') }}</el-button>
     </FilterBar>
+
+    <el-dialog
+      v-model="showCreateDialog"
+      :title="t('systemUsers.createUserTitle')"
+      width="520px"
+      :close-on-click-modal="false"
+    >
+      <el-form :model="createForm" label-width="96px">
+        <el-form-item :label="t('systemUsers.formUsername')">
+          <el-input v-model="createForm.username" :maxlength="50" :placeholder="t('systemUsers.formUsernamePlaceholder')" />
+        </el-form-item>
+        <el-form-item :label="t('systemUsers.formPassword')">
+          <el-input v-model="createForm.password" type="password" show-password :maxlength="100" :placeholder="t('systemUsers.formPasswordPlaceholder')" />
+        </el-form-item>
+        <el-form-item :label="t('systemUsers.formConfirmPassword')">
+          <el-input v-model="createForm.confirmPassword" type="password" show-password :maxlength="100" :placeholder="t('systemUsers.formConfirmPasswordPlaceholder')" />
+        </el-form-item>
+        <el-form-item :label="t('systemUsers.colUserType')">
+          <el-select v-model="createForm.userType" style="width: 100%">
+            <el-option :label="t('systemUsers.typeEnterprise')" :value="1" />
+            <el-option :label="t('systemUsers.typeAuditor')" :value="2" />
+            <el-option :label="t('systemUsers.typeThirdParty')" :value="3" />
+          </el-select>
+        </el-form-item>
+        <el-form-item :label="t('systemUsers.formRealName')">
+          <el-input v-model="createForm.realName" :maxlength="50" />
+        </el-form-item>
+        <el-form-item :label="t('systemUsers.formPhone')">
+          <el-input v-model="createForm.phone" :maxlength="20" />
+        </el-form-item>
+        <el-form-item :label="t('systemUsers.formEmail')">
+          <el-input v-model="createForm.email" :maxlength="100" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showCreateDialog = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="submitting" @click="submitCreate">{{ t('common.confirm') }}</el-button>
+      </template>
+    </el-dialog>
 
     <DataPanel
       :title="t('systemUsers.panelTitle')"
@@ -247,7 +397,7 @@ onMounted(() => {
             {{ formatDateTime(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column :label="t('common.operation')" width="140" fixed="right">
+        <el-table-column :label="t('common.operation')" width="180" fixed="right">
           <template #default="{ row }">
             <el-switch
               :model-value="row.status === 1"
@@ -257,6 +407,12 @@ onMounted(() => {
               :inactive-text="t('systemUsers.statusDisabled')"
               style="--el-switch-on-color: var(--color-accent);"
             />
+            <el-button
+              v-if="row.userType !== 4"
+              link
+              type="danger"
+              @click="handleDelete(row)"
+            >{{ t('systemUsers.deleteUser') }}</el-button>
           </template>
         </el-table-column>
       </el-table>

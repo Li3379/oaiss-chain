@@ -161,14 +161,36 @@ async function handleIssueQualification(): Promise<void> {
   }
 }
 
+/**
+ * 吊销二次确认：把「为什么吊销」一并收集。
+ *
+ * 原先前端只弹一个「确定吗」，后端也只写 status，事后无法回答
+ * 「这张证书因何被吊销」。原因可选（允许空），但必须给一次填写机会——
+ * 吊销是不可逆操作，此刻不记，以后就永远记不上了。
+ */
+async function promptRevokeReason(): Promise<string | undefined> {
+  const { value } = await ElMessageBox.prompt(
+    t('certificateManage.confirmRevoke'),
+    t('certificateManage.revokeTitle'),
+    {
+      confirmButtonText: t('common.confirm'),
+      cancelButtonText: t('common.cancel'),
+      type: 'warning',
+      inputType: 'textarea',
+      inputPlaceholder: t('certificateManage.revokeReasonPlaceholder'),
+      inputValidator: (input: string) => !input || input.length <= 200
+        ? true
+        : t('certificateManage.revokeReasonTooLong'),
+    },
+  )
+  const trimmed = (value || '').trim()
+  return trimmed === '' ? undefined : trimmed
+}
+
 async function handleRevokeAdmission(row: EnterpriseAdmissionResponse): Promise<void> {
   try {
-    await ElMessageBox.confirm(
-      t('certificateManage.confirmRevoke'),
-      t('certificateManage.revokeTitle'),
-      { confirmButtonText: t('common.confirm'), cancelButtonText: t('common.cancel'), type: 'warning' },
-    )
-    await revokeEnterpriseAdmission(row.enterpriseId)
+    const reason = await promptRevokeReason()
+    await revokeEnterpriseAdmission(row.enterpriseId, reason)
     ElMessage.success(t('certificateManage.revokeSuccess'))
     await fetchAdmissionData()
   } catch (error) {
@@ -178,12 +200,8 @@ async function handleRevokeAdmission(row: EnterpriseAdmissionResponse): Promise<
 
 async function handleRevokeQualification(row: ReviewerQualificationResponse): Promise<void> {
   try {
-    await ElMessageBox.confirm(
-      t('certificateManage.confirmRevoke'),
-      t('certificateManage.revokeTitle'),
-      { confirmButtonText: t('common.confirm'), cancelButtonText: t('common.cancel'), type: 'warning' },
-    )
-    await revokeReviewerQualification(row.reviewerId)
+    const reason = await promptRevokeReason()
+    await revokeReviewerQualification(row.reviewerId, reason)
     ElMessage.success(t('certificateManage.revokeSuccess'))
     await fetchQualificationData()
   } catch (error) {

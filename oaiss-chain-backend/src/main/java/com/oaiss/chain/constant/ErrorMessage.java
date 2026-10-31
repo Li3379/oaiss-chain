@@ -91,6 +91,15 @@ public final class ErrorMessage {
     /** 不能禁用自己的账号 */
     public static final String CANNOT_DISABLE_SELF = "error.cannot.disable.self";
 
+    /** 不能删除自己的账号 */
+    public static final String CANNOT_DELETE_SELF = "error.cannot.delete.self";
+
+    /** 不能删除管理员账号 */
+    public static final String CANNOT_DELETE_ADMIN = "error.cannot.delete.admin";
+
+    /** 禁止创建管理员类型账号 */
+    public static final String ADMIN_USER_TYPE_FORBIDDEN = "error.admin.user.type.forbidden";
+
     // ==================== 碳核算模块错误 (3xxx) ====================
 
     /** 碳报告不存在 */

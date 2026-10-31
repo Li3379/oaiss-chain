@@ -34,7 +34,7 @@ class DtoAllClassesTest {
             AuctionOrderRequest.class, AuctionOrderResponse.class,
             MatchingResultResponse.class, MarketForecastRequest.class, MarketForecastResponse.class,
             CarbonNeutralProjectRequest.class, CarbonNeutralProjectResponse.class,
-            CarbonCoinAccountResponse.class, CarbonCoinTransferRequest.class, CarbonCoinRechargeRequest.class,
+            CarbonCoinAccountResponse.class, CarbonCoinRechargeRequest.class,
             CarbonPredictionRequest.class, CarbonPredictionResponse.class,
             CreditScoreResponse.class, CreditEventResponse.class, CreditDeductionRequest.class,
             EmissionRatingRequest.class, EmissionForecastRequest.class, EmissionForecastResponse.class,

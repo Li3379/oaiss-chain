@@ -79,22 +79,28 @@ public class BlockchainController {
     }
 
     /**
-     * 【业务功能】：根据交易哈希 (TxHash) 穿透溯源查询单笔存证记录（防伪溯源验证）
-     * 【对应前端页面】：views/enterprise/Blockchain.vue, views/enterprise/CarbonUpload.vue
-     * 【对应前端API】：api/blockchain.ts -> queryTransaction()
-     * 【可见UI操作】：在搜索栏输入 64 位交易哈希或点击“上链凭证 TxHash”，穿透展示防伪存证原件
+     * 【业务功能】：读回某份碳报告在链上的原始快照（链码 QueryReportHistory 最新一版）
+     * 【对应前端页面】：views/enterprise/CarbonUpload.vue 报告详情「链上原始快照」折叠区
+     * 【对应前端API】：api/blockchain.ts -> getReportSnapshot()
+     * 【可见UI操作】：展开折叠区，逐字段核对「链上写了什么」与本地库记录是否一致
+     *
+     * <p>这是链上数据唯一对外可读的业务入口：区块/交易列表只回答「哪笔交易进了哪个块」，
+     * 回答不了「这份报告的周期、三范围排放、签名长什么样」。数据本就在链上，
+     * 此前没有任何端点能取回。</p>
      */
-    @AuditLog(module = "区块链", action = "QUERYTRANSACTION", description = "区块链 QUERYTRANSACTION")
-    @GetMapping("/transaction/{txHash}")
-    @Operation(summary = "查询链上交易", description = "根据交易哈希查询区块链上的交易详细信息，包括交易状态、交易时间、交易数据等")
+    @AuditLog(module = "区块链", action = "查询报告链上快照", description = "区块链 查询报告链上快照")
+    @GetMapping("/report/{reportId}")
+    @Operation(summary = "查询报告链上快照", description = "按报告ID读回链上v2快照原始记录，用于与本地库对账核验")
     @ApiResponses(value = {
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "成功获取交易信息"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "交易哈希格式无效"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "交易不存在")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "成功获取链上快照"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "未授权访问"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "链上无该报告记录")
     })
-    @Parameter(name = "txHash", description = "交易哈希值", required = true, example = "0x1234567890abcdef...")
-    public ApiResponse<String> queryTransaction(@PathVariable String txHash) {
-        return ApiResponse.success(blockchainService.queryTransaction(txHash));
+    @SecurityRequirement(name = "Bearer Authentication")
+    @Parameter(name = "reportId", description = "碳报告ID（链上主键）", required = true, example = "1")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ENTERPRISE', 'REVIEWER', 'THIRD_PARTY')")
+    public ApiResponse<String> queryReportSnapshot(@PathVariable Long reportId) {
+        return ApiResponse.success(blockchainService.queryReportSnapshot(reportId));
     }
 
     /**

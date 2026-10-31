@@ -59,6 +59,8 @@ public class CarbonService {
     private final EmissionRatingService emissionRatingService;
     private final BlockchainServicePort blockchainService;
     private final DigitalSignatureService digitalSignatureService;
+    /** 证书门禁：企业无有效准入证书不得提交/认证，审核员无有效资格证不得审核 */
+    private final CertificateGateService certificateGateService;
 
     @Transactional
     public CarbonReportResponse createReport(JwtUserDetails currentUser, CarbonReportRequest request) {
@@ -109,6 +111,10 @@ public class CarbonService {
         if (!status.isSubmittable()) {
             throw CarbonException.reportAlreadySubmitted(reportId);
         }
+
+        // 提交即「企业为这份数据背书」：无有效准入证书的企业不具备背书资格，
+        // 否则吊销后仍可源源不断产出待审报告，审核员无从分辨谁在合规主体之列。
+        certificateGateService.assertEnterpriseAdmitted(enterprise.getId());
 
         calculateEmissions(report);
         // 可信签名链：提交时用企业私钥对排放数据签名（文档契约"企业确认签名后发审核员"）。
@@ -212,6 +218,9 @@ public class CarbonService {
 
         // 利益冲突回避原则：审核员不得审核所属企业或本人的报告
         if (currentUser != null && !currentUser.isAdmin()) {
+            // 审核资格门禁：资格证被吊销/过期的审核员不得再对报告作出裁决。
+            // 管理员是兜底角色，不受资格证约束（与既有的「管理员豁免回避」口径一致）。
+            certificateGateService.assertReviewerQualifiedByUserId(currentUser.getUserId());
             Enterprise reviewerEnterprise = enterpriseRepository.findByUserId(currentUser.getUserId()).orElse(null);
             if (reviewerEnterprise != null && reviewerEnterprise.getId().equals(report.getEnterpriseId())) {
                 throw new com.oaiss.chain.exception.BusinessException(com.oaiss.chain.constant.ErrorCode.PERMISSION_DENIED, "审核回避原则：禁止审核本企业提交的碳报告");

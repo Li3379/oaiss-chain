@@ -576,12 +576,6 @@ Recharge carbon coins for a user.
 
 - ADMIN**
 
-### POST `/carbon-coin/transfer`
-
-Transfer carbon coins to another enterprise.
-
-- ENTERPRISE, ADMIN**
-
 ### GET `/carbon-coin/transactions`
 
 List carbon coin transactions.
@@ -808,11 +802,12 @@ Query a block by number.
 
 - ADMIN, THIRD_PARTY**
 
-### GET `/blockchain/transaction/{txHash}`
+### GET `/blockchain/report/{reportId}`
 
-Query a transaction by hash.
+Read the on-chain v2 snapshot of a carbon report (chaincode `QueryReportHistory`, latest version).
+Returns the raw snapshot JSON; `data` is `null` when the ledger has no record for that report id.
 
-- Authenticated**
+- ADMIN, ENTERPRISE, REVIEWER, THIRD_PARTY**
 
 ### GET `/blockchain/transactions`
 
@@ -937,6 +932,14 @@ Query params: `page`, `size`, `userType`, `status`, `keyword`
 
 Enable or disable a user.
 
+### POST `/admin/users`
+
+Create a user as admin. Allowed `userType`: 1-企业 / 2-审核员 / 3-第三方监管. Admin (4) is rejected to prevent privilege proliferation. Uniqueness rules mirror self-registration (username, phone). Body: `username` (3-50), `password` (6-100), `userType`, optional `realName` / `phone` / `email`.
+
+### DELETE `/admin/users/{userId}`
+
+Soft-delete a user (offline semantics from raw requirement 03: "信誉分不足用户暂时退出系统"). Sets `deleted=true` + `status=0`, revokes all sessions. Guards: cannot delete self (2014), cannot delete admin accounts (2015), not-found/already-deleted returns 404 semantics.
+
 ### GET `/admin/dashboard`
 
 Get admin dashboard statistics.
@@ -953,13 +956,27 @@ Get system configuration.
 
 Get permission list.
 
+### GET `/admin/blockchain/reconciliation`
+
+Reconcile every locally-marked on-chain report against the ledger snapshot (chaincode `QueryReportHistory`). Returns counts for `matched`, `missingOnChain`, `contentMismatch`, `unverifiable` plus per-report detail rows. Read-only — the Fabric ledger is append-only and is never modified by this endpoint.
+
+### GET `/admin/outbox/dead-letters`
+
+Paginated list of `DEAD` outbox messages (exceeded the retry limit and still not on-chain). Before this endpoint existed, dead letters had no query surface at all.
+
+### POST `/admin/outbox/{id}/replay`
+
+Reset a `DEAD` outbox message back to `PENDING` (retry counter cleared) so the scheduler re-delivers it. Only `DEAD` messages are accepted; replaying an in-flight message would submit the same business twice.
+
 POST `/admin/enterprise-admission/{enterpriseId}/issue`
 
 Issue an enterprise admission certificate.
 
 DELETE `/admin/enterprise-admission/{enterpriseId}`
 
-Revoke an enterprise admission certificate.
+Revoke an enterprise admission certificate. Optional query param `reason` (max 200 chars) is recorded together with the revocation timestamp (`revoked_at`) for the audit trail.
+
+Revocation takes effect immediately on business writes: a revoked / expired / never-issued enterprise cannot submit carbon reports, place P2P or auction orders, settle trades, or recharge carbon coins (error code `7001 ADMISSION_REQUIRED`).
 
 ### GET `/admin/enterprise-admission`
 

@@ -23,7 +23,10 @@ vi.mock('element-plus', async (importOriginal) => {
   return {
     ...actual,
     ElMessage: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
-    ElMessageBox: { confirm: vi.fn(() => Promise.resolve()) },
+    ElMessageBox: {
+      confirm: vi.fn(() => Promise.resolve()),
+      prompt: vi.fn(() => Promise.resolve({ value: '资质材料失效', action: 'confirm' })),
+    },
   }
 })
 
@@ -179,8 +182,9 @@ describe('CertificateManage.vue', () => {
     }).handleRevokeAdmission({ enterpriseId: 5 })
     await flushPromises()
 
-    expect(ElMessageBox.confirm).toHaveBeenCalled()
-    expect(revokeEnterpriseAdmission).toHaveBeenCalledWith(5)
+    // 吊销改为 prompt：必须给一次填写原因的机会，不能只问「确定吗」
+    expect(ElMessageBox.prompt).toHaveBeenCalled()
+    expect(revokeEnterpriseAdmission).toHaveBeenCalledWith(5, '资质材料失效')
     expect(ElMessage.success).toHaveBeenCalledWith('certificateManage.revokeSuccess')
     expect(getEnterpriseAdmissionList).toHaveBeenCalledTimes(2)
     wrapper.unmount()
@@ -195,8 +199,8 @@ describe('CertificateManage.vue', () => {
     }).handleRevokeQualification({ reviewerId: 9 })
     await flushPromises()
 
-    expect(ElMessageBox.confirm).toHaveBeenCalled()
-    expect(revokeReviewerQualification).toHaveBeenCalledWith(9)
+    expect(ElMessageBox.prompt).toHaveBeenCalled()
+    expect(revokeReviewerQualification).toHaveBeenCalledWith(9, '资质材料失效')
     expect(ElMessage.success).toHaveBeenCalledWith('certificateManage.revokeSuccess')
     wrapper.unmount()
   })

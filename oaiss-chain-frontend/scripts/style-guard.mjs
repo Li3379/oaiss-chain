@@ -80,10 +80,17 @@ for (const f of files) {
   while ((m = shadowRe.exec(clean))) {
     const v = m[1].trim();
     if (/^none$/i.test(v)) continue;
-    if (/^0\s+0\s+0\s+\d+px/.test(v)) continue;
-    if (/^inset\s+\d+px\s+0\s+0\s+0/.test(v)) continue;
-    if (/^inset\s+0\s+0\s+0\s+1px/.test(v)) continue;
-    if (/el-(menu|dialog|popper|dropdown|tooltip|card)/i.test(v)) continue;
+    // !important 后缀不改变判定（EP 覆盖时需要它压过默认阴影）
+    const bare = v.replace(/\s*!important\s*$/i, '').trim();
+    if (/^none$/i.test(bare)) continue;
+    // 浮层投影统一收敛到两个令牌：overlay（对话框）/ popover（下拉）
+    if (/^var\(--pen-(overlay|popover)-shadow\)$/i.test(bare)) continue;
+    if (/^0\s+0\s+0\s+\d+px/.test(bare)) continue;
+    if (/^inset\s+\d+px\s+0\s+0\s+0/.test(bare)) continue;
+    if (/^inset\s+0\s+0\s+0\s+1px/.test(bare)) continue;
+    // 单选按钮组选中态的 1px 内联边线属于设计稿边线，不是投影
+    if (/^-?1px\s+0\s+0\s+0\s+var\(--pen-action\)$/.test(bare)) continue;
+    if (/el-(menu|dialog|popper|dropdown|tooltip|card)/i.test(bare)) continue;
     violations.push({ f, rule: 'box-shadow', detail: v.slice(0, 48) });
   }
 }

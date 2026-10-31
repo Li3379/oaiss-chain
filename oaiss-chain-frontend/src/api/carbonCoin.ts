@@ -13,7 +13,6 @@ import type {
   CarbonCoinAccountResponse,
   CarbonCoinRechargeRequest,
   CarbonCoinTransactionPage,
-  CarbonCoinTransferRequest,
   PageRequest,
 } from '../types'
 
@@ -28,24 +27,15 @@ export function getMyAccount(): Promise<CarbonCoinAccountResponse> {
 }
 
 /**
- * 【业务功能】：分页查询碳币账户收支交易明细与转账流水
+ * 【业务功能】：分页查询碳币账户收支交易明细
  * 【对应前端页面】：CarbonCoin.vue (/enterprise/carbon-coin/account)
- * 【界面触发操作】：查看“交易明细”表格，展示充值、扣减、交易结算与转账收支记录
+ * 【界面触发操作】：查看“交易明细”表格，展示充值、扣减与交易结算记录
  * 【后端对应端点】：CarbonCoinController -> GET /carbon-coin/transactions
  */
 export function getTransactions(params?: PageRequest): Promise<CarbonCoinTransactionPage> {
   return request.get('/carbon-coin/transactions', { params })
 }
 
-/**
- * 【业务功能】：执行企业间碳币点对点转账
- * 【对应前端页面】：CarbonCoin.vue (/enterprise/carbon-coin/account)
- * 【界面触发操作】：在“定向转账”对话框输入收款企业ID、转账金额与备注后，点击【确认转账】
- * 【后端对应端点】：CarbonCoinController -> POST /carbon-coin/transfer
- */
-export function transferCoins(data: CarbonCoinTransferRequest): Promise<CarbonCoinAccountResponse> {
-  return request.post('/carbon-coin/transfer', data)
-}
 
 /**
  * 【业务功能】：向指定用户或企业碳币账户进行充值（资金入账）

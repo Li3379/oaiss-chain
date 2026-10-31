@@ -36,4 +36,10 @@ public interface OutboxMessageRepository extends JpaRepository<OutboxMessage, Lo
      * 根据业务聚合查询消息
      */
     List<OutboxMessage> findByAggregateTypeAndAggregateIdAndDeletedFalse(String aggregateType, Long aggregateId);
+
+    /**
+     * 按状态分页查询（死信管理入口使用）
+     */
+    org.springframework.data.domain.Page<OutboxMessage> findByStatusAndDeletedFalseOrderByCreatedAtDesc(
+            String status, org.springframework.data.domain.Pageable pageable);
 }

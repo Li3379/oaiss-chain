@@ -310,3 +310,6 @@ docs/软件技术专业2026届毕业设计文档模版/
 oaiss-chain-frontend/.token.tmp
 oaiss-chain-frontend/.tokens.json
 /captcha3.png
+
+# GUI 黑盒测试截图（web-gui-tester 证据）
+gui-test-screenshots/

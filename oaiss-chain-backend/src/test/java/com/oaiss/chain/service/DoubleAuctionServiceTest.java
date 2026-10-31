@@ -98,6 +98,11 @@ class DoubleAuctionServiceTest {
     @Mock
     private TradeAuditService tradeAuditService;
 
+    // 证书门禁：本类既有用例验证的是「合规企业」下的撮合与挂单行为，
+    // 故默认判为持证；吊销后跳过配对的语义由 CertificateGateServiceTest 覆盖。
+    @Mock
+    private CertificateGateService certificateGateService;
+
     @InjectMocks
     private DoubleAuctionService doubleAuctionService;
 
@@ -107,6 +112,10 @@ class DoubleAuctionServiceTest {
 
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.lenient()
+                .when(certificateGateService.isEnterpriseAdmitted(org.mockito.ArgumentMatchers.anyLong()))
+                .thenReturn(true);
+
         currentUser = new JwtUserDetails();
         currentUser.setUserId(1L);
         currentUser.setUsername("testuser");
@@ -1358,12 +1367,8 @@ class DoubleAuctionServiceTest {
             tx.setId(1L);
             return tx;
         });
-        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(
-                Enterprise.builder().userId(1L).carbonQuota(new BigDecimal("1000"))
-                        .carbonTradable(new BigDecimal("500")).carbonUsed(new BigDecimal("500")).build()));
-        when(enterpriseRepository.findByUserId(3L)).thenReturn(Optional.of(
-                Enterprise.builder().userId(3L).carbonQuota(new BigDecimal("1000"))
-                        .carbonTradable(new BigDecimal("500")).carbonUsed(new BigDecimal("500")).build()));
+        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(enterpriseWithId(1L)));
+        when(enterpriseRepository.findByUserId(3L)).thenReturn(Optional.of(enterpriseWithId(3L)));
         when(auctionOrderRepository.save(any(AuctionOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         var results = doubleAuctionService.executeMatching();
@@ -1417,12 +1422,8 @@ class DoubleAuctionServiceTest {
             tx.setId(1L);
             return tx;
         });
-        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(
-                Enterprise.builder().userId(1L).carbonQuota(new BigDecimal("1000"))
-                        .carbonTradable(new BigDecimal("500")).carbonUsed(new BigDecimal("500")).build()));
-        when(enterpriseRepository.findByUserId(2L)).thenReturn(Optional.of(
-                Enterprise.builder().userId(2L).carbonQuota(new BigDecimal("1000"))
-                        .carbonTradable(new BigDecimal("500")).carbonUsed(new BigDecimal("500")).build()));
+        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(enterpriseWithId(1L)));
+        when(enterpriseRepository.findByUserId(2L)).thenReturn(Optional.of(enterpriseWithId(2L)));
         when(auctionOrderRepository.save(any(AuctionOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         var results = doubleAuctionService.executeMatching();
@@ -1480,12 +1481,8 @@ class DoubleAuctionServiceTest {
             tx.setId(1L);
             return tx;
         });
-        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(
-                Enterprise.builder().userId(1L).carbonQuota(new BigDecimal("1000"))
-                        .carbonTradable(new BigDecimal("500")).carbonUsed(new BigDecimal("500")).build()));
-        when(enterpriseRepository.findByUserId(99L)).thenReturn(Optional.of(
-                Enterprise.builder().userId(99L).carbonQuota(new BigDecimal("1000"))
-                        .carbonTradable(new BigDecimal("500")).carbonUsed(new BigDecimal("500")).build()));
+        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(enterpriseWithId(1L)));
+        when(enterpriseRepository.findByUserId(99L)).thenReturn(Optional.of(enterpriseWithId(99L)));
         when(auctionOrderRepository.save(any(AuctionOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         var results = doubleAuctionService.executeMatching();
@@ -1534,16 +1531,27 @@ class DoubleAuctionServiceTest {
             tx.setId(1L);
             return tx;
         });
-        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(
-                Enterprise.builder().userId(1L).carbonQuota(new BigDecimal("1000"))
-                        .carbonTradable(new BigDecimal("500")).carbonUsed(new BigDecimal("500")).build()));
-        when(enterpriseRepository.findByUserId(2L)).thenReturn(Optional.of(
-                Enterprise.builder().userId(2L).carbonQuota(new BigDecimal("1000"))
-                        .carbonTradable(new BigDecimal("500")).carbonUsed(new BigDecimal("500")).build()));
+        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(enterpriseWithId(1L)));
+        when(enterpriseRepository.findByUserId(2L)).thenReturn(Optional.of(enterpriseWithId(2L)));
         when(auctionOrderRepository.save(any(AuctionOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         var results = doubleAuctionService.executeMatching();
 
         assertEquals(1, results.size(), "信誉分服务异常不得阻断撮合");
+    }
+
+    /**
+     * 撮合路径会按企业ID判定准入证书，故测试企业必须带 id；
+     * 无 id 的企业在真实业务里是脏数据，门禁会按不合规跳过。
+     */
+    private Enterprise enterpriseWithId(Long id) {
+        Enterprise e = Enterprise.builder()
+                .userId(id)
+                .carbonQuota(new BigDecimal("1000"))
+                .carbonTradable(new BigDecimal("500"))
+                .carbonUsed(new BigDecimal("500"))
+                .build();
+        e.setId(id);
+        return e;
     }
 }

@@ -50,7 +50,7 @@ export function getLatestBlocks(params?: PageRequest): Promise<PageResponse<Bloc
 /**
  * 【业务功能】：根据区块高度（Block Number）查询具体区块的头哈希、前序哈希与完整交易列表
  * 【对应前端页面】：Blockchain.vue (/enterprise/blockchain/browser)
- * 【界面触发操作】：在检索框输入区块号或点击区块高度徽标，弹出区块详情对话框
+ * 【界面触发操作】：点击区块列表中的区块高度，下钻查看该区块内的交易明细
  * 【后端对应端点】：BlockchainController -> GET /blockchain/block/{blockNumber}
  */
 export function queryBlock(blockNumber: number): Promise<BlockchainBlockResponse | Record<string, unknown>> {
@@ -58,12 +58,11 @@ export function queryBlock(blockNumber: number): Promise<BlockchainBlockResponse
 }
 
 /**
- * 【业务功能】：根据交易哈希 (TxHash) 穿透溯源查询单笔存证记录（防伪溯源验证）
- * 【对应前端页面】：Blockchain.vue, CarbonUpload.vue (详情抽屉)
- * 【界面触发操作】：在搜索栏输入 64 位交易哈希或点击“上链凭证 TxHash”，穿透展示防伪存证原件
- * 【后端对应端点】：BlockchainController -> GET /blockchain/transaction/{txHash}
+ * 【业务功能】：查询某份碳报告在链上的原始快照（链码 QueryReportHistory）
+ * 【对应前端页面】：CarbonUpload.vue 报告详情「链上原始快照」折叠区
+ * 【界面触发操作】：展开折叠区，核对链上存证与本地记录是否一致
+ * 【后端对应端点】：BlockchainController -> GET /blockchain/report/{reportId}
  */
-export function queryTransaction(txHash: string): Promise<BlockchainTransactionResponse | Record<string, unknown>> {
-  if (!txHash) return Promise.reject(new Error('Transaction hash is required'))
-  return request.get(`/blockchain/transaction/${txHash}`)
+export function getReportSnapshot(reportId: number): Promise<Record<string, unknown>> {
+  return request.get(`/blockchain/report/${reportId}`)
 }

@@ -92,17 +92,14 @@ class MockBlockchainServiceTest {
         assertTrue(blockInfo.contains("txCount"));
     }
 
+    /**
+     * Mock 模式没有账本：提交只返回哈希，不落存储。因此「链上快照」恒为空，
+     * 语义等于「链上查无此报告」。刻意不伪造快照，否则开发环境的对账会呈现假绿。
+     */
     @Test
-    @DisplayName("测试交易查询")
-    void testQueryTransaction() {
-        String txHash = "tx_mock_1234567890_abc12345";
-
-        String txInfo = blockchainService.queryTransaction(txHash);
-
-        assertNotNull(txInfo);
-        assertTrue(txInfo.contains("txHash"));
-        assertTrue(txInfo.contains("status"));
-        assertTrue(txInfo.contains("VALID"));
+    @DisplayName("测试链上报告快照在 Mock 下为空")
+    void testQueryReportSnapshotReturnsNull() {
+        assertNull(blockchainService.queryReportSnapshot(1L));
     }
 
     @Test

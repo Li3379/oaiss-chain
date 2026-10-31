@@ -118,6 +118,7 @@ export const MENU_BY_ROLE: Record<RoleType, MenuItem[]> = {
     },
     { label: 'menu.dataManage', path: '/admin/data/statistics', tab: 'data', rail: true },
     { label: 'menu.auctionMatching', path: '/admin/trading/matching', tab: 'trade', rail: true },
+    { label: 'menu.chainOps', path: '/admin/blockchain', tab: 'chain', rail: true },
     // 上链补救统一由审核员端「上链补救」承担，管理员端不再保留功能重复的「认证列表」入口。
     { label: 'menu.certificateManage', path: '/admin/certificates', tab: 'cert', rail: true },
     { label: 'menu.searchCenter', path: '/search', tab: 'search', rail: true },
@@ -157,6 +158,7 @@ export const RAIL_BY_ROLE: Record<RoleType, RailItem[]> = {
     { label: 'menu.systemManage', railLabel: 'menu.railSystem', path: '/admin/system/users', icon: 'Setting', match: ['/admin/system/users', '/admin/system/carbon', '/admin/system/config'] },
     { label: 'menu.dataManage', railLabel: 'menu.railData', path: '/admin/data/statistics', icon: 'DataBoard', match: ['/admin/data/statistics'] },
     { label: 'menu.auctionMatching', railLabel: 'menu.railMatching', path: '/admin/trading/matching', icon: 'Histogram', match: ['/admin/trading/matching'] },
+    { label: 'menu.chainOps', railLabel: 'menu.railChainOps', path: '/admin/blockchain', icon: 'Link', match: ['/admin/blockchain'] },
     { label: 'menu.certificateManage', railLabel: 'menu.railCertAdmin', path: '/admin/certificates', icon: 'Files', match: ['/admin/certificates'] },
     { label: 'menu.searchCenter', railLabel: 'menu.railSearch', path: '/search', icon: 'Search', match: ['/search'] },
   ],

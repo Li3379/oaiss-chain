@@ -11,6 +11,8 @@ import com.oaiss.chain.exception.BusinessException;
 import com.oaiss.chain.repository.AccountPermissionListRepository;
 import com.oaiss.chain.repository.UserRepository;
 import com.oaiss.chain.security.JwtUserDetails;
+import com.oaiss.chain.service.AdminUserService;
+import com.oaiss.chain.service.ChainReconciliationService;
 import com.oaiss.chain.service.EnterpriseAdmissionService;
 import com.oaiss.chain.service.ReviewerQualificationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -51,6 +53,8 @@ public class AdminController {
     private final AccountPermissionListRepository permissionRepository;
     private final EnterpriseAdmissionService enterpriseAdmissionService;
     private final ReviewerQualificationService reviewerQualificationService;
+    private final AdminUserService adminUserService;
+    private final ChainReconciliationService chainReconciliationService;
 
     /**
      * 【业务功能】：分页多条件查询系统全量用户列表（支持按角色、启用状态、用户名检索）
@@ -80,6 +84,8 @@ public class AdminController {
             @RequestParam(required = false) Integer userType,
             @Parameter(description = "状态筛选 (0-禁用, 1-启用)", example = "1")
             @RequestParam(required = false) Integer status,
+            @Parameter(description = "用户名关键词模糊检索", example = "enterprise")
+            @RequestParam(required = false) String keyword,
             @Parameter(description = "页码，从1开始", example = "1")
             @RequestParam(defaultValue = "1") Integer page,
             @Parameter(description = "每页数量", example = "10")
@@ -88,7 +94,9 @@ public class AdminController {
         Pageable pageable = PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "createdAt"));
 
         Page<User> users;
-        if (userType != null) {
+        if (keyword != null && !keyword.isBlank()) {
+            users = userRepository.searchUsers(keyword.trim(), userType, status, pageable);
+        } else if (userType != null) {
             users = userRepository.findByUserTypeAndDeletedFalse(userType, pageable);
         } else if (status != null) {
             users = userRepository.findByStatusAndDeletedFalse(status, pageable);
@@ -138,7 +146,7 @@ public class AdminController {
             throw new BusinessException(ErrorCode.CANNOT_DISABLE_SELF, ErrorMessage.CANNOT_DISABLE_SELF);
         }
 
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByIdAndDeletedFalse(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "用户不存在"));
 
         user.setStatus(status);
@@ -308,8 +316,10 @@ public class AdminController {
     })
     public ApiResponse<Void> revokeAdmission(
             @Parameter(description = "企业ID", required = true, example = "1")
-            @PathVariable Long enterpriseId) {
-        enterpriseAdmissionService.revokeCertificate(enterpriseId);
+            @PathVariable Long enterpriseId,
+            @Parameter(description = "吊销原因（可选，二次确认框可填写，最长200字）", example = "连续三期报告数据不合规")
+            @RequestParam(required = false) String reason) {
+        enterpriseAdmissionService.revokeCertificate(enterpriseId, reason);
         return ApiResponse.success();
     }
 
@@ -388,8 +398,10 @@ public class AdminController {
     })
     public ApiResponse<Void> revokeQualification(
             @Parameter(description = "审核员ID", required = true, example = "1")
-            @PathVariable Long reviewerId) {
-        reviewerQualificationService.revokeCertificate(reviewerId);
+            @PathVariable Long reviewerId,
+            @Parameter(description = "吊销原因（可选，二次确认框可填写，最长200字）", example = "审核过程存在利益冲突")
+            @RequestParam(required = false) String reason) {
+        reviewerQualificationService.revokeCertificate(reviewerId, reason);
         return ApiResponse.success();
     }
 
@@ -419,5 +431,105 @@ public class AdminController {
             @RequestParam(defaultValue = "10") Integer size) {
         Page<ReviewerQualification> qualifications = reviewerQualificationService.listCertificates(status, page, size);
         return ApiResponse.success(qualifications);
+    }
+
+    // ==================== 用户创建与软删除 (TDD GREEN) ====================
+
+    /**
+     * 【业务功能】：管理员创建用户账号（审核员等无法自助注册的角色由此通道开通）
+     * 【对应前端页面】：views/admin/SystemUsers.vue (/admin/system/users)
+     * 【对应前端API】：api/admin.ts -> createUser()
+     * 【可见UI操作】：点击【新增用户】按钮，在弹窗表单中录入账号信息提交
+     * 【需求依据】：docs/raw 01 §3.4.1 用户管理(A级)；审核员/管理员禁止自助注册，创建通道唯一
+     */
+    @AuditLog(module = "系统管理", action = "创建用户", description = "系统管理 创建用户")
+    @PostMapping("/users")
+    @Operation(
+        summary = "创建用户",
+        description = "管理员创建用户账号。允许 1-企业/2-审核员/3-第三方监管；禁止创建管理员(4)。",
+        security = @SecurityRequirement(name = "Bearer Authentication")
+    )
+    public ApiResponse<User> createUser(@org.springframework.validation.annotation.Validated @RequestBody com.oaiss.chain.dto.AdminCreateUserRequest request) {
+        return ApiResponse.success(adminUserService.createUser(request));
+    }
+
+    /**
+     * 【业务功能】：管理员删除用户（软删除=下线语义，对应原始需求「信誉分不足用户暂时退出系统」）
+     * 【对应前端页面】：views/admin/SystemUsers.vue (/admin/system/users)
+     * 【对应前端API】：api/admin.ts -> deleteUser()
+     * 【可见UI操作】：在用户表格操作列点击【删除】按钮，二次确认后提交
+     * 【守卫】：不可删除自己；不可删除管理员账号；不存在/已删除统一 404 语义
+     */
+    @AuditLog(module = "系统管理", action = "删除用户", description = "系统管理 删除用户")
+    @DeleteMapping("/users/{userId}")
+    @Operation(
+        summary = "删除用户",
+        description = "软删除用户：deleted=true + status=0 + 吊销全部会话。不可删除自己与管理员账号。",
+        security = @SecurityRequirement(name = "Bearer Authentication")
+    )
+    public ApiResponse<Void> deleteUser(
+            @Parameter(description = "用户ID", required = true, example = "7")
+            @PathVariable Long userId,
+            @AuthenticationPrincipal JwtUserDetails currentUser) {
+
+        if (currentUser != null && currentUser.getUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.CANNOT_DELETE_SELF, ErrorMessage.CANNOT_DELETE_SELF);
+        }
+
+        adminUserService.deleteUser(userId);
+        return ApiResponse.success();
+    }
+
+    /**
+     * 【业务功能】：链上对账 — 逐条比对「本地已标记上链的报告」与链上真实快照
+     * 【对应前端页面】：views/admin/ChainReconciliation.vue (/admin/blockchain)
+     * 【对应前端API】：api/admin.ts -> getChainReconciliation()
+     * 【可见UI操作】：打开链上管理页，查看四类结果（一致 / 链上缺失 / 内容不一致 / 无法判定）
+     *
+     * <p>系统原本只有「DB → 链」单向写入，本地是否真的上链只能靠自填的 txHash 相信。
+     * 这个端点把链上事实读回来比对，是「还原」唯一可行的前置。</p>
+     */
+    @AuditLog(module = "系统管理", action = "链上对账", description = "系统管理 链上对账")
+    @GetMapping("/blockchain/reconciliation")
+    @Operation(summary = "链上对账", description = "比对本地已上链报告与链上快照，输出差异分类与明细")
+    public ApiResponse<ChainReconciliationService.ReconciliationResult> reconcileChain(
+            @Parameter(description = "页码（从1开始）", example = "1") @RequestParam(defaultValue = "1") Integer page,
+            @Parameter(description = "每页数量", example = "10") @RequestParam(defaultValue = "10") Integer size) {
+        return ApiResponse.success(chainReconciliationService.reconcile(page, size));
+    }
+
+    /**
+     * 【业务功能】：查询死信队列（超过重试上限仍未上链的消息）
+     * 【对应前端页面】：views/admin/ChainReconciliation.vue (/admin/blockchain)
+     * 【对应前端API】：api/admin.ts -> getDeadLetters()
+     * 【可见UI操作】：链上管理页「死信队列」Tab
+     *
+     * <p>此前 outbox 转 DEAD 后没有任何查询入口，消息永久滞留库里且无人可见。</p>
+     */
+    @AuditLog(module = "系统管理", action = "查询死信队列", description = "系统管理 查询死信队列")
+    @GetMapping("/outbox/dead-letters")
+    @Operation(summary = "查询死信队列", description = "分页查询状态为 DEAD 的发件箱消息")
+    public ApiResponse<Page<com.oaiss.chain.entity.OutboxMessage>> listDeadLetters(
+            @Parameter(description = "页码（从1开始）", example = "1") @RequestParam(defaultValue = "1") Integer page,
+            @Parameter(description = "每页数量", example = "10") @RequestParam(defaultValue = "10") Integer size) {
+        return ApiResponse.success(chainReconciliationService.listDeadLetters(page, size));
+    }
+
+    /**
+     * 【业务功能】：重放一条死信（复位为 PENDING，交由后台调度器重新投递）
+     * 【对应前端页面】：views/admin/ChainReconciliation.vue (/admin/blockchain)
+     * 【对应前端API】：api/admin.ts -> replayDeadLetter()
+     * 【可见UI操作】：死信列表操作列点击【重放】
+     *
+     * <p>只接受 DEAD 状态。重放不会改写链上任何数据——Fabric 账本不可修改，
+     * 这里做的只是让「本该上链却没上」的业务重新走一遍正常投递流程。</p>
+     */
+    @AuditLog(module = "系统管理", action = "重放死信", description = "系统管理 重放死信")
+    @PostMapping("/outbox/{id}/replay")
+    @Operation(summary = "重放死信", description = "将 DEAD 状态的发件箱消息复位为 PENDING 并清零重试计数")
+    public ApiResponse<com.oaiss.chain.entity.OutboxMessage> replayDeadLetter(
+            @Parameter(description = "发件箱消息主键", required = true, example = "1")
+            @PathVariable Long id) {
+        return ApiResponse.success(chainReconciliationService.replayDeadLetter(id));
     }
 }

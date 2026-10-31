@@ -2,6 +2,60 @@
 
 All notable optimizations to the OAISS CHAIN platform are documented here.
 
+## [1.7.1] - 2026-10-31
+
+### 碳币转账功能移除（需求溯源裁决 + TDD 闭环）
+
+**背景**：「账户间转账」在原始需求 docx 中 0 命中（实现层自造），全仓唯一调用方是 Controller（拍卖/P2P/信誉分零依赖），且存在三项质量缺陷（`counterpart_id` 死列从未写入、txNo 时间戳+随机数非幂等、分布式锁只锁发起方），与撮合引擎防洗售语义矛盾。按 TDD 红先行执行深度移除。
+
+- **后端**：删除 `POST /carbon-coin/transfer` 端点、`CarbonCoinService.transfer()`、`TX_TYPE_TRANSFER`、`CarbonCoinTransferRequest` DTO 与实体 `counterpartId` 字段；新增 404 契约测试。数据库 `counterpart_id` 列保留（nullable 无写入路径），`tx_type=4` 作为历史转账遗留值不再产生新数据。
+- **前端**：移除碳币账户页转账按钮/对话框/API/类型与 15 个 i18n 键（新增 `txTypeLegacy`=历史转账，zh/en 镜像）。
+- **驱动型修复**：流水显示映射与后端 txType 语义全面错位（购买显示「转入」、出售显示「转出」，正负号与颜色全反）——对齐为 1=充值/2=购买/3=出售/4=历史转账，正号集 [1,3]。
+- **测试资产**：system-suite TC-EQ-014/TC-BVA-004 改 404 契约（005-007 删除）、client.mjs mock 404、COIN 脚本改单检查、e2e 回归流 404 契约与 smoke S8-04 改「无转账入口」断言、coverage 清单除名。
+- **附带修复**：`carbon_coin_transaction.tx_type` 物理列漂移（tinyint→INT，对齐 V1 建表与实体；该漂移曾令一切新启动在 Hibernate schema 校验处失败）。
+- **实机回归**：GUI 黑盒 T1-T6 全过（转账入口零残留、历史转账行正确显示、0 console 错误）；转账端点实测 404；flow e2e 2/2、v1.1 404 契约实测通过；vue-tsc 0 错；doc-verify/i18n-verify 零漂移。
+
+## [1.7.0] - 2026-10-31
+
+### 证书门禁落地 + 区块链数据面归真 + 查询口径收敛
+
+**背景**：四项问题均非「功能缺失」，而是「声称的能力实际不生效」或「展示的内容不是真的」。本轮把它们逐项钉成可验证的事实。
+
+#### 一、企业证书吊销真正生效（安全控制面）
+
+改造前，管理员点「吊销」只把 `enterprise_admission.status` 置 2，而**全仓没有任何业务服务读取该字段**——吊销是孤岛写入。企业照常登录、挂单、成交、提交报告、充值碳币；审核员照常审核；与此同时 i18n 文案写着「没有准入证书就不能交易」。
+
+- **V19 迁移**：两张证书表补 `revoked_at` / `revoke_reason`；对存量 ACTIVE 证书回填 `expiry_date = 签发日 + 1 年`（该列此前恒为 NULL），否则新门禁启用当日全部存量证书会被判为过期而集体失效。
+- **`CertificateGateService`（新）**：唯一判定点。有效 = `status=1` 且（有效期为空 或 >= 今天，到期日含当天）。**无证书即拒绝**，刻意不复制信誉分闸门的「无记录默认放行」——那等于把缺数据当成合规。
+- **接入 5 类写入口**：P2P 成交确认（交割前判双方）、拍卖挂单与撮合结算（跳过不合规配对而非整批中断）、碳报告提交、审核员审核（资格证）、碳币充值。
+- **错误语义**：新增 `7001 ADMISSION_REQUIRED` / `7002 QUALIFICATION_REQUIRED`，带可读中英文案。
+- **吊销留痕**：`DELETE /admin/{enterprise-admission|reviewer-qualification}/{id}` 支持 `?reason=`（≤200 字），同时写入吊销时间；前端二次确认改为 `prompt`，给一次填写原因的机会。
+- **顺带修正**：`confirmTrade` 原先「先改 PROCESSING 再解析企业」，任一步失败就把交易停在半途；已改为先校验后改状态。`getMyCertificate` 原先无排序而前端取 `list[0]`，重新签发后会误显示「已吊销」——已改为按创建时间倒序。
+
+#### 二、区块链数据面归真
+
+- **删除 4 个恒空列**：区块表「矿工地址」、交易表「发送方 / 接收方 / 金额」后端从不产出，长期显示 `-`。
+- **`status` 不再写死**：改为读取区块元数据 `TRANSACTIONS_FILTER`（0=VALID，非 0=INVALID），并输出 `validationCode`。
+- **补真实字段**：交易发起组织 `senderMsp`（签名头）、背书组织 `endorsers`（背书列表）、被调用的链码函数与入参 `function`/`args`/`chaincodeName`；区块补 `previousHash` 与 `channel` 列。
+- **区块下钻**：`GET /blockchain/block/{n}` 早已存在且返回块内交易，但前端从未调用——文档宣称的「逐层下钻」实际不存在。现补区块详情弹窗。
+- **新增 `GET /blockchain/report/{reportId}`**：调链码 `QueryReportHistory` 读回 v2 快照。链上 16 个字段此前**没有任何 HTTP 端点能读到**。
+
+#### 三、交易哈希查询口径收敛
+
+`Blockchain.vue` 内嵌的「输入哈希直接查询」面板被移除（连同后端 `GET /blockchain/transaction/{txHash}`、两个实现、`TX_QUERY_FAILED`、9 个 i18n 键、8 处测试）。链上交易统一从「交易记录」列表与区块下钻查看，避免同一事实存在两条查询口径。顺带补上了该端点此前**缺少 `@PreAuthorize`**（任意登录用户可查任意 txHash）的问题——端点已不存在。
+
+#### 四、管理员链上管理（对账 + 死信）
+
+- **新增 `/admin/blockchain` 页**（管理员此前**没有任何**区块链入口，路由守卫甚至会把 ADMIN 从企业端浏览器重定向走）。
+- **链上对账** `GET /admin/blockchain/reconciliation`：四类结果（一致 / 链上缺失 / 内容不一致 / 无法判定）。链上不可达时归类 `UNVERIFIABLE` 而非「缺失」——避免一次网络故障变成一页虚假差异。
+- **死信管理** `GET /admin/outbox/dead-letters` + `POST /admin/outbox/{id}/replay`：此前 outbox 转 `DEAD` 后**没有任何查询入口**，消息永久滞留且无人可见。重放只接受 DEAD 状态，避免在途消息重复提交。
+- **不提供改链操作**：Fabric 账本只读追加，「还原」的真实含义只有对账与补偿。给一个能改链的按钮只会制造假象。
+
+#### 五、验证
+
+- 后端全量测试通过；前端 441 项通过；`vue-tsc` 0 错误；`doc-verify` / `i18n-verify` 零漂移。
+- 端点 150→153，i18n 2126→2180，Services 44 主包 / 47 合计。
+
 ## [1.6.0] - 2026-10-30
 
 ### 全链路闭环修复 + 实机验收 + 测试基础设施治理

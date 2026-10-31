@@ -125,18 +125,6 @@ class FabricBlockchainServiceTest {
     }
 
     @Test
-    void queryTransaction_shouldReadFromHistoricalBlockEvents() {
-        Block block = createBlock(9L, "tx123", "2026-05-31T00:00:00Z");
-        setChainAtHeight(9L, block);
-
-        String result = service.queryTransaction("tx123");
-
-        assertTrue(result.contains("\"txHash\":\"tx123\""));
-        assertTrue(result.contains("\"blockNumber\":9"));
-        verify(blockEventsRequestBuilder).startBlock(0L);
-    }
-
-    @Test
     void queryBlock_shouldReadSpecificBlockFromEventStream() {
         Block block = createBlock(5L, "tx-block-5", "2026-05-31T01:00:00Z");
         setChainAtHeight(5L, block);
@@ -363,14 +351,6 @@ class FabricBlockchainServiceTest {
     }
 
     @Test
-    void queryTransaction_whenTransactionNotFound_shouldThrowBlockchainException() {
-        Block block = createBlock(0L, "tx-other", "2026-05-31T00:00:00Z");
-        setChain(block);
-
-        assertThrows(BlockchainException.class, () -> service.queryTransaction("tx-missing"));
-    }
-
-    @Test
     void listLatestBlocks_whenNoBlocks_shouldReturnEmptyPage() {
         Page<Map<String, Object>> page = service.listLatestBlocks(1, 10);
 
@@ -422,14 +402,6 @@ class FabricBlockchainServiceTest {
         stubIteratorError(new RuntimeException("unexpected"));
 
         assertThrows(RuntimeException.class, () -> service.queryBlock(5L));
-    }
-
-    @Test
-    void queryTransaction_whenIteratorThrowsDeadline_shouldReturnEmpty() {
-        stubIteratorError(new RuntimeException(
-                io.grpc.Status.DEADLINE_EXCEEDED.asRuntimeException()));
-
-        assertThrows(BlockchainException.class, () -> service.queryTransaction("tx123"));
     }
 
     @Test
@@ -516,13 +488,6 @@ class FabricBlockchainServiceTest {
 
         FabricBlockchainService svc = new FabricBlockchainService(carbonContract, fabricNetwork, props, failingMapper);
         assertThrows(BlockchainException.class, () -> svc.queryBlock(5L));
-    }
-
-    @Test
-    void queryTransaction_whenGenericException_shouldThrowBlockchainException() {
-        stubIteratorError(new RuntimeException("stream error"));
-
-        assertThrows(BlockchainException.class, () -> service.queryTransaction("tx123"));
     }
 
     @Test
@@ -917,22 +882,6 @@ class FabricBlockchainServiceTest {
         assertEquals(1, page.getContent().size());
     }
 
-    // ==================== Branch coverage: queryTransaction with failing toJson ====================
-
-    @Test
-    void queryTransaction_whenToJsonFails_shouldThrowBlockchainException() throws Exception {
-        Block block = createBlock(0L, "tx-tojson-fail", "2026-05-31T00:00:00Z");
-        setChain(block);
-
-        ObjectMapper failingMapper = mock(ObjectMapper.class);
-        when(failingMapper.writeValueAsString(any())).thenThrow(
-                new com.fasterxml.jackson.core.JsonProcessingException("fail") {});
-
-        FabricBlockchainService svc = new FabricBlockchainService(carbonContract, fabricNetwork, props, failingMapper);
-
-        assertThrows(BlockchainException.class, () -> svc.queryTransaction("tx-tojson-fail"));
-    }
-
     // ==================== Branch coverage: queryBlock with non-deadline exception in outer catch ====================
 
     @Test
@@ -1131,13 +1080,6 @@ class FabricBlockchainServiceTest {
         assertEquals("tx-valid-mixed", page.getContent().get(0).get("txHash"));
     }
 
-    // ==================== Branch coverage: queryTransaction when iterator is empty ====================
-
-    @Test
-    void queryTransaction_whenNoBlocksAtAll_shouldThrowBlockchainException() {
-        assertThrows(BlockchainException.class, () -> service.queryTransaction("tx-missing-2"));
-    }
-
     // ==================== Branch coverage: toBlockRecord block.hasHeader() false branches ====================
 
     @Test
@@ -1333,5 +1275,176 @@ class FabricBlockchainServiceTest {
     private void stubIteratorError(RuntimeException error) {
         iteratorError = error;
         lenient().when(blockIterator.hasNext()).thenThrow(error);
+    }
+
+    // ==================== Rich envelope helpers (real status / MSP / chaincode function) ====================
+
+    /**
+     * 构造一条「结构完整」的交易信封：交易动作 + 链码调用规格 + 背书列表 + 发起者身份。
+     *
+     * <p>此前的测试信封只有 ChannelHeader，导致解析层只能拿到 txId 与时间戳——
+     * 于是 status 只能写死 VALID、MSP 只能留空。真实 Peer 返回的区块里这些信息都在，
+     * 只是没人去读。</p>
+     */
+    private Envelope richEnvelope(String txId, String mspId, String function, String... args) {
+        org.hyperledger.fabric.protos.msp.SerializedIdentity identity =
+                org.hyperledger.fabric.protos.msp.SerializedIdentity.newBuilder()
+                        .setMspid(mspId)
+                        .setIdBytes(ByteString.copyFromUtf8("cert-" + mspId))
+                        .build();
+
+        org.hyperledger.fabric.protos.peer.ChaincodeInvocationSpec chaincodeSpec =
+                org.hyperledger.fabric.protos.peer.ChaincodeInvocationSpec.newBuilder()
+                        .setChaincodeSpec(org.hyperledger.fabric.protos.peer.ChaincodeSpec.newBuilder()
+                                .setChaincodeId(org.hyperledger.fabric.protos.peer.ChaincodeID.newBuilder()
+                                        .setName("carbon-chaincode"))
+                                .setInput(org.hyperledger.fabric.protos.peer.ChaincodeInput.newBuilder()
+                                        .addAllArgs(chaincodeArgs(function, args))
+                                        .build())
+                                .build())
+                        .build();
+
+        org.hyperledger.fabric.protos.peer.ChaincodeActionPayload actionPayload =
+                org.hyperledger.fabric.protos.peer.ChaincodeActionPayload.newBuilder()
+                        .setChaincodeProposalPayload(
+                                org.hyperledger.fabric.protos.peer.ChaincodeProposalPayload.newBuilder()
+                                        .setInput(chaincodeSpec.toByteString())
+                                        .build()
+                                        .toByteString())
+                        .setAction(org.hyperledger.fabric.protos.peer.ChaincodeEndorsedAction.newBuilder()
+                                .addEndorsements(org.hyperledger.fabric.protos.peer.Endorsement.newBuilder()
+                                        .setEndorser(identity.toByteString())
+                                        .build())
+                                .build())
+                        .build();
+
+        org.hyperledger.fabric.protos.peer.TransactionAction transactionAction =
+                org.hyperledger.fabric.protos.peer.TransactionAction.newBuilder()
+                        .setPayload(actionPayload.toByteString())
+                        .build();
+
+        ChannelHeader channelHeader = ChannelHeader.newBuilder()
+                .setChannelId("mychannel")
+                .setTxId(txId)
+                .setType(3)
+                .setTimestamp(Timestamp.newBuilder().setSeconds(1_780_000_000L).build())
+                .build();
+
+        Header header = Header.newBuilder()
+                .setChannelHeader(channelHeader.toByteString())
+                .setSignatureHeader(org.hyperledger.fabric.protos.common.SignatureHeader.newBuilder()
+                        .setCreator(identity.toByteString())
+                        .setNonce(ByteString.copyFromUtf8("nonce"))
+                        .build()
+                        .toByteString())
+                .build();
+
+        Payload payload = Payload.newBuilder()
+                .setHeader(header)
+                .setData(transactionAction.toByteString())
+                .build();
+
+        return Envelope.newBuilder().setPayload(payload.toByteString()).build();
+    }
+
+    // ==================== Real field extraction (status / MSP / chaincode function) ====================
+
+    @Test
+    void listTransactions_shouldExposeRealValidationStatusInsteadOfHardcodedValid() {
+        Block block = blockWithRichEnvelope(1L, "tx-real-status", "Org1MSP", "CreateCarbonReportV2");
+        setChainAtHeight(1L, block);
+
+        Map<String, Object> tx = service.listTransactions(1, 10).getContent().get(0);
+
+        // 真实状态来自区块元数据的 TRANSACTIONS_FILTER；本例元数据缺省 = 0 = VALID
+        assertEquals("VALID", tx.get("status"));
+        assertEquals(0, tx.get("validationCode"));
+    }
+
+    @Test
+    void listTransactions_shouldExposeSenderMspAndEndorsers() {
+        Block block = blockWithRichEnvelope(1L, "tx-msp", "Org2MSP", "CreateTradeRecord", "1", "{}");
+        setChainAtHeight(1L, block);
+
+        Map<String, Object> tx = service.listTransactions(1, 10).getContent().get(0);
+
+        assertEquals("Org2MSP", tx.get("senderMsp"));
+        assertEquals(java.util.List.of("Org2MSP"), tx.get("endorsers"));
+    }
+
+    @Test
+    void listTransactions_shouldExposeInvokedChaincodeFunctionAndArgs() {
+        Block block = blockWithRichEnvelope(1L, "tx-fn", "Org1MSP", "CreateCarbonReportV2", "7", "EA-1");
+        setChainAtHeight(1L, block);
+
+        Map<String, Object> tx = service.listTransactions(1, 10).getContent().get(0);
+
+        assertEquals("CreateCarbonReportV2", tx.get("function"));
+        assertEquals(java.util.List.of("CreateCarbonReportV2", "7", "EA-1"), tx.get("args"));
+        assertEquals("carbon-chaincode", tx.get("chaincodeName"));
+    }
+
+    @Test
+    void blocksShouldExposeChannelAndPreviousHash() {
+        Block block = createBlock(3L, "tx-b", "2026-05-31T02:00:00Z");
+        setChainAtHeight(3L, block);
+
+        Map<String, Object> record = service.listLatestBlocks(1, 10).getContent().get(0);
+
+        assertEquals("mychannel", record.get("channel"));
+        assertNotNull(record.get("previousHash"));
+        assertTrue(String.valueOf(record.get("previousHash")).startsWith("0x"));
+    }
+
+    @Test
+    void queryReportSnapshot_shouldReturnLatestVersionFromChaincodeHistory() throws Exception {
+        when(carbonContract.evaluateTransaction(eq("QueryReportHistory"), eq("42")))
+                .thenReturn(("[{\"reportId\":\"42\",\"schemaVersion\":\"v2\",\"totalEmission\":\"100\"},"
+                        + "{\"reportId\":\"42\",\"schemaVersion\":\"v2\",\"totalEmission\":\"200\"}]")
+                        .getBytes(StandardCharsets.UTF_8));
+
+        String snapshot = service.queryReportSnapshot(42L);
+
+        assertNotNull(snapshot);
+        assertTrue(snapshot.contains("\"totalEmission\":\"200\""), "必须返回最新一版快照");
+    }
+
+    @Test
+    void queryReportSnapshot_shouldReturnNullWhenLedgerHasNoRecord() throws Exception {
+        when(carbonContract.evaluateTransaction(eq("QueryReportHistory"), eq("404")))
+                .thenReturn("[]".getBytes(StandardCharsets.UTF_8));
+
+        assertNull(service.queryReportSnapshot(404L));
+    }
+
+    @Test
+    void queryReportSnapshot_shouldWrapChaincodeFailureAsBlockchainException() throws Exception {
+        when(carbonContract.evaluateTransaction(eq("QueryReportHistory"), eq("9")))
+                .thenThrow(new RuntimeException("peer down"));
+
+        assertThrows(BlockchainException.class, () -> service.queryReportSnapshot(9L));
+    }
+
+    private Block blockWithRichEnvelope(long blockNumber, String txId, String mspId, String function, String... args) {
+        return Block.newBuilder()
+                .setHeader(BlockHeader.newBuilder()
+                        .setNumber(blockNumber)
+                        .setPreviousHash(ByteString.copyFromUtf8("prev-" + blockNumber))
+                        .setDataHash(ByteString.copyFromUtf8("hash-" + blockNumber))
+                        .build())
+                .setData(BlockData.newBuilder()
+                        .addData(richEnvelope(txId, mspId, function, args).toByteString())
+                        .build())
+                .build();
+    }
+
+    /** 链码入参列表：首个元素是函数名，其余为业务参数。 */
+    private java.util.List<ByteString> chaincodeArgs(String function, String... args) {
+        java.util.List<ByteString> all = new java.util.ArrayList<>();
+        all.add(ByteString.copyFromUtf8(function));
+        for (String arg : args) {
+            all.add(ByteString.copyFromUtf8(arg));
+        }
+        return all;
     }
 }

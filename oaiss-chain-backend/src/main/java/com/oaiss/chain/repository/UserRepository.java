@@ -68,4 +68,17 @@ public interface UserRepository extends JpaRepository<User, Long> {
      */
     @Query("SELECT u FROM User u WHERE u.deleted = false AND u.username LIKE %:keyword%")
     Page<User> searchByUsername(@Param("keyword") String keyword, Pageable pageable);
+
+    /**
+     * 管理员用户列表组合查询（keyword×userType×status 任意组合，均过滤软删除）
+     * 对应接口文档 GET /admin/users 承诺的 keyword 参数
+     */
+    @Query("SELECT u FROM User u WHERE u.deleted = false " +
+            "AND (:keyword IS NULL OR LOWER(u.username) LIKE LOWER(CONCAT('%', :keyword, '%'))) " +
+            "AND (:userType IS NULL OR u.userType = :userType) " +
+            "AND (:status IS NULL OR u.status = :status)")
+    Page<User> searchUsers(@Param("keyword") String keyword,
+                           @Param("userType") Integer userType,
+                           @Param("status") Integer status,
+                           Pageable pageable);
 }

@@ -18,6 +18,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -114,7 +115,7 @@ class EnterpriseAdmissionServiceTest {
     @Test
     @DisplayName("吊销准入证书-成功")
     void testRevokeCertificate_success() {
-        when(enterpriseAdmissionRepository.findFirstByEnterpriseIdAndStatusAndDeletedFalse(1L, 1))
+        when(enterpriseAdmissionRepository.findFirstByEnterpriseIdAndStatusAndDeletedFalseOrderByCreatedAtDesc(1L, 1))
                 .thenReturn(Optional.of(testAdmission));
         when(enterpriseAdmissionRepository.save(any(EnterpriseAdmission.class))).thenReturn(testAdmission);
 
@@ -125,9 +126,53 @@ class EnterpriseAdmissionServiceTest {
     }
 
     @Test
+    @DisplayName("吊销准入证书-写入吊销时间与原因（审计留痕）")
+    void testRevokeCertificate_recordsRevocationAuditFields() {
+        when(enterpriseAdmissionRepository.findFirstByEnterpriseIdAndStatusAndDeletedFalseOrderByCreatedAtDesc(1L, 1))
+                .thenReturn(Optional.of(testAdmission));
+        when(enterpriseAdmissionRepository.save(any(EnterpriseAdmission.class))).thenReturn(testAdmission);
+
+        LocalDateTime before = LocalDateTime.now().minusSeconds(1);
+        enterpriseAdmissionService.revokeCertificate(1L, "连续三期报告数据不合规");
+
+        assertEquals(2, testAdmission.getStatus());
+        assertEquals("连续三期报告数据不合规", testAdmission.getRevokeReason());
+        assertNotNull(testAdmission.getRevokedAt(), "吊销必须留下时间，否则审计无法追溯");
+        assertTrue(testAdmission.getRevokedAt().isAfter(before));
+    }
+
+    @Test
+    @DisplayName("吊销准入证书-原因超长时截断到列宽，不因超长而失败")
+    void testRevokeCertificate_truncatesOverlongReason() {
+        when(enterpriseAdmissionRepository.findFirstByEnterpriseIdAndStatusAndDeletedFalseOrderByCreatedAtDesc(1L, 1))
+                .thenReturn(Optional.of(testAdmission));
+        when(enterpriseAdmissionRepository.save(any(EnterpriseAdmission.class))).thenReturn(testAdmission);
+
+        String tooLong = "违".repeat(500);
+        enterpriseAdmissionService.revokeCertificate(1L, tooLong);
+
+        assertEquals(2, testAdmission.getStatus());
+        assertNotNull(testAdmission.getRevokeReason());
+        assertTrue(testAdmission.getRevokeReason().length() <= 200);
+    }
+
+    @Test
+    @DisplayName("吊销准入证书-未填原因时仍可吊销（原因可选）")
+    void testRevokeCertificate_withoutReason_succeeds() {
+        when(enterpriseAdmissionRepository.findFirstByEnterpriseIdAndStatusAndDeletedFalseOrderByCreatedAtDesc(1L, 1))
+                .thenReturn(Optional.of(testAdmission));
+        when(enterpriseAdmissionRepository.save(any(EnterpriseAdmission.class))).thenReturn(testAdmission);
+
+        enterpriseAdmissionService.revokeCertificate(1L);
+
+        assertEquals(2, testAdmission.getStatus());
+        assertNotNull(testAdmission.getRevokedAt());
+    }
+
+    @Test
     @DisplayName("吊销准入证书-无有效证书时抛出异常")
     void testRevokeCertificate_noActiveCert_throwsException() {
-        when(enterpriseAdmissionRepository.findFirstByEnterpriseIdAndStatusAndDeletedFalse(1L, 1))
+        when(enterpriseAdmissionRepository.findFirstByEnterpriseIdAndStatusAndDeletedFalseOrderByCreatedAtDesc(1L, 1))
                 .thenReturn(Optional.empty());
 
         BusinessException ex = assertThrows(BusinessException.class,
@@ -260,7 +305,7 @@ class EnterpriseAdmissionServiceTest {
     @Test
     @DisplayName("查询企业准入证书-成功")
     void testGetMyCertificate_success() {
-        when(enterpriseAdmissionRepository.findByEnterpriseIdAndDeletedFalse(1L))
+        when(enterpriseAdmissionRepository.findByEnterpriseIdAndDeletedFalseOrderByCreatedAtDesc(1L))
                 .thenReturn(List.of(testAdmission));
 
         List<EnterpriseAdmission> result = enterpriseAdmissionService.getMyCertificate(1L);
@@ -273,7 +318,7 @@ class EnterpriseAdmissionServiceTest {
     @Test
     @DisplayName("查询企业准入证书-无证书时返回空列表")
     void testGetMyCertificate_empty() {
-        when(enterpriseAdmissionRepository.findByEnterpriseIdAndDeletedFalse(999L))
+        when(enterpriseAdmissionRepository.findByEnterpriseIdAndDeletedFalseOrderByCreatedAtDesc(999L))
                 .thenReturn(List.of());
 
         List<EnterpriseAdmission> result = enterpriseAdmissionService.getMyCertificate(999L);

@@ -174,13 +174,12 @@ export const equivalenceCases = [
   {
     id: 'TC-EQ-014',
     dimension: '功能等价类',
-    title: '无效类-向不存在的目标用户转账碳币被拦截',
+    title: '无效类-已移除的碳币转账端点返回404',
     method: 'POST',
     endpoint: '/carbon-coin/transfer',
     role: 'enterprise001',
     input: { counterpartId: 99999999, amount: 10.00, remark: '转账给不存在的用户' },
-    expectedStatus: 400,
-    expectedCode: 4003
+    expectedStatus: 404
   },
   {
     id: 'TC-EQ-015',

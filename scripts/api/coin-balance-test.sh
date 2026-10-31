@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 04-03: Carbon Coin - Balance, Transactions, Transfer, Insufficient Balance
-# Requirements: COIN-01~05
+# 04-03: Carbon Coin - Balance, Transactions (transfer feature removed 2026-10-31)
+# Requirements: COIN-01~03 (transfer feature removed 2026-10-31)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -8,7 +8,7 @@ source "$SCRIPT_DIR/test-helpers.sh"
 
 check_backend
 
-echo "=== Carbon Coin Test (COIN-01~05) ==="
+echo "=== Carbon Coin Test (COIN-01~03) ==="
 echo ""
 
 # --- Setup: Login ---
@@ -53,52 +53,21 @@ COIN02_RESP=$(curl -s $CURL_OPTS "$BASE_URL/carbon-coin/transactions?page=1&size
 assert_code_200 "COIN-02: Get transactions returns 200" "$COIN02_RESP"
 assert_contains "COIN-02: Has pagination content" "$COIN02_RESP" '"content":'
 
-# --- COIN-03: Transfer coins ---
+# --- COIN-03: Transfer endpoint removed (feature removed 2026-10-31) ---
 echo ""
-echo "[COIN-03] Transfer 500 coins E1->E2..."
-BALANCE_E1_BEFORE=$(extract_field "$(curl -s $CURL_OPTS "$BASE_URL/carbon-coin/account" -H "Authorization: Bearer $TOKEN_E1")" "data.balance" | cut -d. -f1)
-BALANCE_E2_BEFORE=$(extract_field "$(curl -s $CURL_OPTS "$BASE_URL/carbon-coin/account?userId=3" -H "Authorization: Bearer $TOKEN_ADMIN")" "data.balance" | cut -d. -f1)
-
+echo "[COIN-03] Transfer endpoint removed check..."
 TRANSFER_RESP=$(curl -s $CURL_OPTS -X POST "$BASE_URL/carbon-coin/transfer" \
     -H "Authorization: Bearer $TOKEN_E1" \
     -H "Content-Type: application/json" \
-    -d '{"counterpartId":3,"amount":500,"remark":"Phase3 test transfer"}')
-assert_code_200 "COIN-03: Transfer succeeds" "$TRANSFER_RESP"
-
-# --- COIN-04: Verify atomic balance update ---
-echo ""
-echo "[COIN-04] Verify atomic balance updates..."
-BALANCE_E1_AFTER=$(extract_field "$(curl -s $CURL_OPTS "$BASE_URL/carbon-coin/account" -H "Authorization: Bearer $TOKEN_E1")" "data.balance" | cut -d. -f1)
-BALANCE_E2_AFTER=$(extract_field "$(curl -s $CURL_OPTS "$BASE_URL/carbon-coin/account?userId=3" -H "Authorization: Bearer $TOKEN_ADMIN")" "data.balance" | cut -d. -f1)
-
-EXPECTED_E1=$((BALANCE_E1_BEFORE - 500))
-EXPECTED_E2=$((BALANCE_E2_BEFORE + 500))
-
+    -d '{"counterpartId":3,"amount":500,"remark":"transfer feature removed"}')
+TRANSFER_CODE=$(extract_field "$TRANSFER_RESP" "code")
 TEST_ID=$((TEST_ID + 1))
-if [[ "$BALANCE_E1_AFTER" -eq "$EXPECTED_E1" && "$BALANCE_E2_AFTER" -eq "$EXPECTED_E2" ]]; then
-    echo "  [PASS] Test $TEST_ID: Atomic update verified: E1=$BALANCE_E1_AFTER, E2=$BALANCE_E2_AFTER"
+if [[ "$TRANSFER_CODE" == "404" ]]; then
+    echo "  [PASS] Test $TEST_ID: Transfer endpoint removed (code=404)"
     PASS=$((PASS + 1))
 else
-    echo "  [FAIL] Test $TEST_ID: Balance mismatch: E1=$BALANCE_E1_AFTER (exp $EXPECTED_E1), E2=$BALANCE_E2_AFTER (exp $EXPECTED_E2)"
+    echo "  [FAIL] Test $TEST_ID: Transfer endpoint should be removed (code=$TRANSFER_CODE)"
     FAIL=$((FAIL + 1))
 fi
 
-# --- COIN-05: Insufficient balance rejected ---
-echo ""
-echo "[COIN-05] Insufficient balance transfer..."
-INSUFF_RESP=$(curl -s $CURL_OPTS -X POST "$BASE_URL/carbon-coin/transfer" \
-    -H "Authorization: Bearer $TOKEN_E1" \
-    -H "Content-Type: application/json" \
-    -d '{"counterpartId":3,"amount":999999,"remark":"should fail"}')
-INSUFF_CODE=$(extract_field "$INSUFF_RESP" "code")
-TEST_ID=$((TEST_ID + 1))
-if [[ "$INSUFF_CODE" != "200" ]]; then
-    echo "  [PASS] Test $TEST_ID: Insufficient balance correctly rejected (code=$INSUFF_CODE)"
-    PASS=$((PASS + 1))
-else
-    echo "  [FAIL] Test $TEST_ID: Insufficient balance should have been rejected"
-    FAIL=$((FAIL + 1))
-fi
-
-echo ""
 print_summary

@@ -19,6 +19,7 @@ import type {
   EnterpriseAdmissionPage,
   EnterpriseAdmissionResponse,
   PageRequest,
+  PageResponse,
   ReviewerQualificationPage,
   ReviewerQualificationResponse,
 } from '../types'
@@ -76,11 +77,13 @@ export function issueEnterpriseAdmission(enterpriseId: number): Promise<Enterpri
 /**
  * 【业务功能】：吊销或作废严重违规/退出市场的企业准入资格证书
  * 【对应前端页面】：CertificateManage.vue (/admin/certificates)
- * 【界面触发操作】：在企业准入列表操作列点击【吊销证书】并二次确认
+ * 【界面触发操作】：在企业准入列表操作列点击【吊销证书】，确认弹窗中填写吊销原因（可选）
  * 【后端对应端点】：AdminController -> DELETE /admin/enterprise-admission/{id}
  */
-export function revokeEnterpriseAdmission(enterpriseId: number): Promise<void> {
-  return request.delete(`/admin/enterprise-admission/${enterpriseId}`)
+export function revokeEnterpriseAdmission(enterpriseId: number, reason?: string): Promise<void> {
+  return request.delete(`/admin/enterprise-admission/${enterpriseId}`, {
+    params: reason ? { reason } : undefined,
+  })
 }
 
 /**
@@ -106,11 +109,13 @@ export function issueReviewerQualification(reviewerId: number): Promise<Reviewer
 /**
  * 【业务功能】：吊销或废止违规审核员的专业执业资格证书
  * 【对应前端页面】：CertificateManage.vue (/admin/certificates)
- * 【界面触发操作】：在审核员资格列表操作列点击【吊销资质】并二次确认
+ * 【界面触发操作】：在审核员资格列表操作列点击【吊销资质】，确认弹窗中填写吊销原因（可选）
  * 【后端对应端点】：AdminController -> DELETE /admin/reviewer-qualification/{id}
  */
-export function revokeReviewerQualification(reviewerId: number): Promise<void> {
-  return request.delete(`/admin/reviewer-qualification/${reviewerId}`)
+export function revokeReviewerQualification(reviewerId: number, reason?: string): Promise<void> {
+  return request.delete(`/admin/reviewer-qualification/${reviewerId}`, {
+    params: reason ? { reason } : undefined,
+  })
 }
 
 /**
@@ -141,4 +146,99 @@ export function getConfig(): Promise<AdminConfigResponse> {
  */
 export function getPermissions(): Promise<AdminPermissionResponse[]> {
   return request.get('/admin/permissions')
+}
+
+/**
+ * 【业务功能】：管理员创建用户账号（审核员等无法自助注册角色的唯一创建通道）
+ * 【对应前端页面】：SystemUsers.vue (/admin/system/users)
+ * 【界面触发操作】：点击【新增用户】按钮，在弹窗表单录入账号信息提交
+ * 【后端对应端点】：AdminController -> POST /admin/users
+ */
+export function createUser(data: {
+  username: string
+  password: string
+  userType: number
+  realName?: string
+  phone?: string
+  email?: string
+}): Promise<{ id: number; username: string }> {
+  return request.post('/admin/users', data)
+}
+
+/**
+ * 【业务功能】：管理员删除用户（软删除=下线语义）
+ * 【对应前端页面】：SystemUsers.vue (/admin/system/users)
+ * 【界面触发操作】：在用户表格操作列点击【删除】按钮，二次确认后提交
+ * 【后端对应端点】：AdminController -> DELETE /admin/users/{userId}
+ */
+export function deleteUser(userId: number): Promise<void> {
+  return request.delete(`/admin/users/${userId}`)
+}
+
+/**
+ * 链上对账结果：本地已标记上链的报告与链上快照的逐条比对。
+ */
+export interface ChainReconciliationDetail {
+  reportId: number
+  reportNo?: string
+  dbTxHash?: string
+  dbTotalEmission?: string
+  chainTotalEmission?: string
+  status: 'MATCHED' | 'MISSING_ON_CHAIN' | 'CONTENT_MISMATCH' | 'UNVERIFIABLE' | string
+  reason?: string
+}
+
+export interface ChainReconciliationResult {
+  checked: number
+  matched: number
+  missingOnChain: number
+  contentMismatch: number
+  unverifiable: number
+  details: ChainReconciliationDetail[]
+  total: number
+}
+
+/** 死信消息（超过重试上限仍未上链） */
+export interface DeadLetterRow {
+  id: number
+  messageId: string
+  aggregateType: string
+  aggregateId: number
+  topic: string
+  payload?: string
+  status: string
+  retryCount: number
+  nextRetryAt?: string
+  errorMessage?: string
+  createdAt?: string
+}
+
+/**
+ * 【业务功能】：链上对账 — 比对本地已上链报告与链上快照
+ * 【对应前端页面】：ChainOps.vue (/admin/blockchain)
+ * 【界面触发操作】：链上管理页「对账」Tab 点击【重新对账】
+ * 【后端对应端点】：AdminController -> GET /admin/blockchain/reconciliation
+ */
+export function getChainReconciliation(params?: PageRequest): Promise<ChainReconciliationResult> {
+  return request.get('/admin/blockchain/reconciliation', { params })
+}
+
+/**
+ * 【业务功能】：查询死信队列
+ * 【对应前端页面】：ChainOps.vue (/admin/blockchain)
+ * 【界面触发操作】：链上管理页「死信队列」Tab 加载表格
+ * 【后端对应端点】：AdminController -> GET /admin/outbox/dead-letters
+ */
+export function getDeadLetters(params?: PageRequest): Promise<PageResponse<DeadLetterRow>> {
+  return request.get('/admin/outbox/dead-letters', { params })
+}
+
+/**
+ * 【业务功能】：重放一条死信（复位为 PENDING 交由调度器重投）
+ * 【对应前端页面】：ChainOps.vue (/admin/blockchain)
+ * 【界面触发操作】：死信列表操作列点击【重放】并二次确认
+ * 【后端对应端点】：AdminController -> POST /admin/outbox/{id}/replay
+ */
+export function replayDeadLetter(id: number): Promise<void> {
+  return request.post(`/admin/outbox/${id}/replay`)
 }

@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -40,6 +41,8 @@ public class ReviewerQualificationService {
     private final UserRepository userRepository;
 
     private static final int MAX_CERT_NO_RETRIES = 3;
+    /** 与 V19 迁移的 revoke_reason 列宽保持一致 */
+    private static final int REVOKE_REASON_MAX_LENGTH = 200;
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final String DEFAULT_QUALIFICATION_TYPE = "碳排放审核资质";
@@ -79,6 +82,17 @@ public class ReviewerQualificationService {
      */
     @Transactional
     public void revokeCertificate(Long reviewerId) {
+        revokeCertificate(reviewerId, null);
+    }
+
+    /**
+     * 吊销审核员资格证，并留下「何时、为何」的审计痕迹。
+     *
+     * @param reviewerId 审核员ID
+     * @param reason     吊销原因，可为空；超过 200 字符时按列宽截断
+     */
+    @Transactional
+    public void revokeCertificate(Long reviewerId, String reason) {
         Reviewer reviewer = resolveReviewer(reviewerId);
         Long normalizedReviewerId = reviewer.getId();
 
@@ -86,8 +100,25 @@ public class ReviewerQualificationService {
                 .orElseThrow(() -> BusinessException.notFound("error.qualification.notFound"));
 
         qualification.setStatus(QualificationStatusEnum.REVOKED.getCode());
+        qualification.setRevokedAt(LocalDateTime.now());
+        qualification.setRevokeReason(normalizeReason(reason));
         reviewerQualificationRepository.save(qualification);
-        log.info("ReviewerQualification revoked for reviewer {}", normalizedReviewerId);
+        log.info("ReviewerQualification revoked for reviewer {}: reason={}",
+                normalizedReviewerId, qualification.getRevokeReason());
+    }
+
+    /** 原因列宽 200；超长截断而非抛错——吊销动作不应因备注而回滚。 */
+    private static String normalizeReason(String reason) {
+        if (reason == null) {
+            return null;
+        }
+        String trimmed = reason.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        return trimmed.length() > REVOKE_REASON_MAX_LENGTH
+                ? trimmed.substring(0, REVOKE_REASON_MAX_LENGTH)
+                : trimmed;
     }
 
     /**

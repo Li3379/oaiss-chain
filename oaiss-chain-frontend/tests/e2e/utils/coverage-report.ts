@@ -34,7 +34,6 @@ export const CORE_ENDPOINTS: EndpointCoverage[] = [
   // Carbon Coin (v1.0)
   { endpoint: '/carbon-coin/accounts', method: 'GET', module: 'carbonCoin', testedIn: ['carbon-coin-flow'], category: 'v1.0' },
   { endpoint: '/carbon-coin/recharge', method: 'POST', module: 'carbonCoin', testedIn: ['carbon-coin-flow'], category: 'v1.0' },
-  { endpoint: '/carbon-coin/transfer', method: 'POST', module: 'carbonCoin', testedIn: ['carbon-coin-flow'], category: 'v1.0' },
 
   // Trading (v1.0)
   { endpoint: '/auction/orders', method: 'POST', module: 'auction', testedIn: ['auction-flow'], category: 'v1.0' },

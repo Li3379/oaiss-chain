@@ -3,30 +3,30 @@
  * ==============================================================================
  * 【页面模块】：企业端 - 超级账本（Hyperledger Fabric）区块链浏览器 (Blockchain Explorer)
  * 【路由地址】：/enterprise/blockchain/browser
- * 【访问权限】：ROLE_ENTERPRISE (企业用户)
+ * 【访问权限】：ROLE_ENTERPRISE / ROLE_ADMIN / ROLE_THIRD_PARTY
  * 【界面可见功能】：
- *   1. 底层 Fabric 网络拓扑状态卡片：通道名称、组织节点数、背书策略、链码版本
- *   2. 链上交易哈希 (TxHash) 穿透溯源检索栏：输入 64 位 TxID 即时查询存证原件
- *   3. 最新区块高度瀑布流列表：展示区块号、前序哈希、数据哈希、交易数量与出块时间
- *   4. 链上存证交易流列表：展示交易哈希、发起企业组织、交易动作类型与时间戳
- *   5. 区块链不可篡改特性科普释义（PageHint / TermTip）
+ *   1. 底层 Fabric 网络拓扑状态卡片：通道名称、节点数、排序节点、运行模式
+ *   2. 最新区块列表：区块号、数据哈希、前序哈希、交易数量与出块时间
+ *   3. 链上交易列表：交易哈希、区块高度、发起组织 MSP、调用的链码函数与校验结果
+ *   4. 区块链不可篡改特性科普释义（PageHint / TermTip）
+ * 【说明】：交易哈希「输入框直接查询」入口已移除（2026-10-31）。链上交易统一
+ *   从「交易记录」列表下钻查看，避免同一事实存在两条查询口径。
  * 【对应后端 Controller & API】：
  *   - BlockchainController:
- *     * GET /api/v1/blockchain/status             -> getStatus() 获取底层网络健康状态
- *     * GET /api/v1/blockchain/blocks/latest      -> getLatestBlocks() 分页查询最新区块
- *     * GET /api/v1/blockchain/transactions       -> getTransactions() 分页查询交易存证
- *     * GET /api/v1/blockchain/transaction/{hash} -> queryTransaction() 按TxID穿透查询
+ *     * GET /api/v1/blockchain/status         -> getStatus() 获取底层网络健康状态
+ *     * GET /api/v1/blockchain/blocks/latest  -> getLatestBlocks() 分页查询最新区块
+ *     * GET /api/v1/blockchain/transactions   -> getTransactions() 分页查询交易存证
+ *     * GET /api/v1/blockchain/block/{number} -> queryBlock() 区块详情与块内交易
  * ==============================================================================
  */
 import { computed, ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Connection, Document, Files, Tickets } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
-import { getLatestBlocks, getStatus, getTransactions, queryTransaction } from '../../api/blockchain'
+import { getLatestBlocks, getStatus, getTransactions, queryBlock } from '../../api/blockchain'
 import { formatDateTime } from '../../utils/format'
 import PageHeader from '../../components/pen/PageHeader.vue'
 import StatStrip from '../../components/pen/StatStrip.vue'
-import FilterBar from '../../components/pen/FilterBar.vue'
 import DataPanel from '../../components/pen/DataPanel.vue'
 import PageHint from '../../components/PageHint.vue'
 import TermTip from '../../components/TermTip.vue'
@@ -39,10 +39,6 @@ const activeTab = ref('blocks')
 
 const chainStatus = ref<BlockchainStatusResponse | null>(null)
 const statusLoading = ref(false)
-const txHashQuery = ref('')
-const txQueryLoading = ref(false)
-const txQueryResult = ref<BlockchainTransactionResponse | Record<string, unknown> | null>(null)
-const txQueryError = ref('')
 
 const blocks = ref<BlockchainBlockResponse[]>([])
 const blocksLoading = ref(false)
@@ -239,28 +235,39 @@ const getTransactionStatusText = (status?: string) => {
     'PENDING': t('blockchain.txStatusPending'),
     'CONFIRMED': t('blockchain.txStatusConfirmed'),
     'VALID': t('blockchain.txStatusValidated'),
+    'INVALID': t('blockchain.txStatusInvalid'),
     'FAILED': t('blockchain.txStatusFailed'),
   }
   return status ? (map[status] || status) : status
 }
 
-const submitTxQuery = async () => {
-  if (!txHashQuery.value.trim()) {
-    txQueryError.value = t('blockchain.queryTxRequired')
-    txQueryResult.value = null
-    return
-  }
+/**
+ * 区块下钻：从「区块列表」点进块内交易明细。
+ *
+ * 后端 `GET /blockchain/block/{n}` 早已存在且返回块内交易，
+ * 但前端此前从未调用——文档宣称的「逐层下钻」实际上不存在。
+ */
+const blockDetailVisible = ref(false)
+const blockDetailLoading = ref(false)
+const blockDetail = ref<Record<string, unknown> | null>(null)
+const blockDetailHeight = ref(0)
 
+const blockDetailTransactions = computed(() => {
+  const raw = blockDetail.value?.transactions
+  return Array.isArray(raw) ? raw as BlockchainTransactionResponse[] : []
+})
+
+const openBlockDetail = async (blockNumber: number) => {
+  blockDetailHeight.value = blockNumber
+  blockDetailVisible.value = true
+  blockDetailLoading.value = true
+  blockDetail.value = null
   try {
-    txQueryLoading.value = true
-    txQueryError.value = ''
-    const result = parseRecord<BlockchainTransactionResponse>(await queryTransaction(txHashQuery.value.trim()))
-    txQueryResult.value = result
-  } catch (error) {
-    txQueryResult.value = null
-    txQueryError.value = error instanceof Error ? error.message : t('blockchain.queryTxFailed')
+    blockDetail.value = parseRecord<Record<string, unknown>>(await queryBlock(blockNumber)) as Record<string, unknown> | null
+  } catch {
+    ElMessage.error(t('blockchain.loadBlocksFailed'))
   } finally {
-    txQueryLoading.value = false
+    blockDetailLoading.value = false
   }
 }
 
@@ -283,29 +290,8 @@ onMounted(() => {
 
     <StatStrip :items="overviewStats" :loading="statusLoading || blocksLoading || transactionsLoading" />
 
-    <FilterBar :aria-label="t('blockchain.queryTitle')">
-      <label class="pen-field query-field">
-        <span class="pen-field__label">{{ t('blockchain.colTxHash') }}</span>
-        <el-input
-          v-model="txHashQuery"
-          data-testid="blockchain-tx-query-input"
-          :placeholder="t('blockchain.queryPlaceholder')"
-          clearable
-          @keyup.enter="submitTxQuery"
-        />
-      </label>
-      <el-button
-        type="primary"
-        :loading="txQueryLoading"
-        data-testid="blockchain-tx-query-submit"
-        @click="submitTxQuery"
-      >
-        {{ t('blockchain.queryAction') }}
-      </el-button>
-    </FilterBar>
-
-    <!-- 网络拓扑状态 + 哈希溯源结果：合并为单一面板 -->
-    <DataPanel :title="t('blockchain.panelStatusQueryTitle')" :meta="t('blockchain.panelStatusQueryMeta')">
+    <!-- 网络拓扑状态 -->
+    <DataPanel :title="t('blockchain.panelStatusTitle')" :meta="t('blockchain.panelStatusMeta')">
       <template #actions>
         <el-tag
           class="status-tag"
@@ -317,74 +303,35 @@ onMounted(() => {
       </template>
 
       <div class="panel-pad">
-        <div class="status-query-grid">
-          <div class="status-panel">
-            <div class="sub-head">
-              <span class="sub-head__title">{{ t('blockchain.statusTitle') }}</span>
-              <span class="sub-head__desc">{{ t('blockchain.statusDescription') }}</span>
-            </div>
+        <div class="sub-head">
+          <span class="sub-head__title">{{ t('blockchain.statusTitle') }}</span>
+          <span class="sub-head__desc">{{ t('blockchain.statusDescription') }}</span>
+        </div>
 
-            <div v-loading="statusLoading" class="status-metrics">
-              <div class="status-metric">
-                <span class="status-label">{{ t('blockchain.statusMode') }}</span>
-                <strong>{{ formatStatusValue(chainStatus?.mode) }}</strong>
-              </div>
-              <div class="status-metric">
-                <span class="status-label">{{ t('blockchain.statusChannel') }}</span>
-                <strong>{{ formatStatusValue(chainStatus?.channel) }}</strong>
-              </div>
-              <div class="status-metric">
-                <span class="status-label">{{ t('blockchain.statusPeers') }}</span>
-                <strong>{{ formatStatusValue(chainStatus?.peers) }}</strong>
-              </div>
-              <div class="status-metric">
-                <span class="status-label">{{ t('blockchain.statusOrderers') }}</span>
-                <strong>{{ formatStatusValue(chainStatus?.orderers) }}</strong>
-              </div>
-            </div>
+        <div v-loading="statusLoading" class="status-metrics">
+          <div class="status-metric">
+            <span class="status-label">{{ t('blockchain.statusMode') }}</span>
+            <strong>{{ formatStatusValue(chainStatus?.mode) }}</strong>
           </div>
-
-          <div class="query-panel">
-            <div class="sub-head">
-              <span class="sub-head__title">{{ t('blockchain.queryTitle') }}</span>
-              <span class="sub-head__desc">{{ t('blockchain.queryDescription') }}</span>
-            </div>
-
-            <el-alert
-              v-if="txQueryError"
-              class="query-alert"
-              type="error"
-              :closable="false"
-              :title="txQueryError"
-            />
-
-            <div
-              v-if="txQueryResult"
-              class="query-result"
-              data-testid="blockchain-tx-query-result"
-            >
-              <div class="blockchain-explainer-card">
-                <div class="explainer-title"><el-icon><Document /></el-icon> {{ t('blockchainExplainer.title') }}</div>
-                <div class="explainer-content">{{ t('blockchainExplainer.body') }}</div>
-              </div>
-
-              <div class="query-result-row">
-                <span class="status-label">{{ t('blockchain.colTxHash') }}</span>
-                <strong class="query-hash">{{ formatStatusValue(txQueryResult.txHash) }}</strong>
-              </div>
-              <div class="query-result-row">
-                <span class="status-label">{{ t('blockchain.colTxStatus') }}</span>
-                <el-tag :type="getTransactionStatusTag(String(txQueryResult.status || ''))">
-                  {{ getTransactionStatusText(String(txQueryResult.status || '-')) }}
-                </el-tag>
-              </div>
-              <div class="query-result-row">
-                <span class="status-label">{{ t('blockchain.colTimestamp') }}</span>
-                <strong>{{ formatDateTime(typeof txQueryResult.timestamp === 'string' ? txQueryResult.timestamp : '') || formatStatusValue(txQueryResult.timestamp) }}</strong>
-              </div>
-            </div>
-
-            <p v-else-if="!txQueryError" class="query-empty">{{ t('blockchain.queryEmpty') }}</p>
+          <div class="status-metric">
+            <span class="status-label">{{ t('blockchain.statusChannel') }}</span>
+            <strong>{{ formatStatusValue(chainStatus?.channel) }}</strong>
+          </div>
+          <div class="status-metric">
+            <span class="status-label">{{ t('blockchain.statusPeers') }}</span>
+            <strong>{{ formatStatusValue(chainStatus?.peers) }}</strong>
+          </div>
+          <div class="status-metric">
+            <span class="status-label">{{ t('blockchain.statusOrderers') }}</span>
+            <strong>{{ formatStatusValue(chainStatus?.orderers) }}</strong>
+          </div>
+          <div class="status-metric">
+            <span class="status-label">{{ t('blockchain.statusMsp') }}</span>
+            <strong>{{ formatStatusValue(chainStatus?.mspId) }}</strong>
+          </div>
+          <div class="status-metric">
+            <span class="status-label">{{ t('blockchain.statusChaincode') }}</span>
+            <strong>{{ formatStatusValue(chainStatus?.chaincode) }}</strong>
           </div>
         </div>
       </div>
@@ -416,11 +363,18 @@ onMounted(() => {
               </template>
             </el-table-column>
             <el-table-column prop="txCount" :label="t('blockchain.colTxCount')" min-width="100" />
-            <el-table-column prop="miner" :label="t('blockchain.colMinerAddress')" min-width="180" show-overflow-tooltip>
-              <template #default="{ row }">{{ row.miner || '-' }}</template>
+            <el-table-column prop="previousHash" :label="t('blockchain.colPreviousHash')" min-width="200" show-overflow-tooltip>
+              <template #default="{ row }">{{ row.previousHash || '-' }}</template>
             </el-table-column>
             <el-table-column prop="timestamp" :label="t('blockchain.colTimestamp')" min-width="170">
               <template #default="{ row }">{{ formatDateTime(row.timestamp) }}</template>
+            </el-table-column>
+            <el-table-column :label="t('common.operation')" width="90" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="openBlockDetail(row.blockNumber)">
+                  {{ t('common.view') }}
+                </el-button>
+              </template>
             </el-table-column>
           </el-table>
 
@@ -456,16 +410,16 @@ onMounted(() => {
               </template>
             </el-table-column>
             <el-table-column prop="blockNumber" :label="t('blockchain.colBlockHeight')" min-width="120" />
-            <el-table-column prop="fromAddress" :label="t('blockchain.colSender')" min-width="180" show-overflow-tooltip>
-              <template #default="{ row }">{{ row.fromAddress || '-' }}</template>
+            <el-table-column prop="senderMsp" :label="t('blockchain.colSenderMsp')" min-width="140">
+              <template #default="{ row }">{{ row.senderMsp || '-' }}</template>
             </el-table-column>
-            <el-table-column prop="toAddress" :label="t('blockchain.colReceiver')" min-width="180" show-overflow-tooltip>
-              <template #default="{ row }">{{ row.toAddress || '-' }}</template>
+            <el-table-column prop="function" :label="t('blockchain.colFunction')" min-width="180" show-overflow-tooltip>
+              <template #default="{ row }">{{ row.function || '-' }}</template>
             </el-table-column>
-            <el-table-column prop="amount" :label="t('blockchain.colAmount')" min-width="120">
-              <template #default="{ row }">{{ row.amount ?? '-' }}</template>
+            <el-table-column prop="endorsers" :label="t('blockchain.colEndorsers')" min-width="160" show-overflow-tooltip>
+              <template #default="{ row }">{{ (row.endorsers || []).join(', ') || '-' }}</template>
             </el-table-column>
-            <el-table-column prop="status" :label="t('blockchain.colTxStatus')" min-width="100">
+            <el-table-column prop="status" :label="t('blockchain.colTxStatus')" min-width="110">
               <template #default="{ row }">
                 <el-tag :type="getTransactionStatusTag(row.status)">
                   {{ getTransactionStatusText(row.status) }}
@@ -497,6 +451,45 @@ onMounted(() => {
     <figure class="page-art">
       <img :src="DATA_CENTER_ART" :alt="t('blockchain.pageArtAlt')" loading="lazy" decoding="async" />
     </figure>
+
+    <!-- 区块下钻：块内交易明细 -->
+    <el-dialog
+      v-model="blockDetailVisible"
+      :title="t('blockchain.blockDetailTitle', { height: blockDetailHeight })"
+      width="880px"
+      data-testid="blockchain-block-detail"
+    >
+      <div v-loading="blockDetailLoading">
+        <p class="block-detail-meta">
+          {{ t('blockchain.blockDetailMeta', {
+            count: blockDetailTransactions.length,
+            channel: String(blockDetail?.channel || '-'),
+          }) }}
+        </p>
+        <el-table
+          :data="blockDetailTransactions"
+          :empty-text="blockDetailLoading ? t('common.loading') : t('blockchain.blockDetailEmpty')"
+        >
+          <el-table-column prop="txHash" :label="t('blockchain.colTxHash')" min-width="200" show-overflow-tooltip />
+          <el-table-column prop="senderMsp" :label="t('blockchain.colSenderMsp')" min-width="130">
+            <template #default="{ row }">{{ row.senderMsp || '-' }}</template>
+          </el-table-column>
+          <el-table-column prop="function" :label="t('blockchain.colFunction')" min-width="170" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.function || '-' }}</template>
+          </el-table-column>
+          <el-table-column prop="status" :label="t('blockchain.colTxStatus')" min-width="100">
+            <template #default="{ row }">
+              <el-tag :type="getTransactionStatusTag(row.status)">
+                {{ getTransactionStatusText(row.status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="timestamp" :label="t('blockchain.colTimestamp')" min-width="165">
+            <template #default="{ row }">{{ formatDateTime(row.timestamp) }}</template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </el-dialog>
   </section>
 </template>
 
@@ -509,25 +502,6 @@ onMounted(() => {
 
 .panel-pad {
   padding: var(--space-4);
-}
-
-.query-field {
-  min-width: 360px;
-  flex: 1 1 360px;
-}
-
-.status-query-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(280px, 1fr));
-  gap: var(--space-5);
-}
-
-.status-panel,
-.query-panel {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  min-width: 0;
 }
 
 .sub-head {
@@ -554,12 +528,12 @@ onMounted(() => {
 
 .status-metrics {
   display: grid;
-  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  grid-template-columns: repeat(3, minmax(140px, 1fr));
   gap: var(--space-3);
+  margin-top: var(--space-3);
 }
 
-.status-metric,
-.query-result-row {
+.status-metric {
   display: flex;
   flex-direction: column;
   gap: var(--space-1-5);
@@ -573,54 +547,14 @@ onMounted(() => {
   font-size: var(--fs-caption);
 }
 
-.query-alert {
-  margin-top: 0;
-}
-
-.query-empty {
-  margin: 0;
-  padding: var(--space-3);
-  border-radius: var(--radius-card);
-  background: var(--pen-raised);
-  color: var(--pen-faint);
-  font-size: var(--fs-sub);
-}
-
-.query-result {
-  display: grid;
-  gap: var(--space-2-5);
-}
-
-.blockchain-explainer-card {
-  padding: var(--space-2-5) var(--space-3);
-  background: var(--pen-note-bg);
-  border: 1px solid var(--pen-note-bd);
-  border-radius: var(--radius-card);
-  line-height: 1.6;
-}
-
-.explainer-title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1-5);
-  font-weight: 500;
-  font-size: var(--fs-sub);
-  color: var(--pen-ink);
-  margin-bottom: var(--space-1);
-}
-
-.explainer-content {
-  font-size: var(--fs-caption);
-  color: var(--pen-muted);
-}
-
-.query-hash {
-  word-break: break-all;
-  font-size: var(--fs-sub);
-}
-
 .blockchain-tabs {
   padding: 0;
+}
+
+.block-detail-meta {
+  margin: 0 0 var(--space-3);
+  color: var(--pen-muted);
+  font-size: var(--fs-caption);
 }
 
 /* pen 稿配图：通栏、150px 高、cover 填充、2px 圆角 */
@@ -641,17 +575,8 @@ onMounted(() => {
 }
 
 @media (max-width: 900px) {
-  .status-query-grid {
-    grid-template-columns: 1fr;
-  }
-
   .status-metrics {
     grid-template-columns: 1fr 1fr;
-  }
-
-  .query-field {
-    min-width: 0;
-    flex-basis: 100%;
   }
 }
 </style>

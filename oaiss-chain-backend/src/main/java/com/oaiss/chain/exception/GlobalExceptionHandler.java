@@ -300,7 +300,10 @@ public class GlobalExceptionHandler {
                 return HttpStatus.FORBIDDEN;
             }
             // 业务规则限制（如不能禁用自己的账号）返回 400
-            if (code == ErrorCode.CANNOT_DISABLE_SELF) {
+            if (code == ErrorCode.CANNOT_DISABLE_SELF
+                    || code == ErrorCode.CANNOT_DELETE_SELF
+                    || code == ErrorCode.CANNOT_DELETE_ADMIN
+                    || code == ErrorCode.ADMIN_USER_TYPE_FORBIDDEN) {
                 return HttpStatus.BAD_REQUEST;
             }
             return HttpStatus.UNAUTHORIZED;

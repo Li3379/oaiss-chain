@@ -136,7 +136,7 @@ class SearchServiceTest {
 
         // When
         Page<SearchResponse.TradeSummary> result = 
-            searchService.searchTrades(null, null, null, null, 1, 10);
+            searchService.searchTrades(null, null, null, null, null, 1, 10);
 
         // Then
         assertNotNull(result);
@@ -154,7 +154,7 @@ class SearchServiceTest {
 
         // When
         Page<SearchResponse.TradeSummary> result = 
-            searchService.searchTrades(1L, null, null, null, 1, 10);
+            searchService.searchTrades(null, 1L, null, null, null, 1, 10);
 
         // Then
         assertNotNull(result);
@@ -295,7 +295,7 @@ class SearchServiceTest {
         when(enterpriseRepository.findByUserIdInAndDeletedFalse(any()))
                 .thenReturn(List.of(enterprise(11L, 1L), enterprise(22L, 2L)));
 
-        Page<SearchResponse.TradeSummary> result = searchService.searchTrades(null, null, null, null, 1, 10);
+        Page<SearchResponse.TradeSummary> result = searchService.searchTrades(null, null, null, null, null, 1, 10);
 
         assertTrue(result.getContent().get(0).getSellerName().startsWith("匿名企业-"));
         verifyNoInteractions(userRepository);
@@ -321,7 +321,7 @@ class SearchServiceTest {
         when(enterpriseRepository.findByUserIdInAndDeletedFalse(any()))
                 .thenReturn(List.of(enterprise(11L, 1L)));
 
-        Page<SearchResponse.TradeSummary> result = searchService.searchTrades(null, null, null, null, 1, 10);
+        Page<SearchResponse.TradeSummary> result = searchService.searchTrades(null, null, null, null, null, 1, 10);
 
         assertEquals("待定", result.getContent().get(0).getBuyerName());
         assertTrue(result.getContent().get(0).getSellerName().startsWith("匿名企业-"));
@@ -383,7 +383,7 @@ class SearchServiceTest {
 
         // When
         Page<SearchResponse.TradeSummary> result = 
-            searchService.searchTrades(null, null, null, null, 1, 10);
+            searchService.searchTrades(null, null, null, null, null, 1, 10);
 
         // Then
         assertNotNull(result);

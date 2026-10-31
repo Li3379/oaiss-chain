@@ -102,6 +102,7 @@ const TEST_PLAN = {
     { path: '/admin/system/config', name: '系统配置' },
     { path: '/admin/data/statistics', name: '统计数据' },
     { path: '/admin/certificates', name: '证书管理' },
+    { path: '/admin/blockchain', name: '链上管理' },
     { path: '/auditor/verify/list', name: '上链补救' },
   ],
 };

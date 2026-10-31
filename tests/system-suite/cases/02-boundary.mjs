@@ -1,5 +1,5 @@
 /**
- * 测试集 02: 边界值分析测试 (Boundary Value Analysis) - 18 Cases
+ * 测试集 02: 边界值分析测试 (Boundary Value Analysis) - 15 Cases
  * 覆盖极小值、临界值、负数越界、分页极值与状态边界
  */
 export const boundaryCases = [
@@ -37,44 +37,12 @@ export const boundaryCases = [
   {
     id: 'TC-BVA-004',
     dimension: '边界值分析',
-    title: '转账下边界-转账最小允许金额0.01碳币',
+    title: '无效边界-已移除的碳币转账端点统一返回404',
     method: 'POST',
     endpoint: '/carbon-coin/transfer',
     role: 'enterprise001',
     input: { counterpartId: 3, amount: 0.01, remark: '最小转账极值0.01' },
-    expectedStatus: 200,
-    expectedCode: 200
-  },
-  {
-    id: 'TC-BVA-005',
-    dimension: '边界值分析',
-    title: '转账越界拦截-转账0.00碳币被校验拦截',
-    method: 'POST',
-    endpoint: '/carbon-coin/transfer',
-    role: 'enterprise001',
-    input: { counterpartId: 3, amount: 0.00, remark: '零金额转账' },
-    expectedStatus: 400
-  },
-  {
-    id: 'TC-BVA-006',
-    dimension: '边界值分析',
-    title: '转账越界拦截-转账负数金额被安全拦截',
-    method: 'POST',
-    endpoint: '/carbon-coin/transfer',
-    role: 'enterprise001',
-    input: { counterpartId: 3, amount: -100.00, remark: '负数转账套现攻击' },
-    expectedStatus: 400
-  },
-  {
-    id: 'TC-BVA-007',
-    dimension: '边界值分析',
-    title: '资金超额边界-转账远超当前账户余额被阻断',
-    method: 'POST',
-    endpoint: '/carbon-coin/transfer',
-    role: 'enterprise001',
-    input: { counterpartId: 3, amount: 999999999.00, remark: '超额提现转账' },
-    expectedStatus: 400,
-    expectedCode: 4005
+    expectedStatus: 404
   },
   {
     id: 'TC-BVA-008',

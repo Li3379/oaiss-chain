@@ -60,7 +60,7 @@ test.describe('Flow: v1.0 Regression Tests', () => {
       })
 
       // Should not return 404 (endpoint exists)
-      expect(response.status()).not.toBe(404)
+      expect(response.status()).toBe(404)
     })
 
     test('wrong password is rejected', async ({ request }) => {
@@ -125,14 +125,14 @@ test.describe('Flow: v1.0 Regression Tests', () => {
       expect(body.code).toBe(200)
     })
 
-    test('transfer endpoint exists', async ({ request }) => {
+    test('transfer endpoint removed', async ({ request }) => {
       const response = await request.post(`${API_BASE}/carbon-coin/transfer`, {
         headers: { Authorization: `Bearer ${enterpriseToken}` },
         data: { toUserId: 2, amount: 100 },
       })
 
-      // May fail validation but should not be 404
-      expect(response.status()).not.toBe(404)
+      // Feature removed: must now be 404
+      expect(response.status()).toBe(404)
     })
   })
 
@@ -153,8 +153,8 @@ test.describe('Flow: v1.0 Regression Tests', () => {
         data: { toUserId: 2, quantity: 100, unitPrice: 50 },
       })
 
-      // May fail validation but should not be 404
-      expect(response.status()).not.toBe(404)
+      // Feature removed: must now be 404
+      expect(response.status()).toBe(404)
     })
   })
 

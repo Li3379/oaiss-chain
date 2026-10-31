@@ -3,7 +3,6 @@ package com.oaiss.chain.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.oaiss.chain.dto.CarbonCoinAccountResponse;
 import com.oaiss.chain.dto.CarbonCoinRechargeRequest;
-import com.oaiss.chain.dto.CarbonCoinTransferRequest;
 import com.oaiss.chain.entity.CarbonCoinTransaction;
 import com.oaiss.chain.security.JwtTokenProvider;
 import com.oaiss.chain.security.JwtUserDetails;
@@ -157,35 +156,14 @@ class CarbonCoinControllerTest {
     }
 
     @Test
-    @DisplayName("碳币转账成功")
-    void testTransferSuccess() throws Exception {
+    @DisplayName("碳币转账端点已移除 - POST /carbon-coin/transfer 应返回 404")
+    void testTransferEndpointRemoved() throws Exception {
         setAuthentication(currentUser);
-
-        CarbonCoinTransferRequest request = new CarbonCoinTransferRequest();
-        request.setCounterpartId(2L);
-        request.setAmount(new BigDecimal("500.00"));
-        request.setRemark("测试转账");
-
-        CarbonCoinAccountResponse updatedAccount = CarbonCoinAccountResponse.builder()
-                .id(1L)
-                .userId(1L)
-                .balance(new BigDecimal("9500.00"))
-                .totalRecharged(new BigDecimal("10000.00"))
-                .totalSpent(new BigDecimal("500.00"))
-                .status(1)
-                .build();
-
-        when(carbonCoinService.transfer(eq(1L), any(CarbonCoinTransferRequest.class)))
-                .thenReturn(updatedAccount);
 
         mockMvc.perform(post("/carbon-coin/transfer")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.balance").value(9500.00));
-
-        verify(carbonCoinService).transfer(eq(1L), any(CarbonCoinTransferRequest.class));
+                        .content("{\"counterpartId\":2,\"amount\":500.00,\"remark\":\"test\"}"))
+                .andExpect(status().isNotFound());
     }
 
     @Test

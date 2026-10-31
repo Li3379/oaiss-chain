@@ -5,7 +5,6 @@ import { createPinia, setActivePinia } from 'pinia'
 vi.mock('../../api/carbonCoin', () => ({
   getMyAccount: vi.fn(),
   getTransactions: vi.fn(),
-  transferCoins: vi.fn(),
 }))
 
 vi.mock('element-plus', async (importOriginal) => {
@@ -17,7 +16,7 @@ vi.mock('element-plus', async (importOriginal) => {
 })
 
 import CarbonCoin from '../enterprise/CarbonCoin.vue'
-import { getMyAccount, getTransactions, transferCoins } from '../../api/carbonCoin'
+import { getMyAccount, getTransactions } from '../../api/carbonCoin'
 import { ElMessage } from 'element-plus'
 
 const stubs = {
@@ -109,7 +108,6 @@ describe('CarbonCoin.vue', () => {
           balanceAfter: 100,
           relatedQuota: null,
           relatedTradeId: null,
-          counterpartId: null,
           remark: '充值',
           createdAt: '2026-05-31 12:00:00',
           updatedAt: '2026-05-31 12:00:00',
@@ -121,14 +119,6 @@ describe('CarbonCoin.vue', () => {
       totalPages: 1,
     })
 
-    vi.mocked(transferCoins).mockResolvedValue({
-      id: 1,
-      userId: 8,
-      balance: 80,
-      totalRecharged: 140,
-      totalSpent: 60,
-      status: 1,
-    })
   })
 
   it('loads account and paged transactions on mount', async () => {
@@ -157,12 +147,10 @@ describe('CarbonCoin.vue', () => {
     expect(ElMessage.error).toHaveBeenCalledWith('加载交易记录失败')
   })
 
-  it('opens the transfer dialog from the transfer button', async () => {
+  it('does not render any transfer entry (feature removed)', async () => {
     const wrapper = mountComponent()
     await flushPromises()
 
-    await wrapper.find('button').trigger('click')
-
-    expect(wrapper.find('.el-dialog').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('转账')
   })
 })

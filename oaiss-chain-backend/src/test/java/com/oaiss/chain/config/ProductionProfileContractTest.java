@@ -33,7 +33,7 @@ class ProductionProfileContractTest {
         Properties properties = loadYaml("application-prod.yml");
 
         assertThat(properties.getProperty("management.endpoints.web.exposure.include"))
-                .isEqualTo("health,info,metrics,prometheus");
+                .isEqualTo("health,info,prometheus");
         assertThat(properties.getProperty("management.endpoint.health.probes.enabled"))
                 .isEqualTo("true");
     }

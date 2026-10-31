@@ -33,7 +33,12 @@ public interface BlockchainServicePort {
 
     String queryBlock(Long blockNumber);
 
-    String queryTransaction(String txHash);
+    /**
+     * 按报告 ID 读回链上 v2 快照（链码 {@code QueryReportHistory} 最新一版）。
+     *
+     * @return 快照 JSON 原文；链上无该报告时返回 {@code null}
+     */
+    String queryReportSnapshot(Long reportId);
 
     boolean verifySignature(String data, String signature, String publicKey);
 

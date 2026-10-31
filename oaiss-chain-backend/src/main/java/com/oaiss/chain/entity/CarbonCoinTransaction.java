@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 
 /**
  * 碳币交易流水表
- * 记录所有碳币相关的充值、消费、转账流水
+ * 记录所有碳币相关的充值、消费流水（4-历史转账遗留值，功能已下线）
  *
  * @author OAISS Team
  */
@@ -33,7 +33,7 @@ public class CarbonCoinTransaction extends BaseEntity {
     private Long userId;
 
     /**
-     * 交易类型（1-充值, 2-购买配额, 3-出售配额, 4-转账）
+     * 交易类型（1-充值, 2-购买配额, 3-出售配额；4 为历史转账遗留值）
      */
     @Column(name = "tx_type", nullable = false)
     private Integer txType;
@@ -67,12 +67,6 @@ public class CarbonCoinTransaction extends BaseEntity {
      */
     @Column(name = "related_trade_id")
     private Long relatedTradeId;
-
-    /**
-     * 对方用户ID（转账时）
-     */
-    @Column(name = "counterpart_id")
-    private Long counterpartId;
 
     /**
      * 备注

@@ -50,6 +50,8 @@ public class TradeService {
     private final NotificationService notificationService;
     private final CarbonCoinService carbonCoinService;
     private final CreditScoreService creditScoreService;
+    /** 准入证书门禁：未签发 / 已吊销 / 已过期都不得参与交易 */
+    private final CertificateGateService certificateGateService;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     /**
@@ -185,15 +187,21 @@ public class TradeService {
             throw TradeException.orderCompleted(tradeId);
         }
 
-        // 立即将状态设置为PROCESSING并保存，防止并发请求重复操作
-        trade.setStatus(TradeStatusEnum.PROCESSING.getCode());
-        transactionRepository.save(trade);
-
         final BigDecimal tradeQuantity = trade.getQuantity();
         Enterprise sellerEnterprise = enterpriseRepository.findByUserId(trade.getSellerId())
                 .orElseThrow(() -> TradeException.insufficientQuota(BigDecimal.ZERO, tradeQuantity));
         Enterprise buyerEnterprise = enterpriseRepository.findByUserId(trade.getBuyerId())
                 .orElseThrow(() -> TradeException.tradeNotFound(tradeId));
+
+        // 结算门禁：挂单时的校验覆盖不了「冻结期内被吊销」的情况——此刻才真正发生
+        // 配额与碳币的交割，必须以双方当时的证书状态为准，任一方不合规即整笔拒绝。
+        // 放在状态改写之前，避免拒绝时把交易留在 PROCESSING 的半途状态。
+        certificateGateService.assertEnterpriseAdmitted(sellerEnterprise.getId());
+        certificateGateService.assertEnterpriseAdmitted(buyerEnterprise.getId());
+
+        // 立即将状态设置为PROCESSING并保存，防止并发请求重复操作
+        trade.setStatus(TradeStatusEnum.PROCESSING.getCode());
+        transactionRepository.save(trade);
 
         // 卖方核减冻结配额并计入已售出
         BigDecimal currentFrozen = sellerEnterprise.getCarbonFrozen() != null ? sellerEnterprise.getCarbonFrozen() : BigDecimal.ZERO;
@@ -348,10 +356,10 @@ public class TradeService {
     // ==================== 私有方法 ====================
 
     /**
-     * 信誉分交易准入校验
-     * <p>
-     * 复用 {@link CreditScoreService#checkTradePermission(Long)} 的既有判定（信誉分低于阈值限制交易、
-     * 账户冻结则禁止交易）。无信誉分记录的企业默认放行，保持与信誉服务一致。
+     * 交易准入校验（证书 + 信誉分）。
+     *
+     * <p>顺序有意为之：先判证书再判信誉分。证书是「有没有资格进场」，
+     * 信誉分是「进场后守不守规矩」——先回答前者，错误提示才不会误导。</p>
      *
      * @param enterpriseId 发起方企业ID
      */
@@ -359,6 +367,7 @@ public class TradeService {
         if (enterpriseId == null) {
             return;
         }
+        certificateGateService.assertEnterpriseAdmitted(enterpriseId);
         if (!creditScoreService.checkTradePermission(enterpriseId)) {
             throw TradeException.creditTradeRestricted(
                     "您的信誉分过低，暂不可参与碳交易（账户可能已被限制交易或冻结），请联系平台管理员");

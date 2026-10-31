@@ -802,7 +802,7 @@ ENTERPRISE 查看自己的；`GET /credit/{enterpriseId}` 系列对 ADMIN/REVIEW
 
 #### 功能概述
 
-企业的碳交易资金账户，展示可用余额、冻结余额与全部资金流水，并支持账户间转账。
+企业的碳交易资金账户，展示可用余额、冻结余额与全部资金流水。碳币转账功能已于 2026-10-31 移除，碳币流转仅经充值与市场结算。
 
 #### 入口页面 / 路径
 
@@ -810,13 +810,13 @@ ENTERPRISE 查看自己的；`GET /credit/{enterpriseId}` 系列对 ADMIN/REVIEW
 
 #### 涉及角色与权限
 
-ENTERPRISE（`GET /carbon-coin/account`、`POST /carbon-coin/transfer` 为 `hasAnyRole('ENTERPRISE','ADMIN')`）。
+ENTERPRISE（`GET /carbon-coin/account`、`GET /carbon-coin/transactions`、`POST /carbon-coin/recharge`）。
 
 #### 关键数据与依赖
 
-- 「账户信息」卡片：可用余额 / 冻结余额 / 累计充值 / 累计消费 + 【转账】按钮
+- 「账户信息」卡片：可用余额 / 冻结余额 / 累计充值 / 累计消费
 - 「交易记录」表格：序号 / 交易编号 / 交易类型 / 金额 / 交易后余额 / 备注 / 时间
-- 接口：`GET /carbon-coin/account`、`GET /carbon-coin/transactions`、`POST /carbon-coin/recharge`、`POST /carbon-coin/transfer`
+- 接口：`GET /carbon-coin/account`、`GET /carbon-coin/transactions`、`POST /carbon-coin/recharge`
 - 实测账户：余额 **3902.98** / 冻结 **1055** / 累计充值 **15510.1** / 累计消费 **11693.12**
 - 实测交易记录分页总数：**76 条**
 
@@ -832,13 +832,11 @@ ENTERPRISE（`GET /carbon-coin/account`、`POST /carbon-coin/transfer` 为 `hasA
 3. 验证勾稽关系：`可用余额 + 冻结余额` 与累计流水是否自洽。
 4. 在「双向拍卖」页挂一笔买单（若被风控拦截可先撤反向单）。
 5. 回到本页刷新，对比冻结余额变化。
-6. 点【转账】，观察弹窗字段。
 
 #### 预期结果
 
 - 步骤 2：实测 3902.98 / 1055 / 15510.1 / 11693.12。
 - 步骤 5：挂买单成功后**冻结余额上升**、可用余额下降（本次因自成交规则未下单成功，delta 为 0，属预期）。
-- 步骤 6：弹窗要求填收款方与金额。
 
 #### 异常与边界情况
 
@@ -846,7 +844,6 @@ ENTERPRISE（`GET /carbon-coin/account`、`POST /carbon-coin/transfer` 为 `hasA
 |---|---|
 | 余额不足无法挂单 | 后端会校验可用余额；先充值或减少挂单量 |
 | 冻结金额长期不变 | 存在长期未撮合的挂单，需撤单释放 |
-| 转账给自己 | (待补充：后端是否拦截自转未实测) |
 
 ---
 

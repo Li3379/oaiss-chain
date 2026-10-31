@@ -15,12 +15,6 @@ export interface CarbonCoinRechargeRequest {
   remark?: string
 }
 
-export interface CarbonCoinTransferRequest {
-  counterpartId: number
-  amount: number
-  remark?: string
-}
-
 export interface CarbonCoinTransaction {
   id: number
   txNo: string
@@ -31,7 +25,6 @@ export interface CarbonCoinTransaction {
   balanceAfter: number
   relatedQuota: number | null
   relatedTradeId: number | null
-  counterpartId: number | null
   remark: string
   createdAt: string
   updatedAt: string

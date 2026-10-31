@@ -52,6 +52,12 @@ class AdminControllerAdmissionTest {
     @MockBean
     private ReviewerQualificationService reviewerQualificationService;
 
+    @MockBean
+    private com.oaiss.chain.service.AdminUserService adminUserService;
+
+    @MockBean
+    private com.oaiss.chain.service.ChainReconciliationService chainReconciliationService;
+
     private EnterpriseAdmission testAdmission;
     private ReviewerQualification testQualification;
 
@@ -105,11 +111,11 @@ class AdminControllerAdmissionTest {
     @Test
     @DisplayName("吊销准入证书-管理员成功吊销")
     void testRevokeAdmission_asAdmin_returns200() throws Exception {
-        doNothing().when(enterpriseAdmissionService).revokeCertificate(1L);
+        doNothing().when(enterpriseAdmissionService).revokeCertificate(1L, null);
 
         mockMvc.perform(delete("/admin/enterprise-admission/1"))
                 .andExpect(status().isOk());
 
-        verify(enterpriseAdmissionService).revokeCertificate(1L);
+        verify(enterpriseAdmissionService).revokeCertificate(1L, null);
     }
 }

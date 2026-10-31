@@ -16,7 +16,7 @@ export class CarbonCoinPage {
     await expect(this.page.getByText('账户余额').first()).toBeVisible()
   }
 
-  async expectActionButtons(): Promise<void> {
-    await expect(this.page.getByRole('button', { name: /充值|转账/ })).toBeVisible()
+  async expectNoTransferEntry(): Promise<void> {
+    await expect(this.page.getByRole('button', { name: /转账|Transfer/ })).toHaveCount(0)
   }
 }

@@ -236,153 +236,55 @@ class BlockchainControllerTest {
         }
     }
 
-    // ==================== Query Transaction Tests ====================
+    // ==================== Query Report Snapshot Tests ====================
 
     @Nested
-    @DisplayName("查询交易信息测试")
-    class QueryTransactionTests {
+    @DisplayName("查询报告链上快照测试")
+    class QueryReportSnapshotTests {
 
         @Test
-        @DisplayName("查询交易信息成功")
-        void testQueryTransactionSuccess() throws Exception {
-            // Given
-            String txHash = "tx_mock_1705312200000_abc12345";
-            String txInfo = "{\"txHash\":\"tx_mock_1705312200000_abc12345\",\"status\":\"VALID\",\"timestamp\":\"2024-01-15T10:30:00\"}";
+        @DisplayName("查询报告链上快照成功")
+        void testQueryReportSnapshotSuccess() throws Exception {
+            Long reportId = 42L;
+            String snapshot = "{\"reportId\":\"42\",\"schemaVersion\":\"v2\",\"totalEmission\":\"1234.56\"}";
+            when(blockchainService.queryReportSnapshot(reportId)).thenReturn(snapshot);
 
-            when(blockchainService.queryTransaction(txHash)).thenReturn(txInfo);
-
-            // When & Then
-            mockMvc.perform(get("/blockchain/transaction/{txHash}", txHash)
+            mockMvc.perform(get("/blockchain/report/{reportId}", reportId)
                             .contentType(MediaType.APPLICATION_JSON))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(200))
-                    .andExpect(jsonPath("$.data").value(txInfo));
+                    .andExpect(jsonPath("$.data").value(snapshot));
 
-            verify(blockchainService, times(1)).queryTransaction(txHash);
+            verify(blockchainService, times(1)).queryReportSnapshot(reportId);
         }
 
         @Test
-        @DisplayName("查询交易信息-带0x前缀的哈希")
-        void testQueryTransactionWithPrefix() throws Exception {
-            // Given
-            String txHash = "0x1234567890abcdef1234567890abcdef";
-            String txInfo = "{\"txHash\":\"0x1234567890abcdef1234567890abcdef\",\"status\":\"VALID\"}";
+        @DisplayName("查询报告链上快照-链上无该报告")
+        void testQueryReportSnapshotNotFoundOnChain() throws Exception {
+            Long reportId = 999L;
+            when(blockchainService.queryReportSnapshot(reportId)).thenReturn(null);
 
-            when(blockchainService.queryTransaction(txHash)).thenReturn(txInfo);
-
-            // When & Then
-            mockMvc.perform(get("/blockchain/transaction/{txHash}", txHash)
-                            .contentType(MediaType.APPLICATION_JSON))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.code").value(200))
-                    .andExpect(jsonPath("$.data").value(txInfo));
-
-            verify(blockchainService, times(1)).queryTransaction(txHash);
-        }
-
-        @Test
-        @DisplayName("查询交易信息-长哈希值")
-        void testQueryTransactionLongHash() throws Exception {
-            // Given
-            String txHash = "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456";
-            String txInfo = "{\"txHash\":\"" + txHash + "\",\"status\":\"VALID\"}";
-
-            when(blockchainService.queryTransaction(txHash)).thenReturn(txInfo);
-
-            // When & Then
-            mockMvc.perform(get("/blockchain/transaction/{txHash}", txHash)
-                            .contentType(MediaType.APPLICATION_JSON))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.code").value(200))
-                    .andExpect(jsonPath("$.data").value(txInfo));
-
-            verify(blockchainService, times(1)).queryTransaction(txHash);
-        }
-
-        @Test
-        @DisplayName("查询交易信息-交易不存在")
-        void testQueryTransactionNotFound() throws Exception {
-            // Given
-            String txHash = "nonexistent_tx_hash";
-            when(blockchainService.queryTransaction(txHash))
-                    .thenThrow(BlockchainException.txQueryFailed(txHash, "交易不存在"));
-
-            // When & Then
-            mockMvc.perform(get("/blockchain/transaction/{txHash}", txHash)
-                            .contentType(MediaType.APPLICATION_JSON))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value(5004));
-
-            verify(blockchainService, times(1)).queryTransaction(txHash);
-        }
-
-        @Test
-        @DisplayName("查询交易信息-交易状态为无效")
-        void testQueryTransactionInvalidStatus() throws Exception {
-            // Given
-            String txHash = "invalid_tx_hash";
-            String txInfo = "{\"txHash\":\"invalid_tx_hash\",\"status\":\"INVALID\",\"error\":\"交易验证失败\"}";
-
-            when(blockchainService.queryTransaction(txHash)).thenReturn(txInfo);
-
-            // When & Then
-            mockMvc.perform(get("/blockchain/transaction/{txHash}", txHash)
-                            .contentType(MediaType.APPLICATION_JSON))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.code").value(200))
-                    .andExpect(jsonPath("$.data").value(txInfo));
-
-            verify(blockchainService, times(1)).queryTransaction(txHash);
-        }
-
-        @Test
-        @DisplayName("查询交易信息-区块链连接异常")
-        void testQueryTransactionConnectionError() throws Exception {
-            // Given
-            String txHash = "test_tx_hash";
-            when(blockchainService.queryTransaction(txHash))
-                    .thenThrow(BlockchainException.connectionFailed("节点不可达"));
-
-            // When & Then
-            mockMvc.perform(get("/blockchain/transaction/{txHash}", txHash)
-                            .contentType(MediaType.APPLICATION_JSON))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value(5000));
-
-            verify(blockchainService, times(1)).queryTransaction(txHash);
-        }
-
-        @Test
-        @DisplayName("查询交易信息-空哈希")
-        void testQueryTransactionEmptyHash() throws Exception {
-            // Given - 空哈希值，Spring可能无法正确路由
-            String txHash = "";
-
-            // When & Then - 空路径变量无法匹配控制器，落入静态资源未命中：
-            // GlobalExceptionHandler 已将 NoResourceFoundException 修正为语义化 404（原误返回 500）
-            mockMvc.perform(get("/blockchain/transaction/{txHash}", txHash)
-                            .contentType(MediaType.APPLICATION_JSON))
-                    .andExpect(status().isNotFound());
-
-            // Note: 空路径参数返回404（资源不存在），不再是 500 系统异常
-        }
-
-        @Test
-        @DisplayName("查询交易信息-包含特殊字符的哈希")
-        void testQueryTransactionWithSpecialChars() throws Exception {
-            // Given - URL编码后的特殊字符
-            String txHash = "tx_hash_with_special";
-            String txInfo = "{\"txHash\":\"tx_hash_with_special\"}";
-
-            when(blockchainService.queryTransaction(txHash)).thenReturn(txInfo);
-
-            // When & Then
-            mockMvc.perform(get("/blockchain/transaction/{txHash}", txHash)
+            mockMvc.perform(get("/blockchain/report/{reportId}", reportId)
                             .contentType(MediaType.APPLICATION_JSON))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(200));
 
-            verify(blockchainService, times(1)).queryTransaction(txHash);
+            verify(blockchainService, times(1)).queryReportSnapshot(reportId);
+        }
+
+        @Test
+        @DisplayName("查询报告链上快照-链码调用失败")
+        void testQueryReportSnapshotChaincodeFailure() throws Exception {
+            Long reportId = 7L;
+            when(blockchainService.queryReportSnapshot(reportId))
+                    .thenThrow(BlockchainException.chaincodeInvokeFailed("QueryReportHistory", "peer down"));
+
+            mockMvc.perform(get("/blockchain/report/{reportId}", reportId)
+                            .contentType(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(5001));
+
+            verify(blockchainService, times(1)).queryReportSnapshot(reportId);
         }
     }
 
@@ -424,23 +326,6 @@ class BlockchainControllerTest {
                     .andExpect(jsonPath("$.data").value(""));
 
             verify(blockchainService, times(1)).queryBlock(blockNumber);
-        }
-
-        @Test
-        @DisplayName("交易查询-空返回值")
-        void testQueryTransactionEmptyResponse() throws Exception {
-            // Given
-            String txHash = "empty_tx";
-            when(blockchainService.queryTransaction(txHash)).thenReturn("");
-
-            // When & Then
-            mockMvc.perform(get("/blockchain/transaction/{txHash}", txHash)
-                            .contentType(MediaType.APPLICATION_JSON))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.code").value(200))
-                    .andExpect(jsonPath("$.data").value(""));
-
-            verify(blockchainService, times(1)).queryTransaction(txHash);
         }
 
         @Test

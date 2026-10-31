@@ -64,6 +64,9 @@ class TradeServiceTest {
     private CreditScoreService creditScoreService;
 
     @Mock
+    private CertificateGateService certificateGateService;
+
+    @Mock
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
@@ -196,6 +199,26 @@ class TradeServiceTest {
         verify(carbonCoinService, times(1)).buyQuota(eq(2L), any(), any(), eq(1L));
         verify(carbonCoinService, times(1)).sellQuota(eq(1L), any(), any(), eq(1L));
         verify(eventPublisher, times(1)).publishEvent(any(com.oaiss.chain.event.TradeCompletedEvent.class));
+    }
+
+    @Test
+    @DisplayName("确认成交-卖方准入证书已吊销时拒绝交割")
+    void testConfirmTradeBlockedWhenSellerAdmissionRevoked() {
+        // Given：交易本身合法，唯一的问题是卖方证书已吊销
+        when(transactionRepository.findById(1L)).thenReturn(Optional.of(testTransaction));
+        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(sellerEnterprise));
+        when(enterpriseRepository.findByUserId(2L)).thenReturn(Optional.of(buyerEnterprise));
+        doThrow(com.oaiss.chain.exception.BusinessException.of(
+                com.oaiss.chain.constant.ErrorCode.ADMISSION_REQUIRED, "error.admission.required"))
+                .when(certificateGateService).assertEnterpriseAdmitted(1L);
+
+        // When & Then
+        assertThrows(com.oaiss.chain.exception.BusinessException.class,
+                () -> tradeService.confirmTrade(1L, 1L));
+
+        // 关键断言：证书不合规时绝不允许发生资产交割
+        verify(carbonCoinService, never()).buyQuota(anyLong(), any(), any(), anyLong());
+        verify(carbonCoinService, never()).sellQuota(anyLong(), any(), any(), anyLong());
     }
 
     @Test
@@ -422,7 +445,6 @@ class TradeServiceTest {
         when(transactionRepository.findById(1L)).thenReturn(Optional.of(testTransaction));
         when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(sellerEnterprise));
         when(enterpriseRepository.findByUserId(2L)).thenReturn(Optional.empty());
-        when(transactionRepository.save(any(Transaction.class))).thenReturn(testTransaction);
 
         assertThrows(TradeException.class, () -> tradeService.confirmTrade(1L, 1L));
     }
@@ -545,7 +567,6 @@ class TradeServiceTest {
     void testConfirmTradeFailSellerEnterpriseNotFound() {
         when(transactionRepository.findById(1L)).thenReturn(Optional.of(testTransaction));
         when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.empty());
-        when(transactionRepository.save(any(Transaction.class))).thenReturn(testTransaction);
 
         assertThrows(TradeException.class, () -> tradeService.confirmTrade(1L, 1L));
     }

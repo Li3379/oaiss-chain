@@ -197,6 +197,13 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '证书管理', roles: [ROLE.ADMIN] },
       },
       {
+        // 链上管理：对账 + 死信重放 + 只读浏览。刻意不提供任何改链操作（账本不可改）。
+        path: 'admin/blockchain',
+        name: 'AdminChainOps',
+        component: () => import('../views/admin/ChainOps.vue'),
+        meta: { title: '链上管理', roles: [ROLE.ADMIN] },
+      },
+      {
         // 撮合控制台：平台默认每 30 秒自动撮合，本页面用于观察运行态 + 手动立即出清一轮。
         path: 'admin/trading/matching',
         name: 'AdminAuctionMatching',

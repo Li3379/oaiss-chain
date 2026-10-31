@@ -95,7 +95,7 @@ docker compose -f deploy/compose/docker-compose.infra.yml up -d
 2. **数据库零手工维护 (Flyway)**：
    * 禁止在客户端工具中手动修改表结构。如需新增字段，在 `oaiss-chain-backend/src/main/resources/db/migration/` 增加 `Vxx__xxx.sql`，应用重启自动生效。
 3. **接口在线文档 (Swagger/OpenAPI)**：
-   * 后端启动后，直接访问：`http://localhost:8080/api/v1/swagger-ui/index.html` 在线调试全部 146 个 REST 接口。
+   * 后端启动后，直接访问：`http://localhost:8080/api/v1/swagger-ui/index.html` 在线调试全部 153 个 REST 接口。
 4. **提交前一键自检**：
    ```bash
    node scripts/doc-verify.mjs          # 校验代码与架构事实零漂移（数字）
@@ -139,5 +139,5 @@ OAISS CHAIN/
 
 ## 六、 详细企业级技术规格与文档
 
-本项目已将完整的架构设计、碳核算公式数学推导、25 张表数据字典、146 个 API 端点规范及生产高可用运维指南汇编生成为正式的企业级 Word 规格书，详见：
+本项目已将完整的架构设计、碳核算公式数学推导、27 张表数据字典、153 个 API 端点规范及生产高可用运维指南汇编生成为正式的企业级 Word 规格书，详见：
 👉 **[`docs/OAISS_CHAIN_技术架构与使用说明书.docx`](docs/OAISS_CHAIN_技术架构与使用说明书.docx)**。

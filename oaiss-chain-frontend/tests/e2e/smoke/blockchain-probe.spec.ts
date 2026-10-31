@@ -28,11 +28,6 @@ test('probe blockchain browser status and transaction lookup', async ({ page }) 
     nodes.map((node) => node.textContent?.trim() || ''),
   )
 
-  await page.getByTestId('blockchain-tx-query-input').fill('tx_probe_manual_001')
-  await page.getByTestId('blockchain-tx-query-submit').click()
-  await expect(page.getByTestId('blockchain-tx-query-result')).toBeVisible()
-  const queryResultText = ((await page.getByTestId('blockchain-tx-query-result').textContent()) || '').trim()
-
   await page.getByRole('tab').filter({ hasText: /Transactions|交易/ }).click().catch(() => {})
   await page.waitForTimeout(500)
 
@@ -49,7 +44,7 @@ test('probe blockchain browser status and transaction lookup', async ({ page }) 
   writeJson('blockchain-probe-fixed-2026-05-24.json', {
     statusText,
     statusCards,
-    queryResultText,
+    txListText: txRows.join(' | '),
     txRows,
     statusTexts,
   })

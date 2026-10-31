@@ -102,6 +102,15 @@ public final class ErrorCode {
     /** 不能禁用自己的账号 */
     public static final int CANNOT_DISABLE_SELF = 2013;
 
+    /** 不能删除自己的账号 */
+    public static final int CANNOT_DELETE_SELF = 2014;
+
+    /** 不能删除管理员账号 */
+    public static final int CANNOT_DELETE_ADMIN = 2015;
+
+    /** 禁止创建管理员类型账号 */
+    public static final int ADMIN_USER_TYPE_FORBIDDEN = 2016;
+
     // ==================== 碳核算模块错误 (3xxx) ====================
     
     /** 碳报告不存在 */
@@ -241,4 +250,12 @@ public final class ErrorCode {
 
     /** 数据不足 */
     public static final int INSUFFICIENT_DATA = 6003;
+
+    // ==================== 证书门禁错误 (7xxx) ====================
+
+    /** 企业无有效准入证书（未签发/已吊销/已过期），禁止交易与申报 */
+    public static final int ADMISSION_REQUIRED = 7001;
+
+    /** 审核员无有效资格证（未签发/已吊销/已过期），禁止审核 */
+    public static final int QUALIFICATION_REQUIRED = 7002;
 }

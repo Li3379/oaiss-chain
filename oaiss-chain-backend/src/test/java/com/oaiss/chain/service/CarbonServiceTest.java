@@ -44,8 +44,10 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -77,6 +79,9 @@ class CarbonServiceTest {
 
     @Mock
     private DigitalSignatureService digitalSignatureService;
+
+    @Mock
+    private CertificateGateService certificateGateService;
 
     @InjectMocks
     private CarbonService carbonService;
@@ -211,6 +216,22 @@ class CarbonServiceTest {
         assertEquals(ReportStatusEnum.SUBMITTED.getCode(), testReport.getStatus());
         assertNotNull(response);
         verify(carbonReportRepository, times(1)).save(any(CarbonReport.class));
+    }
+
+    @Test
+    @DisplayName("提交碳报告-企业准入证书已吊销时拒绝提交")
+    void testSubmitReportBlockedWhenAdmissionRevoked() {
+        when(carbonReportRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(testReport));
+        when(enterpriseRepository.findByUserId(anyLong())).thenReturn(Optional.of(testEnterprise));
+        doThrow(com.oaiss.chain.exception.BusinessException.of(
+                com.oaiss.chain.constant.ErrorCode.ADMISSION_REQUIRED, "error.admission.required"))
+                .when(certificateGateService).assertEnterpriseAdmitted(anyLong());
+
+        assertThrows(com.oaiss.chain.exception.BusinessException.class,
+                () -> carbonService.submitReport(currentUser, 1L));
+
+        // 拒绝必须发生在写库之前：不能让待审列表出现一张由吊销企业背书的报告
+        verify(carbonReportRepository, never()).save(any());
     }
 
     @Test

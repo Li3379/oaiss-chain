@@ -37,6 +37,8 @@ public class CarbonCoinService {
 
     private final CarbonCoinAccountRepository accountRepository;
     private final CarbonCoinTransactionRepository transactionRepository;
+    /** 证书门禁：仅充值入口校验；购买/出售配额由交易侧门禁保证 */
+    private final CertificateGateService certificateGateService;
 
     /**
      * 交易类型
@@ -44,8 +46,6 @@ public class CarbonCoinService {
     public static final int TX_TYPE_RECHARGE = 1;
     public static final int TX_TYPE_BUY_QUOTA = 2;
     public static final int TX_TYPE_SELL_QUOTA = 3;
-    /** 成交审核驳回的红冲（回滚）流水，与正常买卖区分，便于监管识别冲正 */
-    public static final int TX_TYPE_AUDIT_REFUND = 5;
 
     /**
      * 获取或创建碳币账户
@@ -72,6 +72,10 @@ public class CarbonCoinService {
     @DistributedLock(key = "'carbon:coin:' + #userId", expireTime = 30)
     @Transactional
     public CarbonCoinAccountResponse recharge(Long userId, CarbonCoinRechargeRequest request) {
+        // 充值本身是「往系统里注入购买力」，无有效准入证书的主体不应获得这项能力。
+        // 企业归属需要一跳解析：碳币账户挂 userId，准入证书挂 enterpriseId。
+        certificateGateService.assertEnterpriseAdmittedByUserId(userId);
+
         CarbonCoinAccount account = getAccountEntity(userId);
         validateAccountActive(account);
 
@@ -205,68 +209,6 @@ public class CarbonCoinService {
 
         log.info("碳币冻结扣划: userId={}, amount={}, quota={}, tradeId={}", userId, amount, quota, tradeId);
         return toResponse(account);
-    }
-
-    /**
-     * 成交审核驳回的资金红冲：把买卖双方在成交时发生的碳币转移原路退回。
-     *
-     * <p>成交（拍卖撮合）时资金流向是：
-     * <ul>
-     *   <li>买方：挂单期已 freezeBalance 冻结，成交时 deductFrozenBalance 从冻结中划走</li>
-     *   <li>卖方：sellQuota 直接加可用余额</li>
-     * </ul>
-     * 驳回时必须反向：买方冻结款退回可用余额，卖方已收货款扣回可用余额。
-     *
-     * <p>为什么不用 {@code buyQuota} 的逆操作：buyQuota 记 TX_TYPE_BUY_QUOTA，
-     * 而驳回是**冲正**而非新交易，混在同一流水类型下会让监管无法区分
-     * 「正常买入」与「因审核驳回而回滚」。故单列 TX_TYPE_AUDIT_REFUND。
-     *
-     * @param tradeId 被驳回的交易ID
-     * @param buyerId 买方用户ID
-     * @param sellerId 卖方用户ID
-     * @param amount 该笔成交总金额
-     */
-    @DistributedLock(key = "'carbon:coin:refund:' + #tradeId", expireTime = 30)
-    @Transactional
-    public void refundRejectedTrade(Long tradeId, Long buyerId, Long sellerId, BigDecimal amount) {
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new BusinessException(4001, "回滚金额必须为正数");
-        }
-
-        // 买方：退回可用余额
-        CarbonCoinAccount buyerAccount = getAccountEntity(buyerId);
-        validateAccountActive(buyerAccount);
-        BigDecimal buyerBefore = buyerAccount.getBalance();
-        BigDecimal buyerAfter = buyerBefore.add(amount);
-        buyerAccount.setBalance(buyerAfter);
-        // 成交时计入的 totalSpent 同步冲减，避免累计消费虚高
-        BigDecimal buyerSpent = buyerAccount.getTotalSpent() != null
-                ? buyerAccount.getTotalSpent() : BigDecimal.ZERO;
-        BigDecimal buyerSpentAfter = buyerSpent.subtract(amount);
-        buyerAccount.setTotalSpent(buyerSpentAfter.compareTo(BigDecimal.ZERO) < 0
-                ? BigDecimal.ZERO : buyerSpentAfter);
-        accountRepository.save(buyerAccount);
-        saveTransaction(buyerId, TX_TYPE_AUDIT_REFUND, amount,
-                buyerBefore, buyerAfter, null, tradeId, "成交审核驳回，买方货款退回");
-
-        // 卖方：原路扣回已收货款
-        CarbonCoinAccount sellerAccount = getAccountEntity(sellerId);
-        validateAccountActive(sellerAccount);
-        BigDecimal sellerBefore = sellerAccount.getBalance();
-        BigDecimal sellerAfter = sellerBefore.subtract(amount);
-        if (sellerAfter.compareTo(BigDecimal.ZERO) < 0) {
-            // 卖方可能已把货款转出，此时允许透支到 0 并记录，由监管线索跟进
-            log.warn("[AUDIT_REFUND] 卖方余额不足以全额扣回: sellerId={}, balance={}, need={}",
-                    sellerId, sellerBefore, amount);
-            sellerAfter = BigDecimal.ZERO;
-        }
-        sellerAccount.setBalance(sellerAfter);
-        accountRepository.save(sellerAccount);
-        saveTransaction(sellerId, TX_TYPE_AUDIT_REFUND, amount,
-                sellerBefore, sellerAfter, null, tradeId, "成交审核驳回，卖方货款扣回");
-
-        log.info("成交审核驳回资金红冲完成: tradeId={}, amount={}, buyer={}, seller={}",
-                tradeId, amount, buyerId, sellerId);
     }
 
     /**

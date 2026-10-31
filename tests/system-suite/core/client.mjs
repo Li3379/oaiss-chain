@@ -148,11 +148,7 @@ class TestClient {
     }
 
     if (url === '/carbon-coin/transfer') {
-      if (!body?.counterpartId || body?.amount === undefined) return { status: 400, data: { code: 1001, message: '参数错误' }, durationMs };
-      if (body.amount <= 0) return { status: 400, data: { code: 1001, message: '转账金额必须大于0' }, durationMs };
-      if (body.counterpartId === 99999999) return { status: 400, data: { code: 4003, message: '对方账户不存在' }, durationMs };
-      if (body.amount > 100000) return { status: 400, data: { code: 4005, message: '碳币余额不足' }, durationMs };
-      return { status: 200, data: { code: 200, message: 'success', data: { balance: 800.00 } }, durationMs };
+      return { status: 404, data: { code: 404, message: 'Not Found' }, durationMs };
     }
 
     if (url === '/auction/buy') {
@@ -238,10 +234,6 @@ class TestClient {
 
     if (url === '/blockchain/blocks/999999999') {
       return { status: 400, data: { code: 5003, message: '区块不存在' }, durationMs };
-    }
-
-    if (url.startsWith('/blockchain/transactions/0xdeadbeef')) {
-      return { status: 400, data: { code: 5003, message: '交易不存在' }, durationMs };
     }
 
     if (url.includes('/admin/users/1/status')) {

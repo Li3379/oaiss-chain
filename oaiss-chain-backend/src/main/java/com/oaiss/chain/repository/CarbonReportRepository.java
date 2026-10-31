@@ -45,6 +45,14 @@ public interface CarbonReportRepository extends JpaRepository<CarbonReport, Long
     Page<CarbonReport> findByStatusAndDeletedFalse(Integer status, Pageable pageable);
 
     /**
+     * 查询「本地记录已标记上链」的报告（对账入口）。
+     *
+     * <p>对账只关心本地认为已上链的那些记录：本地没标上链的报告不参与比对，
+     * 否则每一份草稿都会被报成「链上缺失」。</p>
+     */
+    Page<CarbonReport> findByBlockchainTxHashIsNotNullAndDeletedFalse(Pageable pageable);
+
+    /**
      * 根据审核员 ID 分页查询
      */
     Page<CarbonReport> findByReviewerIdAndDeletedFalse(Long reviewerId, Pageable pageable);

@@ -15,9 +15,19 @@ import org.hyperledger.fabric.client.Contract;
 import org.hyperledger.fabric.client.EndorseException;
 import org.hyperledger.fabric.client.Network;
 import org.hyperledger.fabric.protos.common.Block;
+import org.hyperledger.fabric.protos.common.BlockMetadataIndex;
 import org.hyperledger.fabric.protos.common.ChannelHeader;
 import org.hyperledger.fabric.protos.common.Envelope;
 import org.hyperledger.fabric.protos.common.Payload;
+import org.hyperledger.fabric.protos.common.SignatureHeader;
+import org.hyperledger.fabric.protos.msp.SerializedIdentity;
+import org.hyperledger.fabric.protos.peer.ChaincodeActionPayload;
+import org.hyperledger.fabric.protos.peer.ChaincodeEndorsedAction;
+import org.hyperledger.fabric.protos.peer.ChaincodeInvocationSpec;
+import org.hyperledger.fabric.protos.peer.ChaincodeProposalPayload;
+import org.hyperledger.fabric.protos.peer.ChaincodeSpec;
+import org.hyperledger.fabric.protos.peer.Endorsement;
+import org.hyperledger.fabric.protos.peer.TransactionAction;
 import org.springframework.context.annotation.Profile;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -183,20 +193,29 @@ public class FabricBlockchainService implements BlockchainServicePort {
     }
 
     @Override
-    public String queryTransaction(String txHash) {
+    public String queryReportSnapshot(Long reportId) {
+        String historyJson;
         try {
-            log.info("[FABRIC] Querying transaction: {}", txHash);
-            return collectBlocksByProbe().stream()
-                    .flatMap(block -> extractTransactions(block).stream())
-                    .filter(tx -> txHash.equals(tx.get("txHash")))
-                    .findFirst()
-                    .map(this::toJson)
-                    .orElseThrow(() -> BlockchainException.txQueryFailed(txHash, "Transaction not found in event stream"));
-        } catch (BlockchainException e) {
-            throw e;
+            log.info("[FABRIC] Querying report history: reportId={}", reportId);
+            byte[] result = carbonContract.evaluateTransaction("QueryReportHistory", String.valueOf(reportId));
+            historyJson = new String(result, StandardCharsets.UTF_8);
         } catch (Exception e) {
-            throw BlockchainException.txQueryFailed(txHash, e.getMessage());
+            throw BlockchainException.chaincodeInvokeFailed("QueryReportHistory", e.getMessage());
         }
+
+        List<JsonNode> versions = new ArrayList<>();
+        try {
+            JsonNode root = objectMapper.readTree(historyJson);
+            if (root != null && root.isArray()) {
+                root.forEach(versions::add);
+            }
+        } catch (Exception e) {
+            throw BlockchainException.chaincodeInvokeFailed("QueryReportHistory",
+                    "链上历史无法解析: " + e.getMessage());
+        }
+
+        // 链上无该 key 时链码返回空数组；最新一版在末尾（GetHistoryForKey 按时间正序）。
+        return versions.isEmpty() ? null : versions.get(versions.size() - 1).toString();
     }
 
     @Override
@@ -336,35 +355,187 @@ public class FabricBlockchainService implements BlockchainServicePort {
         }
 
         String blockTimestamp = extractBlockTimestamp(block);
+        int envelopeIndex = 0;
         for (ByteString envelopeBytes : block.getData().getDataList()) {
             try {
                 Envelope envelope = Envelope.parseFrom(envelopeBytes);
                 Payload payload = Payload.parseFrom(envelope.getPayload());
                 if (!payload.hasHeader()) {
+                    envelopeIndex++;
                     continue;
                 }
 
                 ChannelHeader channelHeader = ChannelHeader.parseFrom(payload.getHeader().getChannelHeader());
                 if (channelHeader.getTxId().isBlank()) {
+                    envelopeIndex++;
                     continue;
                 }
 
                 Map<String, Object> tx = new LinkedHashMap<>();
                 tx.put("txHash", channelHeader.getTxId());
                 tx.put("txId", channelHeader.getTxId());
-                tx.put("status", "VALID");
+
+                // 交易校验码：取自区块元数据 TRANSACTIONS_FILTER，与 envelopes 下标一一对应。
+                // 改造前这里写死 "VALID"——链上明明记录了 INVALID，界面却一律显示验证通过。
+                int validationCode = validationCodeAt(block, envelopeIndex);
+                tx.put("validationCode", validationCode);
+                tx.put("status", validationCode == 0 ? "VALID" : "INVALID");
+
                 tx.put("blockNumber", block.getHeader().getNumber());
                 tx.put("timestamp", channelHeader.hasTimestamp() ? toIsoTimestamp(channelHeader.getTimestamp()) : blockTimestamp);
+                if (channelHeader.hasTimestamp()) {
+                    tx.put("timestampNanos", channelHeader.getTimestamp().getNanos());
+                }
                 tx.put("channelId", channelHeader.getChannelId());
                 tx.put("type", channelHeader.getType());
+
+                // 以下三项此前完全没有读取：发起组织、背书组织、被调用的链码函数。
+                // 它们是「这笔交易是谁发起的、谁背书的、干了什么」的答案，就在区块里。
+                extractSignatureIdentity(payload).ifPresent(msp -> tx.put("senderMsp", msp));
+                List<String> endorsers = extractEndorserMspList(payload);
+                if (!endorsers.isEmpty()) {
+                    tx.put("endorsers", endorsers);
+                }
+                extractChaincodeInvocation(payload).ifPresent(invocation -> {
+                    tx.put("function", invocation.function);
+                    tx.put("args", invocation.args);
+                    if (invocation.chaincodeName != null) {
+                        tx.put("chaincodeName", invocation.chaincodeName);
+                    }
+                });
+
                 transactions.add(tx);
             } catch (Exception e) {
                 log.debug("[FABRIC] Skipping unparsable transaction envelope in block {}: {}",
                         block.hasHeader() ? block.getHeader().getNumber() : -1, e.getMessage());
             }
+            envelopeIndex++;
         }
 
         return transactions;
+    }
+
+    /**
+     * 读取指定信封的校验码。
+     *
+     * <p>Fabric 把每个交易的校验结果按 order 记录在区块元数据 {@code TRANSACTIONS_FILTER}
+     * 里（0 = VALID，非 0 为各类无效码）。元数据缺失时按 0 处理——历史区块与测试构造
+     * 的区块可能没有该字段，此时「未知」与「有效」在业务上等价。</p>
+     */
+    private int validationCodeAt(Block block, int index) {
+        if (!block.hasMetadata()) {
+            return 0;
+        }
+        var metadataList = block.getMetadata().getMetadataList();
+        int filterIndex = BlockMetadataIndex.TRANSACTIONS_FILTER_VALUE;
+        if (filterIndex >= metadataList.size()) {
+            return 0;
+        }
+        ByteString filter = metadataList.get(filterIndex);
+        if (index < 0 || index >= filter.size()) {
+            return 0;
+        }
+        return filter.byteAt(index);
+    }
+
+    /** 从签名头解析交易发起者所属组织 MSP。 */
+    private Optional<String> extractSignatureIdentity(Payload payload) {
+        try {
+            if (payload.getHeader().getSignatureHeader().isEmpty()) {
+                return Optional.empty();
+            }
+            SignatureHeader signatureHeader = SignatureHeader.parseFrom(
+                    payload.getHeader().getSignatureHeader());
+            if (signatureHeader.getCreator().isEmpty()) {
+                return Optional.empty();
+            }
+            return Optional.of(SerializedIdentity.parseFrom(signatureHeader.getCreator()).getMspid());
+        } catch (Exception e) {
+            log.debug("[FABRIC] Could not parse signature identity: {}", e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /** 从链码动作载荷解析背书节点所属组织 MSP 列表（去重保序）。 */
+    private List<String> extractEndorserMspList(Payload payload) {
+        List<String> mspIds = new ArrayList<>();
+        try {
+            ChaincodeEndorsedAction action = extractEndorsedAction(payload);
+            if (action == null) {
+                return mspIds;
+            }
+            for (Endorsement endorsement : action.getEndorsementsList()) {
+                String mspId = SerializedIdentity.parseFrom(endorsement.getEndorser()).getMspid();
+                if (mspId != null && !mspId.isBlank() && !mspIds.contains(mspId)) {
+                    mspIds.add(mspId);
+                }
+            }
+        } catch (Exception e) {
+            log.debug("[FABRIC] Could not parse endorsers: {}", e.getMessage());
+        }
+        return mspIds;
+    }
+
+    /** 从链码调用规格解析被调用的函数名、入参与链码名。 */
+    private Optional<ChaincodeInvocation> extractChaincodeInvocation(Payload payload) {
+        try {
+            ChaincodeActionPayload actionPayload = extractChaincodeActionPayload(payload);
+            if (actionPayload == null) {
+                return Optional.empty();
+            }
+            // ChaincodeProposalPayload.input 才是 ChaincodeInvocationSpec 的序列化；
+            // 直接对整个 proposal payload 反序列化会把 input 与 transientMap 一起误读，
+            // 解析出「有 chaincodeSpec 但没有入参」的空壳。
+            ChaincodeProposalPayload proposalPayload = ChaincodeProposalPayload.parseFrom(
+                    actionPayload.getChaincodeProposalPayload());
+            ChaincodeInvocationSpec spec = ChaincodeInvocationSpec.parseFrom(proposalPayload.getInput());
+            ChaincodeSpec chaincodeSpec = spec.getChaincodeSpec();
+            List<String> argList = chaincodeSpec.getInput().getArgsList().stream()
+                    .map(ByteString::toStringUtf8)
+                    .toList();
+            if (argList.isEmpty()) {
+                return Optional.empty();
+            }
+            return Optional.of(new ChaincodeInvocation(
+                    argList.get(0),
+                    argList,
+                    chaincodeSpec.getChaincodeId().getName()));
+        } catch (Exception e) {
+            log.debug("[FABRIC] Could not parse chaincode invocation: {}", e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private ChaincodeEndorsedAction extractEndorsedAction(Payload payload) {
+        ChaincodeActionPayload actionPayload = extractChaincodeActionPayload(payload);
+        return actionPayload != null ? actionPayload.getAction() : null;
+    }
+
+    /**
+     * 解析交易动作载荷。
+     *
+     * <p>区块信封的 payload.data 是可选的：配置交易、空交易没有这一段。
+     * 解析失败一律视为「无可读的链码动作」，不影响交易本身进入列表——
+     * 只是少显示函数名，而不是丢一笔交易。</p>
+     */
+    private ChaincodeActionPayload extractChaincodeActionPayload(Payload payload) {
+        if (payload.getData().isEmpty()) {
+            return null;
+        }
+        try {
+            TransactionAction transactionAction = TransactionAction.parseFrom(payload.getData());
+            if (transactionAction.getPayload().isEmpty()) {
+                return null;
+            }
+            return ChaincodeActionPayload.parseFrom(transactionAction.getPayload());
+        } catch (Exception e) {
+            log.debug("[FABRIC] Could not parse chaincode action payload: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /** 链码调用要素的轻量载体（避免为三个字段引入 DTO 类）。 */
+    private record ChaincodeInvocation(String function, List<String> args, String chaincodeName) {
     }
 
     private Map<String, Object> toBlockRecord(Block block) {

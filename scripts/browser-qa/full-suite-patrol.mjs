@@ -45,7 +45,8 @@ const ROUTES_BY_ROLE = {
     { path: '/admin/system/carbon', name: '碳核算管理' },
     { path: '/admin/system/config', name: '系统配置' },
     { path: '/admin/data/statistics', name: '统计数据' },
-    { path: '/admin/certificates', name: '证书管理' }
+    { path: '/admin/certificates', name: '证书管理' },
+    { path: '/admin/blockchain', name: '链上管理' }
   ],
   thirdParty: [
     { path: '/third-party/monitor', name: '第三方监管面板' }

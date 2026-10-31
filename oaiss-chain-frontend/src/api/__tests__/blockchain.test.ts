@@ -10,7 +10,8 @@ vi.mock('../request', () => ({
   },
 }))
 
-import { getLatestBlocks, getStatus, getTransactions, queryBlock, queryTransaction } from '../blockchain'
+import * as blockchainApi from '../blockchain'
+import { getLatestBlocks, getStatus, getTransactions, queryBlock } from '../blockchain'
 
 describe('blockchain api client', () => {
   beforeEach(() => {
@@ -23,7 +24,6 @@ describe('blockchain api client', () => {
     await getTransactions({ pageNum: 2, pageSize: 20 })
     await getLatestBlocks({ pageNum: 1, pageSize: 5 })
     await queryBlock(10)
-    await queryTransaction('tx-abc')
 
     expect(requestMock.get).toHaveBeenNthCalledWith(1, '/blockchain/status')
     expect(requestMock.get).toHaveBeenNthCalledWith(2, '/blockchain/transactions', {
@@ -33,10 +33,11 @@ describe('blockchain api client', () => {
       params: { pageNum: 1, pageSize: 5 },
     })
     expect(requestMock.get).toHaveBeenNthCalledWith(4, '/blockchain/block/10')
-    expect(requestMock.get).toHaveBeenNthCalledWith(5, '/blockchain/transaction/tx-abc')
   })
 
-  it('uses a stable validation message for empty transaction hashes', async () => {
-    await expect(queryTransaction('')).rejects.toThrow('Transaction hash is required')
+  // 交易哈希面板已移除（2026-10-31）：链上交易一律从交易列表下钻查看，
+  // 不再保留「输入哈希直接查询」这条独立入口，避免出现第二条查询口径。
+  it('no longer exposes the removed transaction-hash lookup', () => {
+    expect('queryTransaction' in blockchainApi).toBe(false)
   })
 })

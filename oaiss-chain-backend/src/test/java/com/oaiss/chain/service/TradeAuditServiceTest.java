@@ -166,7 +166,6 @@ class TradeAuditServiceTest {
 
         // 碳币：买方冻结款解冻退回（同样不是冲正，因为从未划走）
         verify(carbonCoinService).unfreezeBalance(eq(2L), eq(new BigDecimal("12000")));
-        verify(carbonCoinService, never()).refundRejectedTrade(anyLong(), anyLong(), anyLong(), any());
 
         // 信誉扣分必须能指回这笔交易，且买卖双方各扣一次
         // （异常成交中双方都参与价格形成，只罚一方会留下靠对手方低信誉规避的口子）

@@ -28,7 +28,7 @@ const ROUTES_BY_ROLE = {
   ],
   reviewer: ['/auditor/audit/list', '/auditor/review/history', '/auditor/project/review'],
   admin: ['/auditor/verify/list', '/admin/system/users', '/admin/system/carbon',
-    '/admin/system/config', '/admin/data/statistics', '/admin/certificates'],
+    '/admin/system/config', '/admin/data/statistics', '/admin/certificates', '/admin/blockchain'],
   thirdParty: ['/third-party/monitor'],
 };
 

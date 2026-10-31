@@ -18,11 +18,7 @@ vi.mock('../../api/blockchain', () => ({
   })),
   getLatestBlocks: vi.fn(() => Promise.resolve({ items: [], total: 0 })),
   getTransactions: vi.fn(() => Promise.resolve({ items: [], total: 0 })),
-  queryTransaction: vi.fn(() => Promise.resolve({
-    txHash: 'tx-001',
-    status: 'VALID',
-    timestamp: '2026-05-31T10:00:00',
-  })),
+  queryBlock: vi.fn(() => Promise.resolve({ blockNumber: 0, txCount: 1 })),
 }))
 
 vi.mock('element-plus', async (importOriginal) => {
@@ -35,7 +31,7 @@ vi.mock('element-plus', async (importOriginal) => {
 })
 
 import Blockchain from '../enterprise/Blockchain.vue'
-import { getLatestBlocks, getStatus, getTransactions, queryTransaction } from '../../api/blockchain'
+import { getLatestBlocks, getStatus, getTransactions, queryBlock } from '../../api/blockchain'
 import { ElMessage } from 'element-plus'
 
 const stubs = {
@@ -113,31 +109,47 @@ describe('Blockchain.vue', () => {
     wrapper.unmount()
   })
 
-  it('requires a transaction hash before querying', async () => {
+  // 交易哈希查询面板已移除（2026-10-31）。链上交易统一从「交易记录」列表下钻，
+  // 因此页面不再暴露 txHashQuery / submitTxQuery 这组状态与方法。
+  it('no longer exposes the removed transaction-hash lookup panel', async () => {
     const wrapper = mountComponent()
     await flushPromises()
 
-    vmOf(wrapper).txHashQuery = '   '
-    await vmOf(wrapper).submitTxQuery()
-
-    expect(queryTransaction).not.toHaveBeenCalled()
-    expect(vmOf(wrapper).txQueryError).toBeTruthy()
+    expect('txHashQuery' in vmOf(wrapper)).toBe(false)
+    expect('submitTxQuery' in vmOf(wrapper)).toBe(false)
+    expect(wrapper.find('[data-testid="blockchain-tx-query-input"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="blockchain-tx-query-result"]').exists()).toBe(false)
 
     wrapper.unmount()
   })
 
-  it('parses transaction query responses into structured result data', async () => {
+  it('drills into a block and shows its transactions', async () => {
+    vi.mocked(queryBlock).mockResolvedValueOnce({
+      blockNumber: 3,
+      txCount: 1,
+      channel: 'mychannel',
+      transactions: [{ txHash: 'tx-1', senderMsp: 'Org1MSP', function: 'CreateCarbonReportV2', status: 'VALID' }],
+    } as never)
+
     const wrapper = mountComponent()
     await flushPromises()
 
-    vmOf(wrapper).txHashQuery = 'tx-001'
-    await vmOf(wrapper).submitTxQuery()
+    await vmOf(wrapper).openBlockDetail(3)
+    await flushPromises()
 
-    expect(queryTransaction).toHaveBeenCalledWith('tx-001')
-    expect(vmOf(wrapper).txQueryResult).toMatchObject({
-      txHash: 'tx-001',
-      status: 'VALID',
-    })
+    expect(queryBlock).toHaveBeenCalledWith(3)
+    expect(vmOf(wrapper).blockDetailTransactions).toHaveLength(1)
+    expect(vmOf(wrapper).blockDetailTransactions[0].function).toBe('CreateCarbonReportV2')
+
+    wrapper.unmount()
+  })
+
+  it('renders the real network status panel without the lookup column', async () => {
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    expect(vmOf(wrapper).chainStatus).toMatchObject({ channel: 'carbon-channel' })
+    expect(wrapper.find('[data-testid="blockchain-status-tag"]').exists()).toBe(true)
 
     wrapper.unmount()
   })

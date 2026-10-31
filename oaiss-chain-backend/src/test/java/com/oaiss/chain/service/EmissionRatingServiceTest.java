@@ -1,7 +1,9 @@
 package com.oaiss.chain.service;
 
+import com.oaiss.chain.entity.CarbonReport;
 import com.oaiss.chain.entity.EmissionRating;
 import com.oaiss.chain.exception.BusinessException;
+import com.oaiss.chain.repository.CarbonReportRepository;
 import com.oaiss.chain.repository.EmissionRatingRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -29,6 +31,9 @@ class EmissionRatingServiceTest {
 
     @Mock
     private EmissionRatingRepository ratingRepository;
+
+    @Mock
+    private CarbonReportRepository carbonReportRepository;
 
     @InjectMocks
     private EmissionRatingService emissionRatingService;
@@ -145,6 +150,53 @@ class EmissionRatingServiceTest {
         assertNull(rating.getEmissionIntensity());
     }
 
+    // ==================== recalculateYearlyRating (D10 / AC-B5 / AC-B6) ====================
+
+    @Test
+    @DisplayName("年度评级 - 同年多份权威报告应求和，而不是取最后一份")
+    void recalculateYearlyRating_SumsAllAuthoritativeReports() {
+        when(carbonReportRepository.findYearlyAuthoritativeReports(eq(1L), eq("2025"), anyList()))
+                .thenReturn(List.of(buildReport(new BigDecimal("1000")), buildReport(new BigDecimal("2500"))));
+        when(ratingRepository.findByEnterpriseIdAndRatingYearAndDeletedFalse(1L, "2025")).thenReturn(Optional.empty());
+        when(ratingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        EmissionRating rating = emissionRatingService.recalculateYearlyRating(1L, "2025", 9L);
+
+        assertNotNull(rating);
+        // 1000 + 2500 = 3500 → B 级区间
+        assertEquals(0, new BigDecimal("3500").compareTo(rating.getTotalEmission()));
+        assertEquals("B", rating.getRatingLevel());
+        // AC-B6：必须记录「这个数是几份报告加出来的」
+        assertEquals(2, rating.getSourceReportCount());
+    }
+
+    @Test
+    @DisplayName("年度评级 - 该年度无权威报告时返回 null 且不写入评级")
+    void recalculateYearlyRating_NoReports_ReturnsNull() {
+        when(carbonReportRepository.findYearlyAuthoritativeReports(eq(1L), eq("2025"), anyList()))
+                .thenReturn(List.of());
+
+        EmissionRating rating = emissionRatingService.recalculateYearlyRating(1L, "2025", 9L);
+
+        assertNull(rating);
+        verify(ratingRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("年度评级 - 入参年份带季度时按前四位归年")
+    void recalculateYearlyRating_QuarterPeriodNormalizedToYear() {
+        when(carbonReportRepository.findYearlyAuthoritativeReports(eq(1L), eq("2025"), anyList()))
+                .thenReturn(List.of(buildReport(new BigDecimal("1000"))));
+        when(ratingRepository.findByEnterpriseIdAndRatingYearAndDeletedFalse(1L, "2025")).thenReturn(Optional.empty());
+        when(ratingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        EmissionRating rating = emissionRatingService.recalculateYearlyRating(1L, "2025-Q3", 9L);
+
+        assertNotNull(rating);
+        assertEquals("2025", rating.getRatingYear());
+        assertEquals(1, rating.getSourceReportCount());
+    }
+
     // ==================== getIndustryRanking ====================
 
     @Test
@@ -154,6 +206,16 @@ class EmissionRatingServiceTest {
                 .thenReturn(List.of(buildRating("2025")));
         List<EmissionRating> result = emissionRatingService.getIndustryRanking("2025");
         assertEquals(1, result.size());
+    }
+
+    private CarbonReport buildReport(BigDecimal total) {
+        CarbonReport report = CarbonReport.builder()
+                .enterpriseId(1L)
+                .accountingPeriod("2025")
+                .totalEmission(total)
+                .status(3)
+                .build();
+        return report;
     }
 
     private EmissionRating buildRating(String year) {
