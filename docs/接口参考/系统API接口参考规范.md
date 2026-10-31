@@ -1069,7 +1069,22 @@ Search carbon reports. Query params: `keyword`, `page`, `size`
 
 ### GET `/search/trades`
 
-Search trades. Query params: `keyword`, `page`, `size`
+Search trades.
+
+**Query params**
+
+| 参数 | 类型 | 必填 | 说明 |
+| :--- | :--- | :---: | :--- |
+| `keyword` | string | 否 | 关键词，匹配**交易编号、企业名称、统一社会信用代码**（2026-11-01 新增） |
+| `sellerId` | long | 否 | 卖方企业ID |
+| `buyerId` | long | 否 | 买方企业ID |
+| `tradeType` | int | 否 | 交易类型：1-P2P, 2-拍卖, 3-配额分配 |
+| `status` | int | 否 | 交易状态：0-待处理, 1-处理中, 2-已完成, 3-已取消, 4-失败 |
+| `page` | int | 否 | 页码（从 1 开始），默认 1 |
+| `size` | int | 否 | 每页大小，默认 20 |
+
+> 可见范围：企业用户强制限定为本人参与的成交（`keyword` 不构成越权通道）；
+> 审核员/管理员/第三方监管为全量。买卖方名称对管理员与监管实名，其余角色为稳定匿名别名。
 
 ### GET `/search/market-overview`
 
