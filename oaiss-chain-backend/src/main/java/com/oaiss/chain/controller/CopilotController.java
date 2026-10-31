@@ -38,6 +38,10 @@ import java.util.Map;
 @RequestMapping("/copilot")
 @RequiredArgsConstructor
 @Tag(name = "23. AI 双碳智囊 Copilot", description = "政策法规问答、碳报告诊断、履约采购策略（后端代理 ML 服务）")
+// 显式声明授权角色：三个调用方全部位于企业端页面（CarbonFormulaCalculator / CarbonUpload / TradingMarket）。
+// 历史缺陷（2026-10-31）：三个写方法均无 @PreAuthorize，回落到 anyRequest().authenticated()，
+// 任意登录角色（含第三方监管）均可调用，与“监管只读核查”定位相悖。
+@PreAuthorize("hasAnyRole('ENTERPRISE', 'ADMIN')")
 public class CopilotController {
 
     private final WebClient mlWebClient;

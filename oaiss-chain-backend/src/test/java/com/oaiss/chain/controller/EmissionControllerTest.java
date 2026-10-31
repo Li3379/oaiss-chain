@@ -28,6 +28,8 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -156,6 +158,34 @@ class EmissionControllerTest {
                 .andExpect(jsonPath("$.data.ratingLevel").value("A"));
 
         verify(ratingService).rateEnterprise(1L, "2024", new BigDecimal("10000.00"), new BigDecimal("1000000.00"), 1L);
+    }
+
+    /**
+     * 评级写入是管理员/审核员的评定动作，不得对任何登录用户开放。
+     *
+     * 历史缺陷（2026-10-31 发现）：该端点类级与方法级均无 @PreAuthorize，
+     * 落到 SecurityConfig.anyRequest().authenticated()，导致**任意登录角色**
+     * （含企业、第三方监管）可创建/覆盖任意企业的年度碳排放评级。
+     * role-matrix-verify.mjs 早期只扫方法级注解，未能拦截。
+     *
+     * 注意断言层级：本用例是 @WebMvcTest + addFilters=false 切片，
+     * **不加载方法级安全**（@PreAuthorize 不会执行），因此这里断言的是
+     * 「授权声明必须存在于方法上」这一契约事实；真正的方法级拒绝行为
+     * 由 {@code EndpointAuthorizationTest} 在启用 Method Security 的上下文中断言。
+     */
+    @Test
+    @DisplayName("生成评级-必须显式声明授权角色")
+    void testCreateRatingDeclaresExplicitAuthorization() throws Exception {
+        java.lang.reflect.Method createRating = EmissionController.class.getMethod(
+                "createRating", EmissionRatingRequest.class);
+
+        org.springframework.security.access.prepost.PreAuthorize pre =
+                createRating.getAnnotation(org.springframework.security.access.prepost.PreAuthorize.class);
+
+        assertNotNull(pre, "POST /emission/ratings 必须显式声明 @PreAuthorize，"
+                + "否则任意登录角色可覆盖任意企业评级");
+        assertTrue(pre.value().contains("ADMIN") && pre.value().contains("REVIEWER"),
+                "评级评定主体应限定为 ADMIN 或 REVIEWER，实际: " + pre.value());
     }
 
     @Test

@@ -237,15 +237,19 @@ if (missingEnums.length === 0 && extraEnums.length === 0) {
   console.log(`✗ 核心枚举名单: 期望 ${expectEnums.length} 个，缺 ${missingEnums.join(',') || '无'}，多 ${extraEnums.join(',') || '无'}`)
 }
 
-// Flyway 迁移版本
+// Flyway 迁移版本（双向断言：文档列的必须存在，代码有的必须被文档列到）
+// 历史盲区：早期只做单向包含，导致 V15 落地后 DEV-GUIDE 仍写「V1-V14 共 13 个版本」
+// 而门禁全绿——文档少报版本永远不会被发现。
 const migrateSet = new Set(migrations)
 const missingMig = EXPECT.migrations.filter(v => !migrateSet.has(v))
+const expectedMigSet = new Set(EXPECT.migrations)
+const undeclaredMig = migrations.filter(v => !expectedMigSet.has(v))
 const hasV3 = migrateSet.has('V3')
-if (missingMig.length === 0 && !hasV3) {
+if (missingMig.length === 0 && undeclaredMig.length === 0 && !hasV3) {
   console.log(`✓ Flyway 迁移: ${EXPECT.migrations.join(',')} (共 ${EXPECT.migrations.length} 个版本，V3 正确跳过)`)
 } else {
   failures++
-  console.log(`✗ Flyway 迁移: 缺 ${missingMig.join(',') || '无'}${hasV3 ? '，V3 不应存在' : ''}`)
+  console.log(`✗ Flyway 迁移: 缺 ${missingMig.join(',') || '无'}${hasV3 ? '，V3 不应存在' : ''}${undeclaredMig.length ? `，代码存在但文档未声明 ${undeclaredMig.join(',')}` : ''}`)
 }
 
 // i18n 词条断言

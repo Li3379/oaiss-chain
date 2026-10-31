@@ -97,9 +97,14 @@ public class EmissionController {
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "评级生成成功"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "评级参数无效"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "未授权访问")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "未授权访问"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "无权限，仅管理员/审核员可评定评级")
     })
     @SecurityRequirement(name = "Bearer Authentication")
+    // 评级是对他人企业的合规评定结论，必须限定评定主体。
+    // 历史缺陷（2026-10-31）：此处无任何 @PreAuthorize，回落到 anyRequest().authenticated()，
+    // 任意登录角色（含企业自身、第三方监管）可创建/覆盖任意企业的年度碳排放评级。
+    @PreAuthorize("hasAnyRole('ADMIN', 'REVIEWER')")
     public ApiResponse<EmissionRating> createRating(@Valid @RequestBody EmissionRatingRequest request) {
         return ApiResponse.success(ratingService.rateEnterprise(
                 request.getEnterpriseId(), request.getYear(),

@@ -117,6 +117,106 @@ if (thirdPartyWrite.length) {
   ok.push('第三方监管未持有业务写端点（只读核查 + 本人密钥自助，符合 L1/L2）')
 }
 
+// --- 3b) 业务写端点必须显式声明授权角色（无注解 = 任何登录用户可调） ---
+//
+// 历史盲区（2026-10-31 补）：上面第 3 项只扫描「方法级 @PreAuthorize 含 THIRD_PARTY」的写端点，
+// 而放行判定的真正来源是三级回落：类级 @PreAuthorize → 方法级 → SecurityConfig.anyRequest().authenticated()。
+// 于是「既无类级注解、也无方法级注解」的业务写端点等于对任何登录角色（含 THIRD_PARTY）开放，
+// 却永远不会出现在 thirdPartyWrite 里。实测漏检的隐式写面：
+//   POST /emission/ratings（任意登录用户可覆盖任意企业年度评级）
+//   POST /copilot/*（3 个）
+//   DELETE /file、/file/batch（裁决在服务层，注解层面无约束）
+//
+// 判定口径：业务写端点必须在「类级或方法级」任一处出现 @PreAuthorize，否则报错。
+// 自助类（本人账号资源）端点豁免由 SELF_SERVICE_HINTS 统一承担，与第 3 项口径保持一致。
+// 注意：此处匹配的是 (控制器文件名 + 方法级路径)，不含 @RequestMapping 基路径，
+// 故 hint 用方法级片段（如 '/keypair'）而非 '/signature/keypair'。
+const controllersWithClassAuth = new Set()
+for (const c of controllers) {
+  const lines = c.src.split(/\r?\n/)
+  for (let i = 0; i < lines.length; i++) {
+    // 类级注解出现在 public class 声明之前
+    if (/^\s*public\s+class\s+\w+/.test(lines[i])) break
+    if (/@PreAuthorize\(/.test(lines[i])) {
+      controllersWithClassAuth.add(c.name)
+      break
+    }
+  }
+}
+
+// 公开端点（SecurityConfig permitAll，无需 @PreAuthorize）
+// 口径与 SecurityConfig.java:66-75 的 requestMatchers(...).permitAll() 保持一致。
+const PUBLIC_ENDPOINTS = [
+  '/login',
+  '/register',
+  '/captcha',
+  '/refresh',
+  '/check-ip',
+  '/sms/send',
+  '/email/send',
+]
+
+// 自助端点（仅操作当前登录者的本人资源，无跨账号影响面）——按控制器+路径片段豁免。
+// 依据：这些端点内部均以 currentUser 为准，不接受他人 ID。
+const SELF_SERVICE_WRITE_HINTS = [
+  'UserController.java /profile',
+  'UserController.java /password',
+  'AuthController.java /password',
+  'WebVitalsController.java /report', // 前端性能埋点，仅写指标日志，无业务状态
+]
+
+// 服务层兜底豁免：授权由 Service 的归属校验强制，而非注解。
+// 例：CarbonNeutralProjectController 的 9 个写端点全部经
+// CarbonNeutralProjectService.validateOwner()（:135/:168/:220/:242/:299/:322/:341/:385），
+// 以「企业必须关联到当前用户」为前置：第三方监管与管理员均无企业关联 →
+// 抛 BusinessException(3001)，从未能通过这些端点写入。
+// 注意：这是「设计上的服务层兜底」，不是「忘了加注解」。若后续把某个方法的
+// validateOwner 移除，此豁免即失效，必须同时补回注解。
+const SERVICE_LAYER_GUARDED = [
+  'CarbonNeutralProjectController.java',
+]
+
+/**
+ * 从 @XxxMapping 所在行向后找到方法签名行，返回其间的全部注解文本。
+ * 不设行数上限：Swagger @Operation/@ApiResponses 块常常超 25 行，
+ * 早期写死 25 行窗口会把它后面的 @PreAuthorize 漏掉，误报成"无授权"。
+ */
+function annotationsBeforeSignature(lines, mappingIdx) {
+  const collected = []
+  for (let j = mappingIdx + 1; j < lines.length; j++) {
+    if (/^\s*public\s+[\w<>,\[\] ]+\s+\w+\s*\(/.test(lines[j])) break
+    collected.push(lines[j])
+  }
+  return collected.join('\n')
+}
+
+let implicitWrites = []
+for (const c of controllers) {
+  const lines = c.src.split(/\r?\n/)
+  for (let i = 0; i < lines.length; i++) {
+    if (!WRITE.test(lines[i])) continue
+    const pathMatch = lines[i].match(/@(Post|Put|Delete|Patch)Mapping\("([^"]*)"\)/)
+    const path = pathMatch ? pathMatch[2] : '?'
+    if (SELF_SERVICE_HINTS.some((h) => (c.name + path).includes(h))) continue
+    if (PUBLIC_ENDPOINTS.some((p) => path === p || path.startsWith(p + '/')) &&
+        (/^(Auth|Captcha)Controller\.java$/.test(c.name))) continue
+    if (SELF_SERVICE_WRITE_HINTS.some((h) => (c.name + ' ' + path) === h)) continue
+    if (SERVICE_LAYER_GUARDED.includes(c.name)) continue
+    const block = annotationsBeforeSignature(lines, i)
+    const methodPre = block.match(/@PreAuthorize\("([^"]+)"\)/)
+    const hasClassAuth = controllersWithClassAuth.has(c.name)
+    if (!methodPre && !hasClassAuth) implicitWrites.push(c.name + ' ' + path)
+  }
+}
+if (implicitWrites.length) {
+  errors.push(
+    '业务写端点缺少显式 @PreAuthorize（类级与方法级均无 → 任何登录角色可调用）：\n     - ' +
+      implicitWrites.join('\n     - ')
+  )
+} else {
+  ok.push('业务写端点均在类级或方法级显式声明授权角色（无隐式写面）')
+}
+
 // --- 4) 管理员独占端点不得授予 THIRD_PARTY ---
 const ADMIN_ONLY_HINTS = ['/users', '/enterprise-admission', '/reviewer-qualification', '/recharge']
 let leaked = []
