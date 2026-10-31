@@ -67,14 +67,30 @@ export interface PowerGenerationCalculationResponse {
 }
 
 /** Power grid calculation request */
+/**
+ * 电网计算请求（国标净电量式，D4）。
+ *
+ * 公式：E = (上网 + 输入 − 输出 − 售电) × EF + SF6
+ *
+ * 旧字段 transmissionVolume / lineLossRate / importEmissionFactor 已弃用：
+ * 后端仍接受（标 @Deprecated）但不再参与计算，前端也不再提交。
+ */
 export interface PowerGridCalculationRequest {
-  transmissionVolume: number
-  lineLossRate: number
+  /** EF电网 (tCO2/MWh) */
   gridEmissionFactor: number
+  /** EL上网 (MWh) */
   generationVolume: number | null
+  /** EL输入 (MWh) */
   importedElectricity: number | null
+  /** EL输出 (MWh) */
   exportedElectricity: number | null
-  importEmissionFactor: number | null
+  /** EL售电 (MWh) — 国标式第四项 */
+  soldElectricity: number | null
+  /** SF6 四项 (kg) */
+  recCapacity?: number | null
+  recRecovery?: number | null
+  repCapacity?: number | null
+  repRecovery?: number | null
   reportingYear: number
   enterpriseName: string
 }
@@ -86,6 +102,8 @@ export interface PowerGridCalculationResponse {
   importedEmission: number
   /** SF6 绝缘设备泄漏排放 (tCO2e)。后端一直有计算，历史上类型缺此字段，结果面板无法展示。 */
   sf6Emission?: number
+  /** 净电量为负（售电 > 供电）时为 true，总量已按 0 计 */
+  netElectricityNegative?: boolean
   transmissionLoss: number
   formulaReference: string
   reportingYear: string

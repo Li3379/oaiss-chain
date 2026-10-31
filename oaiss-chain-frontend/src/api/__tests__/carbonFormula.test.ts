@@ -30,7 +30,7 @@ describe('carbonFormula api contract', () => {
   })
 
   it('forwards power grid calculation to correct endpoint', async () => {
-    const data = { transmissionVolume: 10000, lineLossRate: 0.05, gridEmissionFactor: 0.5, generationVolume: null, importedElectricity: null, exportedElectricity: null, importEmissionFactor: null } as import('../../types/carbonFormula').PowerGridCalculationRequest
+    const data = { gridEmissionFactor: 0.5, generationVolume: 42000, importedElectricity: 8000, exportedElectricity: 3000, soldElectricity: 2000, reportingYear: 2024, enterpriseName: 'Test Grid' } as import('../../types/carbonFormula').PowerGridCalculationRequest
     await calculatePowerGrid(data)
     expect(requestMocks.postMock).toHaveBeenCalledWith('/carbon/calculate/power-grid', data)
   })

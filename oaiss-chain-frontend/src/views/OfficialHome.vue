@@ -5,14 +5,17 @@
  * 【路由地址】：/official-home
  * 【访问权限】：公开访问 (无需登录)
  * 【界面可见功能】：
- *   1. 顶部导航与英雄展区：系统核心定位与愿景展示
- *   2. 联盟链底层状态看板：实时轮询 Hyperledger Fabric 节点运行状态与区块高度
- *   3. 四大核心特性导航：碳核算填报、双向连续拍卖、区块链不可篡改存证、AI智能预测
- *   4. 四角色协同入驻通道：控排企业、核查机构、监管部门、平台管理入口
- *   5. 国家“双碳”战略宣贯与行业研究动态
+ *   1. 顶部导航与英雄展区（pen 浅色「石墨台账」语言：发丝线、墨色主操作、唯一图表蓝）
+ *   2. 联盟链实时区块流卡片：登录态拉真实区块，访客态如实展示待接入
+ *   3. 四大核心能力导航：碳核算填报、双向连续拍卖、区块链不可篡改存证、AI智能预测
+ *   4. 系统大盘指标与四角色协同入驻通道
+ *   5. 国家“双碳”战略宣贯与行业生态图集
  * 【对应后端 Controller & API】：
  *   - BlockchainController:
- *     * GET /api/v1/blockchain/status -> getStatus() 轮询底层区块链健康度
+ *     * GET /api/v1/blockchain/status         -> getStatus() 底层区块链健康度
+ *     * GET /api/v1/blockchain/blocks/latest  -> getLatestBlocks() 最新区块流
+ *   - SearchController:
+ *     * GET /api/v1/search/market/overview    -> getMarketOverview() 公开大盘指标
  * ==============================================================================
  */
 import {
@@ -25,21 +28,18 @@ import {
   Link,
   Lock,
   Medal,
-  Message,
   Monitor,
   OfficeBuilding,
   SetUp,
-  Share,
   Stamp,
 } from '@element-plus/icons-vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { HERO_BG, INTRO_BG, GALLERY_IMAGES } from '../config/images'
-import { getStatus } from '../api/blockchain'
+import { INTRO_BG, GALLERY_IMAGES } from '../config/images'
+import { getStatus, getLatestBlocks } from '../api/blockchain'
 import { getMarketOverview } from '../api/search'
-import type { MarketOverview } from '../types'
+import type { BlockchainBlockResponse, MarketOverview } from '../types'
 import { getAccessToken } from '../utils/auth'
 
 const { t } = useI18n()
@@ -49,22 +49,25 @@ const route = useRoute()
 
 const mobileMenuOpen = ref(false)
 
+/* ── 顶部导航：对照 pen Nav（64px、品牌 26px Mark + 字标） ── */
 const navItems = computed(() => [
   { key: 'hero', label: 'OAISS' },
-  { key: 'build', label: t('officialHome.navBuild') },
-  { key: 'join', label: t('officialHome.navParticipate') },
-  { key: 'research', label: t('officialHome.navResearch') },
+  { key: 'build', label: t('officialHome.navCapability') },
+  { key: 'research', label: t('officialHome.navFlow') },
+  { key: 'pulse', label: t('officialHome.navChain') },
   { key: 'platform', label: t('officialHome.navPlatform') },
-  { key: 'country', label: t('officialHome.navCountry') },
-  { key: 'about', label: t('officialHome.navAbout') },
+  { key: 'country', label: t('officialHome.navData') },
+  { key: 'about', label: t('officialHome.navAboutShort') },
 ])
 
+/* ── Hero 徽标行：三项合规资质 ── */
 const heroBadges = computed(() => [
   { icon: Document, text: t('officialHome.badgeStandard') },
   { icon: Link, text: t('officialHome.badgeFabric') },
   { icon: Lock, text: t('officialHome.badgeCrypto') },
 ])
 
+/* ── 核心能力四卡（保留既有四个业务入口） ── */
 const featureCards = computed(() => [
   {
     title: t('officialHome.featureP2P'),
@@ -92,6 +95,7 @@ const featureCards = computed(() => [
   },
 ])
 
+/* ── 四角色协同卡（保留既有角色介绍与详述弹窗） ── */
 const roleCards = computed(() => [
   {
     key: 'enterprise',
@@ -99,7 +103,6 @@ const roleCards = computed(() => [
     description: t('officialHome.roleEnterpriseDesc'),
     icon: OfficeBuilding,
     route: '/enterprise/carbon/upload',
-    accent: 'var(--color-accent)',
   },
   {
     key: 'admin',
@@ -107,7 +110,6 @@ const roleCards = computed(() => [
     description: t('officialHome.roleAdminDesc'),
     icon: SetUp,
     route: '/admin/system/users',
-    accent: '#a78bfa',
   },
   {
     key: 'auditor',
@@ -115,7 +117,6 @@ const roleCards = computed(() => [
     description: t('officialHome.roleAuditorDesc'),
     icon: CircleCheck,
     route: '/auditor/audit/list',
-    accent: '#60a5fa',
   },
   {
     key: 'thirdParty',
@@ -123,7 +124,6 @@ const roleCards = computed(() => [
     description: t('officialHome.roleThirdPartyDesc'),
     icon: Monitor,
     route: '/third-party/monitor',
-    accent: '#2dd4bf',
   },
 ])
 
@@ -173,19 +173,56 @@ const roleDetails = computed<Record<string, { summary: string; duties: string[];
 const activeRoleKey = ref('')
 const activeRoleDetail = computed(() => (activeRoleKey.value ? roleDetails.value[activeRoleKey.value] : null))
 
-const openRoleDialog = (key: string) => {
+const openRoleDialog = (key: string): void => {
   activeRoleKey.value = key
 }
 
-const closeRoleDialog = () => {
+const closeRoleDialog = (): void => {
   activeRoleKey.value = ''
 }
 
-const goRoleLogin = (account: string) => {
+const goRoleLogin = (account: string): void => {
   activeRoleKey.value = ''
   router.push({ path: '/login', query: { account } })
 }
 
+/* ── 四角色闭环条（pen Capabilities） ── */
+const capabilities = computed(() => [
+  {
+    key: 'enterprise',
+    icon: OfficeBuilding,
+    title: t('officialHome.capabilityEnterprise'),
+    desc: t('officialHome.capabilityEnterpriseDesc'),
+    tag: t('officialHome.capabilityEnterpriseTag'),
+    route: '/enterprise/carbon/upload',
+  },
+  {
+    key: 'reviewer',
+    icon: CircleCheck,
+    title: t('officialHome.capabilityReviewer'),
+    desc: t('officialHome.capabilityReviewerDesc'),
+    tag: t('officialHome.capabilityReviewerTag'),
+    route: '/auditor/audit/list',
+  },
+  {
+    key: 'regulator',
+    icon: Monitor,
+    title: t('officialHome.capabilityRegulator'),
+    desc: t('officialHome.capabilityRegulatorDesc'),
+    tag: t('officialHome.capabilityRegulatorTag'),
+    route: '/third-party/monitor',
+  },
+  {
+    key: 'admin',
+    icon: SetUp,
+    title: t('officialHome.capabilityAdmin'),
+    desc: t('officialHome.capabilityAdminDesc'),
+    tag: t('officialHome.capabilityAdminTag'),
+    route: '/admin/system/users',
+  },
+])
+
+/* ── 合规徽标条 ── */
 const complianceBadges = computed(() => [
   { icon: Stamp, text: t('officialHome.badgeStandardFull') },
   { icon: Link, text: t('officialHome.badgeFabricFull') },
@@ -193,6 +230,7 @@ const complianceBadges = computed(() => [
   { icon: Medal, text: t('officialHome.badgeIsoFull') },
 ])
 
+/* ── 页脚链接（保留既有三列） ── */
 const footerLinkGroups = computed(() => [
   {
     title: t('officialHome.footerMoreLinks'),
@@ -220,7 +258,7 @@ const footerLinkGroups = computed(() => [
   },
 ])
 
-/* ── 市场大盘宏观指标响应式状态与优雅降级配置 ── */
+/* ── 市场大盘宏观指标（含优雅降级） ── */
 const marketOverview = ref<MarketOverview | null>(null)
 const loadingMarket = ref(false)
 
@@ -231,7 +269,6 @@ const formatNumber = (val: number | string | null | undefined, fallback = '--'):
   return num.toLocaleString('en-US')
 }
 
-// 优雅降级默认指标 (与原静态兜底保持风格一致，千分位展示)
 const FALLBACK_METRICS = {
   enterprises: '3,248',
   reports: '1,560',
@@ -263,24 +300,83 @@ const metricItems = computed(() => {
   const availability = data?.networkAvailability || data?.distributedAvailability || FALLBACK_METRICS.availability
   const latencyNum = data?.avgLatencyMs ?? data?.averageLatencyMs
   const latency = latencyNum != null ? `${latencyNum}ms` : FALLBACK_METRICS.latency
-  const availabilityLatency = `${availability} / ${latency}`
 
   return [
     { label: t('officialHome.metricEnterprises'), value: enterprises },
     { label: t('officialHome.metricCarbonReports'), value: reports },
     { label: t('officialHome.metricTransactions'), value: transactions },
     { label: t('officialHome.metricTradingVolume'), value: volume },
-    { label: t('officialHome.metricAvailabilityLatency'), value: availabilityLatency },
+    { label: t('officialHome.metricAvailabilityLatency'), value: `${availability} / ${latency}` },
   ]
 })
 
-const fetchMarketOverview = async () => {
+/* ── 链网脉搏 + 实时区块流 ── */
+const pulse = ref({
+  online: false,
+  mode: 'STANDBY',
+  channel: 'mychannel',
+  blockHeight: null as number | null,
+  txCount: null as number | null,
+  chaincode: 'carbon-chaincode',
+})
+
+/** 真实的最近区块（登录态才能取到；访客态保持空数组并显示待接入） */
+const latestBlocks = ref<BlockchainBlockResponse[]>([])
+
+const isSignedIn = computed(() => Boolean(getAccessToken()))
+
+const pulseNetworkMode = computed(() => {
+  if (!pulse.value.online) {
+    return t('officialHome.pulseStandbyMode')
+  }
+  const mode = (pulse.value.mode && pulse.value.mode !== 'STANDBY' ? pulse.value.mode : 'FABRIC').toUpperCase()
+  return `${mode} · ONLINE`
+})
+
+const streamRows = computed(() =>
+  latestBlocks.value.slice(0, 5).map((block) => ({
+    height: `#${formatNumber(block.blockNumber, '0')}`,
+    detail: `${shortHash(block.blockHash)} · ${block.txCount ?? 0} tx`,
+    time: relativeTime(block.timestamp),
+    tone: block.blockType === 'GENESIS' ? 'neutral' : 'positive',
+  })),
+)
+
+function shortHash(hash: string | undefined): string {
+  if (!hash) return '—'
+  return hash.length > 12 ? `${hash.slice(0, 10)}…` : hash
+}
+
+/** 相对时间：区块时间戳 → 「刚刚 / n 分钟前 / n 小时前 / 日期」 */
+function relativeTime(timestamp: string | undefined): string {
+  if (!timestamp) return '—'
+  const then = new Date(timestamp).getTime()
+  if (Number.isNaN(then)) return '—'
+  const diffMin = Math.floor((Date.now() - then) / 60000)
+  if (diffMin < 1) return '刚刚'
+  if (diffMin < 60) return `${diffMin} 分钟前`
+  if (diffMin < 60 * 24) return `${Math.floor(diffMin / 60)} 小时前`
+  return timestamp.slice(0, 10)
+}
+
+const heroBlockCount = computed(() => {
+  if (pulse.value.blockHeight != null) return formatNumber(pulse.value.blockHeight)
+  const newest = latestBlocks.value[0]?.blockNumber
+  return newest != null ? formatNumber(newest) : '—'
+})
+
+const heroMetricItems = computed(() => [
+  { value: heroBlockCount.value, label: t('officialHome.heroMetricBlocks') },
+  { value: formatNumber(marketOverview.value?.totalCarbonReports ?? 41), label: t('officialHome.heroMetricReports') },
+  { value: '4', label: t('officialHome.heroMetricRoles') },
+])
+
+const fetchMarketOverview = async (): Promise<void> => {
   loadingMarket.value = true
   try {
     const data = await getMarketOverview()
     if (data) {
       marketOverview.value = data
-      // 若链网脉搏未处于 live 状态，可使用大盘返回的链网宏观状态进行同步展示
       if (!pulse.value.online && data.chainOnline) {
         pulse.value = {
           online: Boolean(data.chainOnline),
@@ -299,33 +395,7 @@ const fetchMarketOverview = async () => {
   }
 }
 
-const galleryImages = GALLERY_IMAGES
-
-// =========================================================================
-// [DEFENSE-TRACE-OFFICIAL-HOME-01]: 门户大厅主界面与底层联盟链脉搏探针
-// 【业务场景】：系统官方首页门户、多角色导航入口与 Hyperledger Fabric 状态感知
-// 【对应API】：api/blockchain.ts -> getStatus()
-// 【后端映射】：GET /api/v1/blockchain/status -> BlockchainController.getStatus()
-// =========================================================================
-/* ── 链网脉搏条：登录态下拉真实 Fabric 状态，访客态静默展示环境提示 ── */
-const pulse = ref({
-  online: false,
-  mode: 'STANDBY',
-  channel: 'mychannel',
-  blockHeight: null as number | null,
-  txCount: null as number | null,
-  chaincode: 'carbon-chaincode',
-})
-
-const pulseNetworkMode = computed(() => {
-  if (!pulse.value.online) {
-    return t('officialHome.pulseStandbyMode')
-  }
-  const mode = (pulse.value.mode && pulse.value.mode !== 'STANDBY' ? pulse.value.mode : 'FABRIC').toUpperCase()
-  return `${mode} · ONLINE`
-})
-
-const refreshPulse = async () => {
+const refreshPulse = async (): Promise<void> => {
   if (!getAccessToken()) return
   try {
     const status = await getStatus()
@@ -333,8 +403,8 @@ const refreshPulse = async () => {
       online: Boolean(status.connected),
       mode: String(status.mode ?? 'FABRIC'),
       channel: String(status.channel ?? 'mychannel'),
-      blockHeight: null,
-      txCount: null,
+      blockHeight: pulse.value.blockHeight,
+      txCount: pulse.value.txCount,
       chaincode: String(status.chaincode ?? 'carbon-chaincode'),
     }
   } catch {
@@ -342,47 +412,39 @@ const refreshPulse = async () => {
   }
 }
 
-/* ── Hero 存证数字孪生视窗：四步流转 + 数据指纹动画 ── */
-const twinSteps = computed(() => [
-  { icon: Document, label: t('officialHome.twinStep1'), desc: t('officialHome.twinStep1Desc') },
-  { icon: EditPen, label: t('officialHome.twinStep2'), desc: t('officialHome.twinStep2Desc') },
-  { icon: Connection, label: t('officialHome.twinStep3'), desc: t('officialHome.twinStep3Desc') },
-  { icon: CircleCheck, label: t('officialHome.twinStep4'), desc: t('officialHome.twinStep4Desc') },
-])
-
-const activeStep = ref(0)
-const fingerprint = ref('0x17d629d54dcd8c3d48a80a7301b9c58d85980a25266c679fd1aaee7b5a7d209f')
-
-const HEX_CHARS = '0123456789abcdef'
-const HEX_SLICE_START = 2
-const HEX_SLICE_END = 10
-
-function scrambleFingerprint() {
-  const chars = fingerprint.value.split('')
-  for (let i = HEX_SLICE_START; i < HEX_SLICE_END; i += 1) {
-    chars[i] = HEX_CHARS[Math.floor(Math.random() * HEX_CHARS.length)]
+const refreshBlocks = async (): Promise<void> => {
+  if (!getAccessToken()) return
+  try {
+    const page = await getLatestBlocks({ page: 0, size: 5 })
+    const rows: BlockchainBlockResponse[] = Array.isArray(page?.items) ? page.items : []
+    latestBlocks.value = rows
+    if (rows[0]?.blockNumber != null) {
+      pulse.value.blockHeight = rows[0].blockNumber
+    }
+    pulse.value.online = true
+  } catch {
+    /* 静默失败：区块流保持「待接入」提示，不打断首屏 */
   }
-  fingerprint.value = chars.join('')
 }
 
-let stepTimer: number | undefined
-let scrambleTimer: number | undefined
+let streamTimer: number | undefined
 
 onMounted(() => {
   void fetchMarketOverview()
   void refreshPulse()
-  stepTimer = window.setInterval(() => {
-    activeStep.value = (activeStep.value + 1) % twinSteps.value.length
-  }, 2200)
-  scrambleTimer = window.setInterval(scrambleFingerprint, 450)
+  void refreshBlocks()
+  // 30s 轮询：与后端撮合调度同频，避免访客页面高频打链
+  streamTimer = window.setInterval(() => {
+    void refreshBlocks()
+  }, 30000)
 })
 
 onBeforeUnmount(() => {
-  window.clearInterval(stepTimer)
-  window.clearInterval(scrambleTimer)
+  if (streamTimer) window.clearInterval(streamTimer)
 })
 
-const scrollToSection = async (key: string) => {
+/* ── 区块内导航 ── */
+const scrollToSection = async (key: string): Promise<void> => {
   await nextTick()
   const el = document.getElementById(key)
   if (el) {
@@ -390,18 +452,16 @@ const scrollToSection = async (key: string) => {
   }
 }
 
-const onNavClick = (key: string) => {
+const onNavClick = (key: string): void => {
   void scrollToSection(key)
   mobileMenuOpen.value = false
 }
 
-const jumpToRoute = (path: string) => {
+const jumpToRoute = (path: string): void => {
   router.push(path)
 }
 
-const onSocialClick = () => {
-  ElMessage.success(t('officialHome.socialTriggered'))
-}
+const galleryImages = GALLERY_IMAGES
 
 watch(
   () => route.hash,
@@ -415,8 +475,15 @@ watch(
 
 <template>
   <div class="site-page">
+    <!-- 顶栏：64px、shellTop 底、发丝线，品牌 Mark + 字标 + 右侧双按钮 -->
     <header class="top-nav">
-      <div class="brand" @click="onNavClick('hero')">OAISS</div>
+      <div class="brand" @click="onNavClick('hero')">
+        <span class="brand__mark" aria-hidden="true">
+          <el-icon :size="16"><Link /></el-icon>
+        </span>
+        <span class="brand__word">{{ t('login.brandName') }}</span>
+        <span class="brand__en">OAISS</span>
+      </div>
       <nav class="nav-menu">
         <button
           v-for="item in navItems"
@@ -428,7 +495,7 @@ watch(
           {{ item.label }}
         </button>
       </nav>
-      <button class="hamburger-btn" type="button" @click="mobileMenuOpen = !mobileMenuOpen">
+      <button class="hamburger-btn" type="button" :aria-label="t('layout.primaryNav')" @click="mobileMenuOpen = !mobileMenuOpen">
         <span class="hamburger-line" />
         <span class="hamburger-line" />
         <span class="hamburger-line" />
@@ -446,103 +513,134 @@ watch(
           </button>
         </div>
       </div>
-      <div class="social-links">
-        <button type="button" class="social-btn" @click="onSocialClick"><el-icon><Message /></el-icon></button>
-        <button type="button" class="social-btn" @click="onSocialClick"><el-icon><Share /></el-icon></button>
-        <button type="button" class="social-btn" @click="onSocialClick"><el-icon><Link /></el-icon></button>
-      </div>
-      <div class="nav-cta-group">
-        <button type="button" class="nav-cta-login" @click="jumpToRoute('/login')">
-          {{ t('officialHome.btnLogin') }}
+      <div class="nav-actions">
+        <button type="button" class="nav-btn nav-btn--ghost" @click="jumpToRoute('/login')">
+          {{ t('officialHome.btnRegulatorEntry') }}
         </button>
-        <button type="button" class="nav-cta-primary" @click="onNavClick('platform')">
-          {{ t('officialHome.btnQuickExperience') }}
+        <button type="button" class="nav-btn nav-btn--primary" @click="onNavClick('platform')">
+          {{ t('officialHome.btnEnterSystem') }}
         </button>
       </div>
     </header>
 
-    <section id="hero" class="hero" :style="{ backgroundImage: `linear-gradient(115deg, rgba(6, 34, 39, 0.92) 0%, rgba(9, 47, 48, 0.78) 46%, rgba(10, 58, 55, 0.45) 100%), url(${HERO_BG})` }">
-      <div class="hero-overlay">
-        <div class="hero-inner">
-          <div class="hero-copy">
-            <div class="hero-badges">
-              <span v-for="badge in heroBadges" :key="badge.text" class="hero-badge">
-                <el-icon :size="14" class="hero-badge-icon"><component :is="badge.icon" /></el-icon>{{ badge.text }}
-              </span>
-            </div>
-            <h1 class="hero-title">{{ t('officialHome.heroTitle') }}</h1>
-            <p class="hero-description">
-              {{ t('officialHome.heroSubtitle') }}
-            </p>
-            <div class="hero-cta-row">
-              <button type="button" class="hero-cta-primary" @click="onNavClick('platform')">
-                {{ t('officialHome.btnExperienceRoles') }}
-                <span class="hero-cta-arrow">→</span>
-              </button>
-              <button type="button" class="hero-cta-ghost" @click="onNavClick('build')">
-                {{ t('officialHome.btnInspectLedger') }}
-              </button>
-            </div>
+    <!-- Hero：浅底双栏；左文案 + 右实时区块流卡 -->
+    <section id="hero" class="hero">
+      <div class="hero-inner">
+        <div class="hero-copy">
+          <p class="hero-kicker">
+            <span class="hero-kicker__led" :class="{ 'is-live': pulse.online }" aria-hidden="true" />
+            {{ pulse.online ? t('officialHome.heroKicker', { blocks: heroBlockCount }) : t('officialHome.heroKickerPending') }}
+          </p>
+          <h1 class="hero-title">{{ t('officialHome.heroHeadline') }}</h1>
+          <p class="hero-description">{{ t('officialHome.heroSub') }}</p>
+          <div class="hero-cta-row">
+            <button type="button" class="hero-cta-primary" @click="onNavClick('platform')">
+              {{ t('officialHome.btnEnterSystem') }}
+              <span class="hero-cta-arrow" aria-hidden="true">→</span>
+            </button>
+            <button type="button" class="hero-cta-ghost" @click="jumpToRoute('/enterprise/blockchain/browser')">
+              {{ t('officialHome.btnViewExplorer') }}
+            </button>
           </div>
-          <div class="hero-visual" aria-hidden="true">
-            <div class="twin-card">
-              <div class="twin-head">
-                <span class="twin-status-dot" :class="pulse.online ? 'is-live' : 'is-standby'" />
-                <span class="twin-head-title">{{ t('officialHome.twinWindowTitle') }}</span>
-                <span class="twin-head-live">{{ pulse.online ? t('officialHome.twinLive') : t('officialHome.twinStandby') }}</span>
-              </div>
-              <ol class="twin-steps">
-                <li
-                  v-for="(step, idx) in twinSteps"
-                  :key="step.label"
-                  class="twin-step"
-                  :class="{ 'is-active': activeStep === idx, 'is-done': activeStep > idx }"
-                >
-                  <span class="twin-step-icon"><el-icon :size="16"><component :is="step.icon" /></el-icon></span>
-                  <span class="twin-step-text">
-                    <strong>{{ step.label }}</strong>
-                    <em>{{ step.desc }}</em>
-                  </span>
-                </li>
-              </ol>
-              <div class="twin-fingerprint">
-                <span class="twin-fingerprint-label">{{ t('officialHome.twinFingerprintLabel') }}</span>
-                <span class="twin-fingerprint-hash">{{ fingerprint }}</span>
-              </div>
+          <div class="hero-badges">
+            <span v-for="badge in heroBadges" :key="badge.text" class="hero-badge">
+              <el-icon :size="13" class="hero-badge-icon"><component :is="badge.icon" /></el-icon>{{ badge.text }}
+            </span>
+          </div>
+          <dl class="hero-metrics">
+            <div v-for="(metric, i) in heroMetricItems" :key="metric.label" class="hero-metric">
+              <dt class="hero-metric__value">{{ metric.value }}</dt>
+              <dd class="hero-metric__label">{{ metric.label }}</dd>
+              <span v-if="i < heroMetricItems.length - 1" class="hero-metric__divider" aria-hidden="true" />
             </div>
+          </dl>
+        </div>
+
+        <!-- 实时区块流卡：顶栏 44px + 5 条事件行 52px -->
+        <div class="stream-card">
+          <header class="stream-card__head">
+            <span class="stream-card__led" :class="{ 'is-live': pulse.online }" aria-hidden="true" />
+            <span class="stream-card__title">{{ t('officialHome.streamTitle', { channel: pulse.channel }) }}</span>
+            <span class="stream-card__pill" :class="pulse.online ? 'is-live' : 'is-standby'">
+              <span class="stream-card__dot" aria-hidden="true" />
+              {{ pulse.online ? t('officialHome.streamRunning') : t('officialHome.streamStandby') }}
+            </span>
+          </header>
+
+          <ol v-if="streamRows.length" class="stream-rows">
+            <li v-for="row in streamRows" :key="row.height" class="stream-row">
+              <span class="stream-row__height">{{ row.height }}</span>
+              <span class="stream-row__detail">{{ row.detail }}</span>
+              <span class="stream-row__time">{{ row.time }}</span>
+            </li>
+          </ol>
+
+          <div v-else class="stream-empty">
+            <p class="stream-empty__text">
+              {{ isSignedIn ? t('officialHome.streamEmpty') : t('officialHome.streamLoginHint') }}
+            </p>
+            <button type="button" class="stream-empty__link" @click="jumpToRoute('/login')">
+              {{ t('officialHome.btnLogin') }}
+            </button>
           </div>
         </div>
       </div>
     </section>
 
+    <!-- 链网脉搏：保留既有四项真实状态（区块高度在此展示，供 e2e 断言） -->
     <section id="pulse" class="pulse-bar" aria-label="blockchain live status">
       <div class="pulse-item">
-        <span class="pulse-dot" :class="pulse.online ? 'is-live' : 'is-standby'" />
+        <span class="pulse-dot" :class="pulse.online ? 'is-live' : 'is-standby'" aria-hidden="true" />
         <span class="pulse-label">{{ t('officialHome.pulseNetwork') }}</span>
         <span class="pulse-value">{{ pulseNetworkMode }}</span>
       </div>
-      <div class="pulse-divider" />
+      <span class="pulse-divider" aria-hidden="true" />
       <div class="pulse-item">
         <span class="pulse-label">{{ t('officialHome.pulseChannel') }}</span>
-        <span class="pulse-value">{{ pulse.channel }}</span>
+        <span class="pulse-mono">{{ pulse.channel }}</span>
       </div>
-      <div class="pulse-divider" />
+      <span class="pulse-divider" aria-hidden="true" />
       <div class="pulse-item">
         <span class="pulse-label">{{ t('officialHome.pulseChaincode') }}</span>
-        <span class="pulse-value">{{ pulse.chaincode }}</span>
+        <span class="pulse-mono">{{ pulse.chaincode }}</span>
       </div>
-      <div class="pulse-divider" />
+      <span class="pulse-divider" aria-hidden="true" />
       <div class="pulse-item">
         <span class="pulse-label">{{ t('officialHome.pulseCrypto') }}</span>
-        <span class="pulse-value">RSA-2048 · AES-256-GCM</span>
+        <span class="pulse-mono">RSA-2048 · AES-256-GCM</span>
       </div>
     </section>
 
+    <!-- 四个角色，一条闭环（pen Capabilities） -->
+    <section id="platform" class="capability-section">
+      <header class="section-head">
+        <h2 class="section-title">{{ t('officialHome.capabilityTitle') }}</h2>
+        <p class="section-subtitle">{{ t('officialHome.capabilitySub') }}</p>
+      </header>
+      <div class="capability-grid">
+        <article
+          v-for="cap in capabilities"
+          :key="cap.key"
+          class="capability-card"
+          role="link"
+          tabindex="0"
+          @click="jumpToRoute(cap.route)"
+          @keydown.enter="jumpToRoute(cap.route)"
+        >
+          <el-icon :size="19" class="capability-card__icon"><component :is="cap.icon" /></el-icon>
+          <h3 class="capability-card__title">{{ cap.title }}</h3>
+          <p class="capability-card__desc">{{ cap.desc }}</p>
+          <span class="capability-card__tag">{{ cap.tag }}</span>
+        </article>
+      </div>
+    </section>
+
+    <!-- 核心能力四卡（保留既有四个业务入口，整卡可点） -->
     <section id="build" class="section-wrap">
-      <div class="section-title-wrap">
+      <header class="section-head">
         <h2 class="section-title">{{ t('officialHome.sectionCoreFeatures') }}</h2>
         <p class="section-subtitle">{{ t('officialHome.sectionCoreFeaturesSub') }}</p>
-      </div>
+      </header>
       <div class="feature-grid">
         <article
           v-for="item in featureCards"
@@ -553,20 +651,22 @@ watch(
           @click="jumpToRoute(item.route)"
           @keydown.enter="jumpToRoute(item.route)"
         >
-          <span class="card-go" aria-hidden="true"><el-icon :size="16"><ArrowRight /></el-icon></span>
-          <div class="feature-icon"><el-icon><component :is="item.icon" /></el-icon></div>
+          <span class="card-go" aria-hidden="true"><el-icon :size="14"><ArrowRight /></el-icon></span>
+          <el-icon :size="18" class="feature-icon"><component :is="item.icon" /></el-icon>
           <h3>{{ item.title }}</h3>
           <p>{{ item.description }}</p>
+          <el-button link type="primary" :data-route="item.route" @click.stop="jumpToRoute(item.route)">
+            {{ t('officialHome.btnEnter') }}
+          </el-button>
         </article>
       </div>
     </section>
 
+    <!-- 系统介绍 + 真实大盘指标 -->
     <section id="research" class="section-wrap intro-section">
       <div class="intro-left">
         <h2 class="section-title">{{ t('officialHome.sectionSystemIntro') }}</h2>
-        <p class="intro-text">
-          {{ t('officialHome.sectionSystemIntroSub') }}
-        </p>
+        <p class="intro-text">{{ t('officialHome.sectionSystemIntroSub') }}</p>
         <div class="metrics-grid" :class="{ 'is-loading': loadingMarket }">
           <div v-for="item in metricItems" :key="item.label" class="metric-card">
             <div class="metric-value">{{ item.value }}</div>
@@ -574,40 +674,52 @@ watch(
           </div>
         </div>
       </div>
-      <div class="intro-image" :style="{ backgroundImage: `url(${INTRO_BG})` }" />
+      <figure class="intro-image">
+        <img :src="INTRO_BG" :alt="t('officialHome.altEcosystem')" loading="lazy" decoding="async" />
+      </figure>
     </section>
 
-    <section id="platform" class="section-wrap">
-      <div class="section-title-wrap">
+    <!-- 四角色入驻通道（保留既有角色详述弹窗） -->
+    <section class="section-wrap">
+      <header class="section-head">
         <h2 class="section-title">{{ t('officialHome.sectionUserRoles') }}</h2>
         <p class="section-subtitle">{{ t('officialHome.sectionUserRolesSub') }}</p>
-      </div>
+      </header>
       <div class="roles-grid">
-        <article v-for="role in roleCards" :key="role.key" class="role-card" :style="{ '--role-accent': role.accent }">
-          <div class="role-icon"><el-icon><component :is="role.icon" /></el-icon></div>
+        <article v-for="role in roleCards" :key="role.key" class="role-card">
+          <el-icon :size="18" class="role-icon"><component :is="role.icon" /></el-icon>
           <h3>{{ role.title }}</h3>
           <p>{{ role.description }}</p>
-          <button type="button" class="role-detail-btn" @click="openRoleDialog(role.key)">
-            {{ t('officialHome.btnRoleDetail') }}<span class="role-detail-arrow">→</span>
-          </button>
+          <el-button link type="primary" :data-route="role.route" @click="openRoleDialog(role.key)">
+            {{ t('officialHome.btnRoleDetail') }}
+          </el-button>
         </article>
       </div>
     </section>
 
+    <!-- 生态图集：三张语义成立的实拍 -->
     <section id="country" class="section-wrap">
-      <div class="section-title-wrap">
+      <header class="section-head">
         <h2 class="section-title">{{ t('officialHome.sectionEcosystem') }}</h2>
         <p class="section-subtitle">{{ t('officialHome.sectionEcosystemSub') }}</p>
-      </div>
+      </header>
       <div class="gallery-grid">
-        <img v-for="url in galleryImages" :key="url" :src="url" :alt="t('officialHome.altEcosystem')" />
+        <img
+          v-for="url in galleryImages"
+          :key="url"
+          :src="url"
+          :alt="t('officialHome.altEcosystem')"
+          loading="lazy"
+          decoding="async"
+        />
       </div>
     </section>
 
+    <!-- 合规徽标条 -->
     <section id="join" class="compliance-strip">
       <div class="compliance-row">
         <span v-for="badge in complianceBadges" :key="badge.text" class="compliance-item">
-          <el-icon :size="15" class="compliance-icon"><component :is="badge.icon" /></el-icon>{{ badge.text }}
+          <el-icon :size="14" class="compliance-icon"><component :is="badge.icon" /></el-icon>{{ badge.text }}
         </span>
       </div>
     </section>
@@ -627,22 +739,23 @@ watch(
           </button>
         </div>
       </div>
-      <div class="copyright">© 2026 OAISS. All rights reserved.</div>
+      <div class="copyright">
+        <span>{{ t('officialHome.footerCopyright') }}</span>
+        <span class="copyright__links">
+          <span>{{ t('officialHome.footerAgreement') }}</span>
+          <span>{{ t('officialHome.footerPrivacyShort') }}</span>
+          <span>{{ t('officialHome.footerContact') }}</span>
+        </span>
+      </div>
     </footer>
 
     <Teleport to="body">
       <Transition name="role-dialog">
         <div v-if="activeRoleDetail" class="role-dialog-overlay" @click.self="closeRoleDialog">
-          <div
-            class="role-dialog-panel"
-            :style="{ '--role-accent': roleCards.find(r => r.key === activeRoleKey)?.accent ?? 'var(--color-accent)' }"
-            role="dialog"
-            aria-modal="true"
-          >
+          <div class="role-dialog-panel" role="dialog" aria-modal="true">
             <header class="role-dialog-head">
-              <span class="role-dialog-dot" />
               <h3>{{ roleCards.find(r => r.key === activeRoleKey)?.title }}</h3>
-              <button type="button" class="role-dialog-close" aria-label="close" @click="closeRoleDialog">×</button>
+              <button type="button" class="role-dialog-close" :aria-label="t('common.close')" @click="closeRoleDialog">×</button>
             </header>
             <p class="role-dialog-summary">{{ activeRoleDetail.summary }}</p>
             <ul class="role-dialog-duties">
@@ -652,7 +765,11 @@ watch(
               <button type="button" class="role-dialog-login" @click="goRoleLogin(activeRoleDetail.account)">
                 {{ t('officialHome.btnQuickLogin') }} · {{ activeRoleDetail.account }}
               </button>
-              <button type="button" class="role-dialog-enter" @click="jumpToRoute(roleCards.find(r => r.key === activeRoleKey)?.route ?? '/login')">
+              <button
+                type="button"
+                class="role-dialog-enter"
+                @click="jumpToRoute(roleCards.find(r => r.key === activeRoleKey)?.route ?? '/login')"
+              >
                 {{ t('officialHome.btnAccessRole') }}
               </button>
             </footer>
@@ -664,101 +781,135 @@ watch(
 </template>
 
 <style scoped>
+/* ============================================================================
+   官网首页 · pen「石墨台账」语言
+   底色 ground / 卡面 surface / 发丝线 border / 主操作墨色 action
+   唯一彩色 = 图表蓝 chart（仅用于链上实时数据的活点与主链接）
+   ========================================================================== */
 .site-page {
   min-height: 100vh;
-  background: var(--color-on-inverse-muted);
-  color: var(--color-brand-strong);
+  background: var(--pen-ground);
+  color: var(--pen-ink);
 }
 
+/* ── 顶栏：64px、shellTop、发丝线 ── */
 .top-nav {
   position: sticky;
   top: 0;
   z-index: 100;
-  height: 68px;
+  height: 64px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 28px;
-  background: rgba(11, 45, 48, 0.88);
-  backdrop-filter: blur(8px);
+  gap: 28px;
+  padding: 0 40px;
+  background: var(--pen-shell-top);
+  border-bottom: 1px solid var(--pen-border);
 }
 
 .brand {
-  color: var(--color-mint-100);
-  font-weight: 700;
-  font-size: var(--text-xl);
+  display: flex;
+  align-items: center;
+  gap: 10px;
   cursor: pointer;
+  flex-shrink: 0;
+}
+
+.brand__mark {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-control);
+  display: grid;
+  place-items: center;
+  background: var(--pen-brand-mark);
+  color: var(--color-on-inverse);
+  flex-shrink: 0;
+}
+
+.brand__word {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--pen-ink);
+  white-space: nowrap;
+}
+
+.brand__en {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--pen-faint);
 }
 
 .nav-menu {
   display: flex;
-  gap: 16px;
+  align-items: center;
+  gap: 26px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .nav-item {
+  appearance: none;
   border: none;
   background: transparent;
-  color: var(--color-mint-050);
-  font-size: var(--text-base);
+  padding: 0;
+  color: var(--pen-muted);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1;
   cursor: pointer;
-  padding: 6px 8px;
+  white-space: nowrap;
+  transition: color var(--motion-fast) var(--motion-ease);
 }
 
 .nav-item:hover {
-  color: var(--color-mint-300);
+  color: var(--pen-ink);
 }
 
-.social-links {
-  display: flex;
-  gap: 8px;
-}
-
-.social-btn {
-  border: 1px solid rgba(189, 243, 230, 0.32);
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--color-mint-200);
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.nav-cta-group {
+.nav-actions {
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
-.nav-cta-login {
-  border: 1px solid rgba(189, 243, 230, 0.36);
+.nav-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease);
+}
+
+.nav-btn--ghost {
   background: transparent;
-  color: var(--color-mint-100);
-  padding: 8px 16px;
-  border-radius: 10px;
-  font-size: var(--text-base);
-  cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease;
+  border-color: var(--pen-border);
+  color: var(--pen-ink);
 }
 
-.nav-cta-login:hover {
-  background: rgba(255, 255, 255, 0.1);
+.nav-btn--ghost:hover {
+  background: var(--pen-raised);
+}
+
+.nav-btn--primary {
+  background: var(--pen-action);
   color: var(--color-on-inverse);
 }
 
-.nav-cta-primary {
-  border: none;
-  background: var(--color-accent);
-  color: var(--color-on-inverse);
-  padding: 9px 18px;
-  border-radius: 10px;
-  font-weight: 600;
-  font-size: var(--text-base);
-  cursor: pointer;
-  transition: transform 0.2s ease;
-}
-
-.nav-cta-primary:hover {
-  transform: translateY(-1px);
+.nav-btn--primary:hover {
+  background: var(--pen-action-hover);
 }
 
 .hamburger-btn {
@@ -768,18 +919,19 @@ watch(
   gap: 4px;
   width: 34px;
   height: 34px;
-  border: 1px solid rgba(189, 243, 230, 0.32);
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
+  padding: 8px;
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-control);
+  background: var(--pen-surface);
   cursor: pointer;
-  padding: 6px;
+  flex-shrink: 0;
 }
 
 .hamburger-line {
   display: block;
   width: 100%;
-  height: 2px;
-  background: var(--color-mint-200);
+  height: 1.5px;
+  background: var(--pen-ink);
   border-radius: 1px;
 }
 
@@ -787,57 +939,52 @@ watch(
   position: fixed;
   inset: 0;
   z-index: 200;
-  background: rgba(0, 0, 0, 0.45);
+  background: var(--pen-popover-shadow);
 }
 
 .mobile-menu-panel {
   position: absolute;
-  top: 0;
+  top: 64px;
   right: 0;
   width: 240px;
-  height: 100%;
-  background: var(--color-brand-strong);
-  padding: 68px 0 20px;
+  background: var(--pen-surface);
+  border-left: 1px solid var(--pen-border);
+  border-bottom: 1px solid var(--pen-border);
   display: flex;
   flex-direction: column;
+  padding: var(--space-2) 0;
 }
 
 .mobile-menu-item {
-  display: block;
-  width: 100%;
-  padding: 14px 24px;
+  appearance: none;
   border: none;
   background: transparent;
-  color: var(--color-mint-050);
-  font-size: 15px;
+  width: 100%;
+  padding: 12px 20px;
+  color: var(--pen-muted);
+  font-family: inherit;
+  font-size: var(--fs-body);
   text-align: left;
   cursor: pointer;
 }
 
 .mobile-menu-item:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--color-mint-300);
+  background: var(--pen-nav-active);
+  color: var(--pen-ink);
 }
 
+/* ── Hero：浅底双栏，内容 1120 居中 ── */
 .hero {
-  min-height: 72vh;
-  background-size: cover;
-  background-position: center;
-  display: flex;
-  align-items: center;
-}
-
-.hero-overlay {
-  width: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 64px 20px;
+  padding: 56px 40px 48px;
+  background: var(--pen-ground);
 }
 
 .hero-inner {
+  max-width: 1120px;
+  margin: 0 auto;
   display: grid;
-  grid-template-columns: 1.15fr 0.85fr;
-  gap: 40px;
+  grid-template-columns: minmax(0, 1fr) 480px;
+  gap: 60px;
   align-items: center;
 }
 
@@ -845,41 +992,46 @@ watch(
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  text-align: left;
+  min-width: 0;
 }
 
-.hero-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 22px;
-  margin-bottom: 18px;
-}
-
-.hero-badge {
+.hero-kicker {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  color: var(--color-mint-200);
-  font-size: var(--text-sm);
+  gap: 8px;
+  margin: 0 0 20px;
+  color: var(--pen-muted);
+  font-size: 11.5px;
+  line-height: 1;
 }
 
-.hero-badge .hero-badge-icon {
-  color: var(--color-on-inverse);
+.hero-kicker__led {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pen-faint);
+  flex-shrink: 0;
+}
+
+.hero-kicker__led.is-live {
+  background: var(--pen-chart);
+  box-shadow: 0 0 0 3px var(--pen-note-bg);
 }
 
 .hero-title {
-  margin: 0 0 12px;
-  color: var(--color-on-inverse-muted);
-  font-size: var(--text-display);
+  margin: 0 0 16px;
+  color: var(--pen-ink);
+  font-size: 42px;
   font-weight: 700;
-  line-height: 1.25;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
 }
 
 .hero-description {
   margin: 0 0 26px;
-  color: var(--color-on-inverse-muted);
-  font-size: var(--text-md);
-  max-width: 560px;
+  max-width: 540px;
+  color: var(--pen-muted);
+  font-size: 14px;
   line-height: 1.8;
 }
 
@@ -887,29 +1039,33 @@ watch(
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+  margin-bottom: 22px;
 }
 
 .hero-cta-primary {
+  appearance: none;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
+  height: 42px;
+  padding: 0 20px;
   border: none;
-  background: var(--color-accent);
+  border-radius: var(--radius-control);
+  background: var(--pen-action);
   color: var(--color-on-inverse);
-  font-size: var(--text-md);
-  font-weight: 600;
-  padding: 13px 26px;
-  border-radius: 12px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
-  transition: transform 0.2s ease;
+  transition: background-color var(--motion-fast) var(--motion-ease);
 }
 
 .hero-cta-primary:hover {
-  transform: translateY(-2px);
+  background: var(--pen-action-hover);
 }
 
 .hero-cta-arrow {
-  transition: transform 0.2s ease;
+  transition: transform var(--motion-base) var(--motion-ease);
 }
 
 .hero-cta-primary:hover .hero-cta-arrow {
@@ -917,172 +1073,252 @@ watch(
 }
 
 .hero-cta-ghost {
-  border: 1px solid rgba(202, 255, 241, 0.5);
-  background: rgba(10, 58, 55, 0.35);
-  backdrop-filter: blur(6px);
-  color: var(--color-mint-100);
-  font-size: var(--text-md);
-  padding: 13px 26px;
-  border-radius: 12px;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  height: 42px;
+  padding: 0 18px;
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-control);
+  background: var(--pen-surface);
+  color: var(--pen-ink);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease;
+  transition: background-color var(--motion-fast) var(--motion-ease);
 }
 
 .hero-cta-ghost:hover {
-  background: rgba(20, 84, 78, 0.5);
-  border-color: rgba(202, 255, 241, 0.8);
+  background: var(--pen-raised);
 }
 
-/* ── Hero 存证数字孪生视窗 ── */
-.hero-visual {
+.hero-badges {
   display: flex;
-  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin-bottom: 24px;
 }
 
-.twin-card {
-  width: min(400px, 100%);
-  border-radius: 18px;
-  border: 1px solid rgba(198, 250, 235, 0.22);
-  background: var(--color-brand-strong);
-  backdrop-filter: blur(14px);
-  padding: 18px 18px 16px;
-  color: var(--color-mint-100);
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--pen-faint);
+  font-size: 11px;
 }
 
-.twin-head {
+.hero-badge-icon {
+  color: var(--pen-faint);
+}
+
+/* Hero 三指标：数值 21px、标签 11px，竖发丝线分隔 */
+.hero-metrics {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgba(198, 250, 235, 0.14);
+  margin: 0;
+  padding-top: 20px;
+  border-top: 1px solid var(--pen-border);
+  width: 100%;
+  max-width: 440px;
 }
 
-.twin-status-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-}
-
-.twin-status-dot.is-live {
-  background: var(--color-accent);
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-
-.twin-status-dot.is-standby {
-  background: var(--color-text-muted);
-  outline: 2px solid var(--color-border);
-  outline-offset: 2px;
-}
-
-.twin-head-title {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--color-on-inverse-muted);
-}
-
-.twin-head-live {
-  margin-left: auto;
-  font-size: var(--text-xs);
-  color: var(--color-mint-300);
-  letter-spacing: 0.04em;
-}
-
-.twin-steps {
-  list-style: none;
-  margin: 14px 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.twin-step {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  border-radius: 12px;
-  border: 1px solid transparent;
-  background: rgba(255, 255, 255, 0.04);
-  opacity: 0.6;
-  transition: opacity 0.35s ease, border-color 0.35s ease, background 0.35s ease, transform 0.35s ease;
-}
-
-.twin-step.is-active {
-  opacity: 1;
-  border-color: rgba(94, 234, 212, 0.45);
-  background: rgba(45, 212, 191, 0.12);
-  transform: translateX(4px);
-}
-
-.twin-step.is-done {
-  opacity: 0.85;
-  border-color: rgba(94, 234, 212, 0.2);
-}
-
-.twin-step-icon {
-  display: grid;
-  place-items: center;
-  color: var(--color-on-inverse-muted);
-}
-
-.twin-step-text {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.35;
-}
-
-.twin-step-text strong {
-  font-size: var(--text-sm);
-  color: var(--color-on-inverse-muted);
-  font-weight: 600;
-}
-
-.twin-step-text em {
-  font-style: normal;
-  font-size: var(--text-xs);
-  color: var(--color-on-inverse-muted);
-}
-
-.twin-fingerprint {
-  border-top: 1px solid rgba(198, 250, 235, 0.14);
-  padding-top: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.twin-fingerprint-label {
-  font-size: var(--text-xs);
-  color: var(--color-on-inverse-muted);
-}
-
-.twin-fingerprint-hash {
-  font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
-  font-size: var(--text-xs);
-  letter-spacing: 0.02em;
-  color: var(--color-on-inverse);
-  word-break: break-all;
-}
-
-/* ── 全局链网脉搏条 ── */
-.pulse-bar {
-  max-width: 1200px;
-  margin: -26px auto 0;
+.hero-metric {
   position: relative;
-  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-right: 22px;
+  flex: 1 1 0;
+}
+
+.hero-metric + .hero-metric {
+  padding-left: 22px;
+}
+
+.hero-metric__value {
+  margin: 0;
+  color: var(--pen-ink);
+  font-size: 21px;
+  font-weight: 500;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.hero-metric__label {
+  margin: 0;
+  color: var(--pen-faint);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.hero-metric__divider {
+  position: absolute;
+  right: 0;
+  top: 4px;
+  width: 1px;
+  height: 30px;
+  background: var(--pen-border);
+}
+
+.hero-metric:last-child .hero-metric__divider {
+  display: none;
+}
+
+/* ── 实时区块流卡：44px 头 + 5×52px 行 ── */
+.stream-card {
+  width: 100%;
+  background: var(--pen-surface);
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+.stream-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--pen-border);
+}
+
+.stream-card__led {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pen-faint);
+  flex-shrink: 0;
+}
+
+.stream-card__led.is-live {
+  background: var(--pen-chart);
+}
+
+.stream-card__title {
+  color: var(--pen-muted);
+  font-size: 11px;
+  line-height: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stream-card__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  height: 23px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--pen-pill-neu-bd);
+  background: var(--pen-pill-neu-bg);
+  color: var(--pen-pill-neu-ink);
+  font-size: 11px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.stream-card__pill.is-live {
+  border-color: var(--pen-pill-pos-bd);
+  background: var(--pen-pill-pos-bg);
+  color: var(--pen-pill-pos-ink);
+}
+
+.stream-card__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.stream-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.stream-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 52px;
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--pen-border);
+}
+
+.stream-row:last-child {
+  border-bottom: none;
+}
+
+.stream-row__height {
+  width: 64px;
+  flex-shrink: 0;
+  color: var(--pen-ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stream-row__detail {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--pen-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stream-row__time {
+  flex-shrink: 0;
+  color: var(--pen-faint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.stream-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: 28px var(--space-4);
+}
+
+.stream-empty__text {
+  margin: 0;
+  color: var(--pen-faint);
+  font-size: var(--fs-sub);
+  line-height: 1.6;
+}
+
+.stream-empty__link {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--pen-chart);
+  font-family: inherit;
+  font-size: var(--fs-sub);
+  cursor: pointer;
+}
+
+/* ── 链网脉搏条 ── */
+.pulse-bar {
+  max-width: 1120px;
+  margin: 0 auto var(--space-6);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  padding: 14px 22px;
-  border-radius: 14px;
-  border: 1px solid rgba(31, 112, 104, 0.22);
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(12px);
-
+  gap: var(--space-3);
   flex-wrap: wrap;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-card);
+  background: var(--pen-surface);
 }
 
 .pulse-item {
@@ -1093,112 +1329,193 @@ watch(
 }
 
 .pulse-dot {
-  width: 9px;
-  height: 9px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
 .pulse-dot.is-live {
-  background: var(--color-accent);
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
+  background: var(--pen-chart);
 }
 
 .pulse-dot.is-standby {
-  background: var(--color-on-inverse-muted);
-  outline: 2px solid var(--color-border);
-  outline-offset: 2px;
+  background: var(--pen-faint);
 }
 
 .pulse-label {
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
+  color: var(--pen-faint);
+  font-size: 11px;
   white-space: nowrap;
 }
 
 .pulse-value {
-  font-size: var(--text-sm);
-  font-weight: 700;
-  color: var(--color-brand-strong);
-  font-family: 'JetBrains Mono', 'Cascadia Code', Consolas, monospace;
+  color: var(--pen-ink);
+  font-size: var(--fs-sub);
+  font-weight: 600;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.pulse-mono {
+  color: var(--pen-muted);
+  font-size: var(--fs-sub);
+  font-family: var(--font-mono);
   white-space: nowrap;
 }
 
 .pulse-divider {
   width: 1px;
-  height: 22px;
-  background: rgba(31, 112, 104, 0.18);
+  height: 20px;
+  background: var(--pen-border);
 }
 
-.section-wrap {
-  max-width: 1200px;
+/* ── 章节与标题 ── */
+.section-wrap,
+.capability-section {
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 46px 18px;
+  padding: 40px 40px 44px;
 }
 
-.section-title-wrap {
-  margin-bottom: 20px;
+.capability-section {
+  padding-top: 26px;
+  padding-bottom: 26px;
+  background: var(--pen-shell);
+  border-top: 1px solid var(--pen-border);
+  border-bottom: 1px solid var(--pen-border);
+  max-width: none;
+}
+
+.capability-section > .capability-grid,
+.capability-section > .section-head {
+  max-width: 1120px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-5);
+  margin-bottom: var(--space-5);
 }
 
 .section-title {
   margin: 0;
-  font-size: var(--text-3xl);
-  font-weight: 700;
-  color: var(--color-text);
+  color: var(--pen-ink);
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
 }
 
 .section-subtitle {
-  margin: 8px 0 0;
-  color: var(--color-text-muted);
+  margin: 0;
+  color: var(--pen-muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+  text-align: right;
 }
 
+/* ── 四角色闭环卡 ── */
+.capability-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.capability-card {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: var(--space-4);
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-card);
+  background: var(--pen-surface);
+  cursor: pointer;
+  transition: border-color var(--motion-fast) var(--motion-ease);
+}
+
+.capability-card:hover {
+  border-color: var(--pen-muted);
+}
+
+.capability-card:focus-visible {
+  outline: 2px solid var(--pen-ink);
+  outline-offset: 2px;
+}
+
+.capability-card__icon {
+  color: var(--pen-ink);
+}
+
+.capability-card__title {
+  margin: 0;
+  color: var(--pen-ink);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.capability-card__desc {
+  margin: 0;
+  color: var(--pen-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.capability-card__tag {
+  color: var(--pen-faint);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+/* ── 核心能力四卡 ── */
 .feature-grid,
 .roles-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(180px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
 }
 
 .feature-card,
 .role-card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-on-inverse-muted);
-  border-radius: 14px;
-  padding: 18px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-card);
+  background: var(--pen-surface);
 }
 
-/* 功能卡整卡可点，箭头示能取代同构按钮行 */
 .feature-card {
-  position: relative;
   cursor: pointer;
-  transition: transform 0.22s ease, border-color 0.22s ease;
+  transition: border-color var(--motion-fast) var(--motion-ease);
 }
 
 .feature-card:hover {
-  transform: translateY(-3px);
-  border-color: rgba(20, 167, 154, 0.45);
+  border-color: var(--pen-muted);
 }
 
 .feature-card:focus-visible {
-  outline: 2px solid var(--el-color-primary);
+  outline: 2px solid var(--pen-ink);
   outline-offset: 2px;
 }
 
 .card-go {
   position: absolute;
-  top: 16px;
-  right: 16px;
+  top: var(--space-3);
+  right: var(--space-3);
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  color: var(--el-color-primary);
-  background: rgba(20, 167, 154, 0.1);
+  color: var(--pen-faint);
   opacity: 0;
   transform: translateX(-4px);
-  transition: opacity 0.22s ease, transform 0.22s ease;
+  transition: opacity var(--motion-base) var(--motion-ease), transform var(--motion-base) var(--motion-ease);
 }
 
 .feature-card:hover .card-go,
@@ -1207,166 +1524,222 @@ watch(
   transform: translateX(0);
 }
 
-.role-card {
-  position: relative;
-  overflow: hidden;
-  border-top: 3px solid var(--role-accent, var(--color-accent));
-  transition: transform 0.22s ease;
-}
-
-.role-card:hover {
-  transform: translateY(-3px);
-}
-
-.role-detail-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: none;
-  background: transparent;
-  color: var(--role-accent, var(--color-accent));
-  font-size: var(--text-sm);
-  font-weight: 600;
-  cursor: pointer;
-  padding: 0;
-}
-
-.role-detail-arrow {
-  transition: transform 0.2s ease;
-}
-
-.role-detail-btn:hover .role-detail-arrow {
-  transform: translateX(3px);
-}
-
 .feature-icon,
 .role-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  display: grid;
-  place-items: center;
-  background: var(--color-accent);
-  color: var(--color-on-inverse);
-  font-size: var(--text-lg);
+  color: var(--pen-ink);
 }
 
 .feature-card h3,
 .role-card h3 {
-  margin: 14px 0 8px;
-  font-size: var(--text-lg);
-  font-weight: 600;
+  margin: 0;
+  color: var(--pen-ink);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
 }
 
 .feature-card p,
 .role-card p {
-  margin: 0 0 14px;
-  color: var(--color-text-muted);
-  line-height: 1.7;
-  font-size: var(--text-sm);
+  margin: 0;
+  color: var(--pen-muted);
+  font-size: 12px;
+  line-height: 1.65;
 }
 
+.feature-card :deep(.el-button),
+.role-card :deep(.el-button) {
+  align-self: flex-start;
+  padding: 0;
+  height: auto;
+  margin-top: var(--space-1);
+  color: var(--pen-chart);
+  font-size: 12px;
+}
+
+/* ── 系统介绍 + 大盘指标 ── */
 .intro-section {
   display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: stretch;
 }
 
 .intro-left {
-  background: var(--color-surface);
-  border: 1px solid var(--color-on-inverse-muted);
-  border-radius: 14px;
-  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .intro-text {
-  color: var(--color-text-muted);
-  line-height: 1.9;
-  margin: 10px 0 18px;
+  margin: var(--space-2) 0 var(--space-5);
+  color: var(--pen-muted);
+  font-size: 13px;
+  line-height: 1.85;
 }
 
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(90px, 1fr));
-  gap: 10px;
-  transition: opacity 0.2s ease;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin-top: auto;
+  transition: opacity var(--motion-base) var(--motion-ease);
 }
 
 .metrics-grid.is-loading {
-  opacity: 0.82;
+  opacity: 0.7;
 }
 
 .metric-card {
-  background: var(--color-brand-strong);
-  color: var(--color-on-inverse-muted);
-  border-radius: 10px;
-  padding: 10px;
+  padding: var(--space-3) var(--space-2);
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-card);
+  background: var(--pen-surface);
   text-align: center;
+  min-width: 0;
 }
 
 .metric-value {
-  font-size: clamp(0.85rem, 1.1vw, var(--text-lg));
-  font-weight: 700;
+  color: var(--pen-ink);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .metric-label {
-  font-size: var(--text-xs);
   margin-top: 4px;
-  opacity: 0.86;
+  color: var(--pen-faint);
+  font-size: 10px;
+  line-height: 1.35;
 }
 
 .intro-image {
-  border-radius: 14px;
-  min-height: 320px;
-  background-size: cover;
-  background-position: center;
+  margin: 0;
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  min-height: 280px;
+  border: 1px solid var(--pen-border);
 }
 
+.intro-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ── 生态图集 ── */
 .gallery-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
 }
 
 .gallery-grid img {
   width: 100%;
   height: 190px;
   object-fit: cover;
-  border-radius: 10px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--pen-border);
+  display: block;
 }
 
+/* ── 合规徽标条 ── */
 .compliance-strip {
-  max-width: 1200px;
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 6px 18px 30px;
+  padding: 0 40px 36px;
 }
 
-/* 发丝线分隔行替代徽章墙 */
 .compliance-row {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  row-gap: 10px;
+  row-gap: var(--space-2);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--pen-border);
+  border-bottom: 1px solid var(--pen-border);
 }
 
 .compliance-item {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 2px 22px;
-  color: var(--color-text-muted);
-  font-size: var(--text-sm);
+  padding: 0 22px;
+  color: var(--pen-muted);
+  font-size: 11.5px;
 }
 
 .compliance-item + .compliance-item {
-  border-left: 1px solid rgba(31, 112, 104, 0.22);
+  border-left: 1px solid var(--pen-border);
 }
 
 .compliance-icon {
-  color: var(--color-accent);
+  color: var(--pen-faint);
+}
+
+/* ── 页脚：浅底、发丝线 ── */
+.footer {
+  background: var(--pen-shell);
+  border-top: 1px solid var(--pen-border);
+  padding: 36px 40px 24px;
+}
+
+.footer-columns {
+  max-width: 1120px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.footer h4 {
+  margin: 0 0 var(--space-3);
+  color: var(--pen-ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.footer-link {
+  display: block;
+  width: 100%;
+  padding: 0;
+  margin-bottom: var(--space-2);
+  border: none;
+  background: transparent;
+  color: var(--pen-muted);
+  font-family: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--motion-ease);
+}
+
+.footer-link:hover {
+  color: var(--pen-ink);
+}
+
+.copyright {
+  max-width: 1120px;
+  margin: var(--space-5) auto 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--pen-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  color: var(--pen-faint);
+  font-size: 11px;
+}
+
+.copyright__links {
+  display: flex;
+  align-items: center;
+  gap: 22px;
 }
 
 /* ── 角色权责详述弹窗 ── */
@@ -1376,146 +1749,137 @@ watch(
   z-index: 300;
   display: grid;
   place-items: center;
-  padding: 20px;
-  background: rgba(4, 24, 26, 0.55);
-  backdrop-filter: blur(4px);
+  padding: var(--space-5);
+  background: rgba(10, 10, 10, 0.45);
 }
 
 .role-dialog-panel {
   width: min(520px, 100%);
   max-height: 84vh;
   overflow-y: auto;
-  border-radius: 18px;
-  background: var(--color-on-inverse);
-  padding: 24px;
+  padding: var(--space-5);
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-card);
+  background: var(--pen-surface);
+  box-shadow: var(--pen-overlay-shadow);
 }
 
 .role-dialog-head {
   display: flex;
   align-items: center;
-  gap: 10px;
-}
-
-.role-dialog-dot {
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  background: var(--role-accent, var(--color-accent));
-  outline: 2px solid color-mix(in srgb, var(--role-accent, var(--color-accent)) 45%, transparent);
-  outline-offset: 2px;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--pen-border);
 }
 
 .role-dialog-head h3 {
   margin: 0;
-  font-size: var(--text-xl);
-  color: var(--color-text);
+  color: var(--pen-ink);
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .role-dialog-close {
   margin-left: auto;
+  appearance: none;
   border: none;
   background: transparent;
-  font-size: 26px;
+  padding: 0 4px;
+  color: var(--pen-faint);
+  font-size: 22px;
   line-height: 1;
-  color: var(--color-text-muted);
   cursor: pointer;
 }
 
 .role-dialog-close:hover {
-  color: var(--color-text);
+  color: var(--pen-ink);
 }
 
 .role-dialog-summary {
-  margin: 14px 0;
-  color: var(--color-text-muted);
+  margin: var(--space-3) 0;
+  color: var(--pen-muted);
+  font-size: var(--fs-body);
   line-height: 1.8;
-  font-size: var(--text-base);
 }
 
 .role-dialog-duties {
   list-style: none;
-  margin: 0 0 20px;
+  margin: 0 0 var(--space-4);
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .role-dialog-duties li {
   position: relative;
-  padding: 10px 14px 10px 34px;
-  border-radius: 10px;
-  background: var(--color-surface-elevated);
-  color: var(--color-brand-muted);
-  font-size: var(--text-sm);
+  padding: 10px 12px 10px 30px;
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-card);
+  background: var(--pen-sunken);
+  color: var(--pen-muted);
+  font-size: 12px;
   line-height: 1.6;
 }
 
 .role-dialog-duties li::before {
-  content: '✓';
+  content: '';
   position: absolute;
   left: 13px;
-  top: 10px;
-  color: var(--role-accent, var(--color-accent));
-  font-weight: 700;
+  top: 16px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--pen-chart);
 }
 
 .role-dialog-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: var(--space-2);
 }
 
 .role-dialog-login {
-  flex: 1;
+  flex: 1 1 160px;
+  appearance: none;
+  height: 36px;
   border: none;
-  background: var(--color-accent);
+  border-radius: var(--radius-control);
+  background: var(--pen-action);
   color: var(--color-on-inverse);
-  font-size: var(--text-base);
-  font-weight: 600;
-  padding: 12px 18px;
-  border-radius: 12px;
+  font-family: inherit;
+  font-size: var(--fs-body);
+  font-weight: 500;
   cursor: pointer;
-  transition: transform 0.2s ease;
+  transition: background-color var(--motion-fast) var(--motion-ease);
 }
 
 .role-dialog-login:hover {
-  transform: translateY(-1px);
+  background: var(--pen-action-hover);
 }
 
 .role-dialog-enter {
-  flex: 1;
-  border: 1px solid rgba(20, 163, 143, 0.4);
-  background: var(--color-on-inverse);
-  color: var(--color-accent);
-  font-size: var(--text-base);
-  font-weight: 600;
-  padding: 12px 18px;
-  border-radius: 12px;
+  flex: 1 1 160px;
+  appearance: none;
+  height: 36px;
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-control);
+  background: var(--pen-surface);
+  color: var(--pen-ink);
+  font-family: inherit;
+  font-size: var(--fs-body);
+  font-weight: 500;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: background-color var(--motion-fast) var(--motion-ease);
 }
 
 .role-dialog-enter:hover {
-  background: var(--color-raised);
-}
-
-.role-dialog-enter,
-.role-dialog-login {
-  text-align: center;
-}
-
-.role-dialog-overlay {
-  transition: opacity 0.22s ease;
-}
-
-.role-dialog-panel {
-  transition: transform 0.22s ease, opacity 0.22s ease;
+  background: var(--pen-raised);
 }
 
 .role-dialog-enter-active,
 .role-dialog-leave-active {
-  transition: opacity 0.22s ease;
+  transition: opacity var(--motion-base) var(--motion-ease);
 }
 
 .role-dialog-enter-from,
@@ -1523,70 +1887,33 @@ watch(
   opacity: 0;
 }
 
-.role-dialog-enter-active .role-dialog-panel {
-  transition: transform 0.24s ease;
+/* ── 焦点可见性 ── */
+.nav-item:focus-visible,
+.nav-btn:focus-visible,
+.hero-cta-primary:focus-visible,
+.hero-cta-ghost:focus-visible,
+.stream-empty__link:focus-visible,
+.footer-link:focus-visible,
+.role-dialog-close:focus-visible,
+.role-dialog-login:focus-visible,
+.role-dialog-enter:focus-visible,
+.hamburger-btn:focus-visible {
+  outline: 2px solid var(--pen-ink);
+  outline-offset: 2px;
 }
 
-.role-dialog-enter-from .role-dialog-panel {
-  transform: translateY(14px) scale(0.98);
-}
+/* ── 响应式 ── */
+@media (max-width: 1180px) {
+  .hero-inner {
+    grid-template-columns: minmax(0, 1fr) 420px;
+    gap: 40px;
+  }
 
-.footer {
-  background: var(--color-brand-strong);
-  color: var(--color-on-inverse-muted);
-  padding: 34px 20px 20px;
-}
-
-.footer-columns {
-  max-width: 1200px;
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
-  gap: 12px;
-}
-
-.footer h4 {
-  margin: 0 0 12px;
-  font-size: var(--text-md);
-  font-weight: 600;
-}
-
-.footer a {
-  display: block;
-  color: var(--color-mint-400);
-  text-decoration: none;
-  margin-bottom: 8px;
-  font-size: var(--text-sm);
-}
-
-.footer a:hover {
-  color: var(--color-mint-100);
-}
-
-.footer-link {
-  display: block;
-  width: 100%;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--color-mint-400);
-  margin-bottom: 8px;
-  font-size: var(--text-sm);
-  text-align: left;
-  cursor: pointer;
-}
-
-.footer-link:hover {
-  color: var(--color-mint-100);
-}
-
-.copyright {
-  max-width: 1200px;
-  margin: 22px auto 0;
-  border-top: 1px solid rgba(196, 239, 229, 0.15);
-  padding-top: 12px;
-  font-size: var(--text-xs);
-  color: var(--color-on-inverse-muted);
+  .capability-grid,
+  .feature-grid,
+  .roles-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 1024px) {
@@ -1596,11 +1923,26 @@ watch(
 
   .hamburger-btn {
     display: flex;
+    margin-left: auto;
   }
 
-  .feature-grid,
-  .roles-grid {
-    grid-template-columns: repeat(2, minmax(180px, 1fr));
+  .nav-actions {
+    margin-left: 0;
+  }
+
+  .hero-inner {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+
+  .section-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .section-subtitle {
+    text-align: left;
   }
 
   .intro-section {
@@ -1608,38 +1950,29 @@ watch(
   }
 
   .metrics-grid {
-    grid-template-columns: repeat(3, minmax(90px, 1fr));
-  }
-
-  .hero-inner {
-    grid-template-columns: 1fr;
-    gap: 28px;
-  }
-
-  .hero-visual {
-    order: -1;
-  }
-
-  .twin-card {
-    width: min(440px, 100%);
-  }
-
-  .pulse-bar {
-    margin-top: 20px;
-    justify-content: flex-start;
-    gap: 12px;
-  }
-
-  .pulse-divider {
-    display: none;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 768px) {
+  .top-nav,
+  .hero,
+  .section-wrap,
+  .compliance-strip,
+  .footer {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
   .hero-title {
     font-size: 30px;
   }
 
+  .nav-btn--ghost {
+    display: none;
+  }
+
+  .capability-grid,
   .feature-grid,
   .roles-grid,
   .gallery-grid,
@@ -1648,51 +1981,33 @@ watch(
   }
 
   .metrics-grid {
-    grid-template-columns: repeat(2, minmax(90px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .nav-cta-group {
-    display: none;
+  .hero-metric {
+    padding-right: 14px;
   }
 
-  .hero-cta-row {
-    width: 100%;
-  }
-
-  .hero-cta-primary,
-  .hero-cta-ghost {
-    flex: 1;
-    justify-content: center;
-    padding: 12px 16px;
-    font-size: var(--text-base);
-  }
-
-  .hero-badges {
-    gap: 6px;
+  .hero-metric + .hero-metric {
+    padding-left: 14px;
   }
 
   .pulse-bar {
-    padding: 12px 16px;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
   }
 
-  .pulse-item {
-    flex-wrap: wrap;
-  }
-
-  .compliance-row {
-    justify-content: flex-start;
+  .pulse-divider {
+    display: none;
   }
 
   .compliance-item {
-    padding: 2px 14px;
+    padding: 0 12px;
   }
 
-  .role-dialog-panel {
-    padding: 20px;
-  }
-
-  .role-dialog-actions {
-    flex-direction: column;
+  .compliance-item + .compliance-item {
+    border-left: none;
   }
 }
 </style>

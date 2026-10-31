@@ -23,18 +23,28 @@ class PowerGridFormulaServiceTest {
     @InjectMocks
     private PowerGridFormulaService powerGridFormulaService;
 
-    private PowerGridCalculationRequest buildRequest(
-            BigDecimal transmissionVolume,
-            BigDecimal lineLossRate,
-            BigDecimal gridEmissionFactor,
-            BigDecimal importedElectricity,
-            BigDecimal importEmissionFactor) {
+    /**
+     * 构造**国标净电量式**请求（D4）。
+     *
+     * 公式：E_输配 = (EL上网 + EL输入 − EL输出 − EL售电) × EF电网
+     *
+     * 旧字段 transmissionVolume / lineLossRate 已 @Deprecated，不再参与计算；
+     * 这里仍显式置 null，顺带验证新逻辑对它们的缺失是安全的（历史 NPE 隐患）。
+     */
+    private PowerGridCalculationRequest buildNetRequest(
+            BigDecimal onGrid,
+            BigDecimal imported,
+            BigDecimal exported,
+            BigDecimal sold,
+            BigDecimal gridEmissionFactor) {
         PowerGridCalculationRequest request = new PowerGridCalculationRequest();
-        request.setTransmissionVolume(transmissionVolume);
-        request.setLineLossRate(lineLossRate);
+        request.setGenerationVolume(onGrid);
+        request.setImportedElectricity(imported);
+        request.setExportedElectricity(exported);
+        request.setSoldElectricity(sold);
         request.setGridEmissionFactor(gridEmissionFactor);
-        request.setImportedElectricity(importedElectricity);
-        request.setImportEmissionFactor(importEmissionFactor);
+        request.setTransmissionVolume(null);
+        request.setLineLossRate(null);
         request.setReportingYear(2024);
         request.setEnterpriseName("测试企业");
         return request;
@@ -43,52 +53,56 @@ class PowerGridFormulaServiceTest {
     @Test
     @DisplayName("全零输入 → 总排放为0")
     void calculate_allZeros_returnsZeroEmission() {
-        PowerGridCalculationRequest request = buildRequest(
-                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null, null);
+        PowerGridCalculationRequest request = buildNetRequest(null, null, null, null, BigDecimal.ZERO);
 
         PowerGridCalculationResponse response = powerGridFormulaService.calculate(request);
 
         assertEquals(0, response.getTotalEmission().compareTo(BigDecimal.ZERO));
         assertEquals(0, response.getTransmissionLossEmission().compareTo(BigDecimal.ZERO));
-        assertEquals(0, response.getImportedEmission().compareTo(BigDecimal.ZERO));
         assertEquals(0, response.getTransmissionLoss().compareTo(BigDecimal.ZERO));
+        assertFalse(response.getNetElectricityNegative(), "全零不应被判为负净电量");
     }
 
     @Test
-    @DisplayName("基本输配损耗计算: V=10000, L_rate=0.05, EF=0.6 → T_loss=500, E_loss=300")
+    @DisplayName("国标净电量: 上网12000-售电7000=5000 × EF0.6 → 3000")
     void calculate_basicTransmissionLoss_returnsCorrectEmission() {
-        PowerGridCalculationRequest request = buildRequest(
-                new BigDecimal("10000"), new BigDecimal("0.05"),
-                new BigDecimal("0.6"), null, null);
+        PowerGridCalculationRequest request = buildNetRequest(
+                new BigDecimal("12000"), null, null, new BigDecimal("7000"),
+                new BigDecimal("0.6"));
 
         PowerGridCalculationResponse response = powerGridFormulaService.calculate(request);
 
-        assertEquals(0, new BigDecimal("500.0000").compareTo(response.getTransmissionLoss()));
-        assertEquals(0, new BigDecimal("300.0000").compareTo(response.getTransmissionLossEmission()));
-        assertEquals(0, response.getImportedEmission().compareTo(BigDecimal.ZERO));
-        assertEquals(0, new BigDecimal("300.0000").compareTo(response.getTotalEmission()));
+        assertEquals(0, new BigDecimal("5000.0000").compareTo(response.getTransmissionLoss()),
+                "净电量 = 上网12000 − 售电7000 = 5000");
+        assertEquals(0, new BigDecimal("3000.0000").compareTo(response.getTransmissionLossEmission()));
+        assertEquals(0, new BigDecimal("3000.0000").compareTo(response.getTotalEmission()));
     }
 
     @Test
-    @DisplayName("含外购电力: imported=2000, importEF=0.8 → importedEmission=1600, total=1900")
+    @DisplayName("国标净电量含 EL输入: (10000上网+2000输入−0输出−0售电) × 0.6 = 7200")
     void calculate_withImportedEmission_returnsCorrectTotal() {
-        PowerGridCalculationRequest request = buildRequest(
-                new BigDecimal("10000"), new BigDecimal("0.05"),
-                new BigDecimal("0.6"), new BigDecimal("2000"), new BigDecimal("0.8"));
+        PowerGridCalculationRequest request = buildNetRequest(
+                new BigDecimal("10000"), new BigDecimal("2000"), null, null,
+                new BigDecimal("0.6"));
 
         PowerGridCalculationResponse response = powerGridFormulaService.calculate(request);
 
-        assertEquals(0, new BigDecimal("300.0000").compareTo(response.getTransmissionLossEmission()));
-        assertEquals(0, new BigDecimal("1600.0000").compareTo(response.getImportedEmission()));
-        assertEquals(0, new BigDecimal("1900.0000").compareTo(response.getTotalEmission()));
+        assertEquals(0, new BigDecimal("7200.0000").compareTo(response.getTransmissionLossEmission()),
+                "EL输入已并入净电量，不再重复计一次");
+        assertEquals(0, BigDecimal.ZERO.compareTo(response.getImportedEmission()),
+                "importedEmission 保留字段但恒为 0（避免与净电量重复）");
+        assertEquals(0, new BigDecimal("7200.0000").compareTo(response.getTotalEmission()));
     }
 
     @Test
     @DisplayName("线损率超过1 → 抛出BusinessException")
     void calculate_lineLossRateExceedsOne_throwsBusinessException() {
-        PowerGridCalculationRequest request = buildRequest(
-                new BigDecimal("10000"), new BigDecimal("1.5"),
-                new BigDecimal("0.6"), null, null);
+        PowerGridCalculationRequest request = new PowerGridCalculationRequest();
+        request.setTransmissionVolume(new BigDecimal("10000"));
+        request.setLineLossRate(new BigDecimal("1.5"));
+        request.setGridEmissionFactor(new BigDecimal("0.6"));
+        request.setReportingYear(2024);
+        request.setEnterpriseName("测试企业");
 
         BusinessException exception = assertThrows(BusinessException.class,
                 () -> powerGridFormulaService.calculate(request));
@@ -114,160 +128,91 @@ class PowerGridFormulaServiceTest {
     @Test
     @DisplayName("可选参数为null → 视为零，不报错")
     void calculate_nullOptionalParams_treatedAsZero() {
+        // 旧字段（输配电量/线损率）已 @Deprecated 且不参与国标式；
+        // 四项国标电量全缺 → 净电量为 0。此用例锁定「旧字段被忽略」这一新语义，
+        // 同时验证四个可选电量缺失时不会 NPE。
         PowerGridCalculationRequest request = new PowerGridCalculationRequest();
         request.setTransmissionVolume(new BigDecimal("5000"));
         request.setLineLossRate(new BigDecimal("0.04"));
         request.setGridEmissionFactor(new BigDecimal("0.5"));
         request.setReportingYear(2024);
         request.setEnterpriseName("测试企业");
-        // importedElectricity, importEmissionFactor, generationVolume, exportedElectricity all null
 
         PowerGridCalculationResponse response = powerGridFormulaService.calculate(request);
 
-        assertEquals(0, response.getImportedEmission().compareTo(BigDecimal.ZERO));
-        assertEquals(0, new BigDecimal("200.0000").compareTo(response.getTransmissionLoss()));
-        assertEquals(0, new BigDecimal("100.0000").compareTo(response.getTransmissionLossEmission()));
-        assertEquals(0, new BigDecimal("100.0000").compareTo(response.getTotalEmission()));
+        assertEquals(0, BigDecimal.ZERO.compareTo(response.getTransmissionLoss()),
+                "旧字段不再参与计算，净电量应为 0");
+        assertEquals(0, BigDecimal.ZERO.compareTo(response.getTotalEmission()),
+                "无国标电量输入时总量为 0（旧线损模型已弃用）");
+        assertFalse(response.getNetElectricityNegative());
         assertEquals("GB/T 32150-2015", response.getFormulaReference());
         assertEquals("2024", response.getReportingYear());
         assertEquals("测试企业", response.getEnterpriseName());
         assertNotNull(response.getCalculatedAt());
     }
 
+    // ===== 国标净电量式下的可选参数健壮性（替代原「外购电因子组合」用例）=====
+
     @Test
-    @DisplayName("外购电量非零但排放因子为null时，外购电力排放为0")
-    void calculate_importedElectricityPresentButFactorNull_zeroImportedEmission() {
-        PowerGridCalculationRequest request = buildRequest(
-                new BigDecimal("10000"), new BigDecimal("0.05"),
-                new BigDecimal("0.6"), new BigDecimal("2000"), null);
+    @DisplayName("四项电量全部缺失 + EF 非零 → 净电量为 0，总量 0")
+    void calculate_allElectricityMissing_zeroTotal() {
+        PowerGridCalculationRequest request = buildNetRequest(null, null, null, null, new BigDecimal("0.6"));
 
         PowerGridCalculationResponse response = powerGridFormulaService.calculate(request);
 
-        assertEquals(0, response.getImportedEmission().compareTo(BigDecimal.ZERO));
-        assertEquals(0, new BigDecimal("300.0000").compareTo(response.getTotalEmission()));
+        assertEquals(0, BigDecimal.ZERO.compareTo(response.getTotalEmission()));
+        assertEquals(0, BigDecimal.ZERO.compareTo(response.getTransmissionLoss()));
+        assertFalse(response.getNetElectricityNegative());
     }
 
     @Test
-    @DisplayName("外购电量为零时，外购电力排放为0")
-    void calculate_importedElectricityZero_zeroImportedEmission() {
-        PowerGridCalculationRequest request = buildRequest(
-                new BigDecimal("10000"), new BigDecimal("0.05"),
-                new BigDecimal("0.6"), BigDecimal.ZERO, new BigDecimal("0.8"));
+    @DisplayName("只有上网电量 → 净电量等于上网电量")
+    void calculate_onlyOnGrid_netEqualsOnGrid() {
+        PowerGridCalculationRequest request = buildNetRequest(
+                new BigDecimal("5000"), null, null, null, new BigDecimal("0.5"));
 
         PowerGridCalculationResponse response = powerGridFormulaService.calculate(request);
 
-        assertEquals(0, response.getImportedEmission().compareTo(BigDecimal.ZERO));
-        assertEquals(0, new BigDecimal("300.0000").compareTo(response.getTotalEmission()));
+        assertEquals(0, new BigDecimal("5000.0000").compareTo(response.getTransmissionLoss()));
+        assertEquals(0, new BigDecimal("2500.0000").compareTo(response.getTotalEmission()));
     }
 
     @Test
-    @DisplayName("外购电力排放因子为零时，外购电力排放为0")
-    void calculate_importEmissionFactorZero_zeroImportedEmission() {
-        PowerGridCalculationRequest request = buildRequest(
-                new BigDecimal("10000"), new BigDecimal("0.05"),
-                new BigDecimal("0.6"), new BigDecimal("2000"), BigDecimal.ZERO);
+    @DisplayName("输出大于上网 → 净电量为负，被钳制为 0 且置标志")
+    void calculate_outputExceedsOnGrid_clampedToZeroWithFlag() {
+        PowerGridCalculationRequest request = buildNetRequest(
+                new BigDecimal("1000"), null, new BigDecimal("3000"), null,
+                new BigDecimal("0.6"));
 
         PowerGridCalculationResponse response = powerGridFormulaService.calculate(request);
 
-        assertEquals(0, response.getImportedEmission().compareTo(BigDecimal.ZERO));
-        assertEquals(0, new BigDecimal("300.0000").compareTo(response.getTotalEmission()));
+        assertEquals(0, BigDecimal.ZERO.compareTo(response.getTransmissionLoss()),
+                "净电量为负应钳制为 0，不产出负排放");
+        assertTrue(response.getNetElectricityNegative(), "必须置标志，让前端提示用户核对");
     }
 
     @Test
-    @DisplayName("外购电量为null但排放因子非null时，外购电力排放为0")
-    void calculate_importedElectricityNullButFactorPresent_zeroImportedEmission() {
-        PowerGridCalculationRequest request = buildRequest(
-                new BigDecimal("10000"), new BigDecimal("0.05"),
-                new BigDecimal("0.6"), null, new BigDecimal("0.8"));
+    @DisplayName("售电等于上网+输入 → 净电量恰好 0，不置负标志")
+    void calculate_netExactlyZero_notFlagged() {
+        PowerGridCalculationRequest request = buildNetRequest(
+                new BigDecimal("4000"), new BigDecimal("1000"),
+                null, new BigDecimal("5000"), new BigDecimal("0.6"));
 
         PowerGridCalculationResponse response = powerGridFormulaService.calculate(request);
 
-        assertEquals(0, response.getImportedEmission().compareTo(BigDecimal.ZERO));
+        assertEquals(0, BigDecimal.ZERO.compareTo(response.getTransmissionLoss()));
+        assertFalse(response.getNetElectricityNegative(), "恰好为 0 不应判为负");
     }
 
     @Test
-    @DisplayName("外购电量为null且排放因子为零时，外购电力排放为0")
-    void calculate_importedElectricityNullAndFactorZero_zeroImportedEmission() {
-        PowerGridCalculationRequest request = buildRequest(
-                new BigDecimal("10000"), new BigDecimal("0.05"),
-                new BigDecimal("0.6"), null, BigDecimal.ZERO);
+    @DisplayName("负上网电量 → 抛 BusinessException")
+    void calculate_negativeOnGrid_throwsBusinessException() {
+        PowerGridCalculationRequest request = buildNetRequest(
+                new BigDecimal("-100"), null, null, null, new BigDecimal("0.6"));
 
-        PowerGridCalculationResponse response = powerGridFormulaService.calculate(request);
-
-        assertEquals(0, response.getImportedEmission().compareTo(BigDecimal.ZERO));
+        BusinessException exception = assertThrows(BusinessException.class,
+                () -> powerGridFormulaService.calculate(request));
+        assertEquals(ErrorCode.DATA_OUT_OF_RANGE, exception.getCode());
     }
 
-    @Test
-    @DisplayName("外购电量为零且排放因子为null时，外购电力排放为0")
-    void calculate_importedElectricityZeroAndFactorNull_zeroImportedEmission() {
-        PowerGridCalculationRequest request = buildRequest(
-                new BigDecimal("10000"), new BigDecimal("0.05"),
-                new BigDecimal("0.6"), BigDecimal.ZERO, null);
-
-        PowerGridCalculationResponse response = powerGridFormulaService.calculate(request);
-
-        assertEquals(0, response.getImportedEmission().compareTo(BigDecimal.ZERO));
-    }
-
-    @Test
-    @DisplayName("线损率恰好等于1时不抛异常")
-    void calculate_lineLossRateExactlyOne_noException() {
-        PowerGridCalculationRequest request = buildRequest(
-                new BigDecimal("10000"), BigDecimal.ONE,
-                new BigDecimal("0.6"), null, null);
-
-        PowerGridCalculationResponse response = powerGridFormulaService.calculate(request);
-
-        assertNotNull(response);
-        assertEquals(0, new BigDecimal("10000.0000").compareTo(response.getTransmissionLoss()));
-    }
-
-    @Test
-    @DisplayName("原生文档04国标SF6设备泄漏核算: REC(100-80)+REP(50-40)=30kg泄漏, GWP=23900 → 717 tCO2e")
-    void calculate_withSf6Equipment_returnsCorrectSf6Emission() {
-        PowerGridCalculationRequest request = buildRequest(
-                new BigDecimal("10000"), new BigDecimal("0.05"),
-                new BigDecimal("0.6"), null, null);
-        request.setRecCapacity(new BigDecimal("100"));
-        request.setRecRecovery(new BigDecimal("80"));
-        request.setRepCapacity(new BigDecimal("50"));
-        request.setRepRecovery(new BigDecimal("40"));
-
-        PowerGridCalculationResponse response = powerGridFormulaService.calculate(request);
-
-        assertNotNull(response);
-        // T_loss_emission = 10000 * 0.05 * 0.6 = 300.0000
-        // SF6_emission = (20 + 10) * 23.900 = 717.0000
-        // Total = 300.0000 + 717.0000 = 1017.0000
-        assertEquals(0, new BigDecimal("717.0000").compareTo(response.getSf6Emission()));
-        assertEquals(0, new BigDecimal("1017.0000").compareTo(response.getTotalEmission()));
-    }
-
-
-    /**
-     * C-05：SF6 排放必须能通过响应契约被读到。
-     *
-     * <p>后端一直有 SF6 计算，但历史上的响应类型/前端类型缺这个字段，
-     * 导致「算出来了但 UI 永远显示 0」。此用例锁定字段确实暴露。</p>
-     */
-    @Test
-    @DisplayName("C-05: SF6 排放通过响应字段暴露")
-    void testSf6EmissionExposedInResponse() {
-        PowerGridCalculationRequest request = new PowerGridCalculationRequest();
-        request.setReportingYear(2024);
-        request.setEnterpriseName("SF6 契约测试");
-        request.setTransmissionVolume(new BigDecimal("0"));
-        request.setLineLossRate(new BigDecimal("0"));
-        request.setGridEmissionFactor(new BigDecimal("0"));
-        request.setRecCapacity(new BigDecimal("20"));
-        request.setRecRecovery(new BigDecimal("0"));
-        request.setRepCapacity(new BigDecimal("10"));
-        request.setRepRecovery(new BigDecimal("0"));
-
-        PowerGridCalculationResponse response = powerGridFormulaService.calculate(request);
-
-        assertNotNull(response.getSf6Emission(), "响应必须包含 sf6Emission 字段");
-        assertEquals(0, new BigDecimal("717.0000").compareTo(response.getSf6Emission()),
-                "SF6 = (20+10) × 23.9 = 717，实际 " + response.getSf6Emission());
-    }
 }

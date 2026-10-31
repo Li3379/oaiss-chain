@@ -21,12 +21,15 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { DataLine, Document, Guide, Lightning, PriceTag, Promotion, Refresh, Search, TrendCharts } from '@element-plus/icons-vue'
+import { DataLine, Document, Lightning, PriceTag, Promotion, Refresh, TrendCharts } from '@element-plus/icons-vue'
 import echarts from '@/utils/echarts'
 import { getMarketTrend, getMarketPrice, getSupplyDemand } from '@/api/marketPrediction'
 import type { MarketForecastResponse, MarketForecastDataPoint } from '@/types/ai'
+import PageHeader from '@/components/pen/PageHeader.vue'
+import StatStrip from '@/components/pen/StatStrip.vue'
+import FilterBar from '@/components/pen/FilterBar.vue'
+import DataPanel from '@/components/pen/DataPanel.vue'
 import PageHint from '@/components/PageHint.vue'
-import { formatNumber } from '@/utils/format'
 
 const router = useRouter()
 const { t, locale } = useI18n()
@@ -106,6 +109,49 @@ const trendTagType = computed(() => {
   if (trend.includes('up') || trend.includes('rise')) return 'success'
   if (trend.includes('down') || trend.includes('fall') || trend.includes('decline')) return 'danger'
   return 'warning'
+})
+
+/** 首屏统计条：全部由已加载的本页数据推导，不新增接口请求 */
+const overviewStats = computed(() => {
+  const target = Number(targetEndPrice.value) || 0
+  const changePct = Number.parseFloat(expectedChangePercent.value) || 0
+  const spotChangePct = Number.parseFloat(spotPriceChange.value) || 0
+  const version = forecastResponse.value?.modelVersion || '1.0.0'
+
+  return [
+    {
+      label: t('marketPrediction.metricSpotPrice'),
+      value: Number(spotBasePrice.value.toFixed(2)),
+      unit: t('marketPrediction.statPriceUnit'),
+      delta: `${spotPriceChange.value} · ${t('marketPrediction.statSpotHint')}`,
+      tone: spotChangePct >= 0 ? ('pos' as const) : ('neg' as const),
+      icon: PriceTag,
+    },
+    {
+      label: t('marketPrediction.metricTargetPrice'),
+      value: target.toFixed(2),
+      unit: t('marketPrediction.statPriceUnit'),
+      delta: `${t('marketPrediction.statTargetHint')}: ${trendDirection.value} · ${expectedChangePercent.value}`,
+      tone: changePct >= 0 ? ('pos' as const) : ('neg' as const),
+      icon: TrendCharts,
+    },
+    {
+      label: t('marketPrediction.metricModelConfidence'),
+      value: '91.2',
+      unit: t('marketPrediction.statR2Unit'),
+      delta: t('marketPrediction.statConfidenceHint'),
+      tone: 'neu' as const,
+      icon: DataLine,
+    },
+    {
+      label: t('marketPrediction.metricModelArchitecture'),
+      value: 'Prophet + XGBoost',
+      unit: '',
+      delta: `${t('marketPrediction.modelVersion')}: ${version}`,
+      tone: 'neu' as const,
+      icon: Document,
+    },
+  ]
 })
 
 // XAI 可解释性特征贡献度
@@ -200,6 +246,27 @@ const fetchForecast = async () => {
   }
 }
 
+/** 运行时读取 pen 图表令牌（ECharts 画布不解析 CSS 变量） */
+function cssToken(name: string, fallback: string): string {
+  if (typeof document === 'undefined') return fallback
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  return value || fallback
+}
+
+/** 设计系统仅允许 4 个系列色：主蓝 + 灰阶 */
+function chartPalette() {
+  return {
+    primary: cssToken('--color-chart-1', '#1D5FBF'),
+    secondary: cssToken('--color-chart-2', '#6E93CE'),
+    tertiary: cssToken('--color-chart-3', '#A8BFE0'),
+    info: cssToken('--color-chart-info', '#D3DEED'),
+    axisStrong: cssToken('--color-border-strong', '#CBD5E1'),
+    muted: cssToken('--pen-faint', '#6B6B6B'),
+    surface: cssToken('--pen-surface', 'white'),
+    raised: cssToken('--pen-raised', '#EEEEEE'),
+  }
+}
+
 function renderChart() {
   if (!chartRef.value) return
 
@@ -212,6 +279,8 @@ function renderChart() {
     chartInstance.clear()
     return
   }
+
+  const colors = chartPalette()
 
   // 构造历史回测数据段（前 14 天平滑走势连接至首个预测点）
   const dates = points.map(d => d.date)
@@ -230,8 +299,8 @@ function renderChart() {
       trigger: 'axis',
       axisPointer: {
         type: 'cross',
-        lineStyle: { color: 'var(--color-chart-2)', width: 1, type: 'dashed' },
-        crossStyle: { color: 'var(--color-chart-2)' }
+        lineStyle: { color: colors.secondary, width: 1, type: 'dashed' },
+        crossStyle: { color: colors.secondary }
       },
       formatter: (params: any) => {
         if (!params || !params.length) return ''
@@ -247,12 +316,12 @@ function renderChart() {
               <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--color-chart-1);"></span>
               <span>${t('marketPrediction.price')}: <strong>${pVal != null ? Number(pVal).toFixed(2) : '--'}</strong> 元/吨</span>
             </div>
-            <div style="color: var(--color-status-success); display: flex; align-items: center; gap: 6px;">
-              <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--color-status-success);"></span>
+            <div style="color: var(--color-chart-2); display: flex; align-items: center; gap: 6px;">
+              <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--color-chart-2);"></span>
               <span>${t('marketPrediction.upperBound')}: <strong>${uVal != null ? Number(uVal).toFixed(2) : '--'}</strong> 元/吨</span>
             </div>
-            <div style="color: var(--color-status-warning); display: flex; align-items: center; gap: 6px;">
-              <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--color-status-warning);"></span>
+            <div style="color: var(--color-chart-3); display: flex; align-items: center; gap: 6px;">
+              <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--color-chart-3);"></span>
               <span>${t('marketPrediction.lowerBound')}: <strong>${lVal != null ? Number(lVal).toFixed(2) : '--'}</strong> 元/吨</span>
             </div>
           </div>
@@ -263,26 +332,26 @@ function renderChart() {
       data: [t('marketPrediction.price'), t('marketPrediction.confidenceBand')],
       bottom: 6,
       icon: 'roundRect',
-      textStyle: { color: 'var(--color-text-muted)', fontSize: 12 }
+      textStyle: { color: colors.muted, fontSize: 12 }
     },
     grid: { left: 50, right: 30, top: 40, bottom: 65, containLabel: true },
     xAxis: {
       type: 'category',
       data: dates,
       boundaryGap: false,
-      axisLine: { lineStyle: { color: 'var(--color-border-strong)' } },
-      axisLabel: { color: 'var(--color-text-muted)', fontSize: 11, rotate: dates.length > 40 ? 30 : 0 }
+      axisLine: { lineStyle: { color: colors.axisStrong } },
+      axisLabel: { color: colors.muted, fontSize: 11, rotate: dates.length > 40 ? 30 : 0 }
     },
     yAxis: {
       type: 'value',
       name: t('marketPrediction.priceUnit'),
       min: minY,
       max: maxY,
-      nameTextStyle: { color: 'var(--color-text-muted)', fontSize: 11 },
+      nameTextStyle: { color: colors.muted, fontSize: 11 },
       axisLine: { show: false },
       axisTick: { show: false },
-      splitLine: { lineStyle: { color: 'var(--color-raised)', type: 'dashed' } },
-      axisLabel: { color: 'var(--color-text-muted)' }
+      splitLine: { lineStyle: { color: colors.raised, type: 'dashed' } },
+      axisLabel: { color: colors.muted }
     },
     dataZoom: [
       { type: 'inside', start: 0, end: 100 },
@@ -291,9 +360,9 @@ function renderChart() {
         height: 18,
         bottom: 30,
         borderColor: 'transparent',
-        backgroundColor: 'var(--color-surface)',
-        fillerColor: 'rgba(14, 165, 233, 0.15)',
-        handleStyle: { color: 'var(--color-chart-2)' }
+        backgroundColor: colors.surface,
+        fillerColor: colors.info,
+        handleStyle: { color: colors.secondary }
       }
     ],
     series: [
@@ -307,7 +376,7 @@ function renderChart() {
         stack: 'confidence-band',
         symbol: 'none'
       },
-      // 2. 置信区间填充带
+      // 2. 置信区间填充带（扁平灰阶，不使用渐变）
       {
         name: t('marketPrediction.confidenceBand'),
         type: 'line',
@@ -315,10 +384,8 @@ function renderChart() {
         showSymbol: false,
         lineStyle: { opacity: 0 },
         areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(14, 165, 233, 0.28)' },
-            { offset: 1, color: 'rgba(14, 165, 233, 0.04)' }
-          ])
+          color: colors.tertiary,
+          opacity: 0.5
         },
         stack: 'confidence-band',
         symbol: 'none'
@@ -342,26 +409,23 @@ function renderChart() {
         symbolSize: 6,
         lineStyle: {
           width: 3.5,
-          color: 'var(--color-chart-1)',
-          shadowColor: 'rgba(2, 132, 199, 0.35)',
-          shadowBlur: 8,
-          shadowOffsetY: 3
+          color: colors.primary
         },
-        itemStyle: { color: 'var(--color-chart-1)' },
+        itemStyle: { color: colors.primary },
         markPoint: {
           symbol: 'pin',
           symbolSize: 45,
           data: [
-            { type: 'max', name: t('marketPrediction.maxResistance'), itemStyle: { color: 'var(--color-status-danger)' } },
-            { type: 'min', name: t('marketPrediction.minSupport'), itemStyle: { color: 'var(--color-status-success)' } }
+            { type: 'max', name: t('marketPrediction.maxResistance'), itemStyle: { color: colors.primary } },
+            { type: 'min', name: t('marketPrediction.minSupport'), itemStyle: { color: colors.secondary } }
           ],
-          label: { fontSize: 10, color: '#fff' }
+          label: { fontSize: 10, color: colors.surface }
         }
       }
     ]
   }
 
-  // 5. 若情景推演被激活，在画布上叠加紫色虚线「情景推演走势线」
+  // 5. 若情景推演被激活，在画布上叠加虚线「情景推演走势线」
   if (isSimulationActive.value) {
     (option.series as any[]).push({
       name: t('marketPrediction.simScenarioCurve'),
@@ -373,11 +437,9 @@ function renderChart() {
       lineStyle: {
         width: 2.8,
         type: 'dashed',
-        color: 'var(--color-chart-2)',
-        shadowColor: 'rgba(168, 85, 247, 0.45)',
-        shadowBlur: 8
+        color: colors.secondary
       },
-      itemStyle: { color: 'var(--color-chart-2)' }
+      itemStyle: { color: colors.secondary }
     })
     if (!(option.legend.data as any[]).includes(t('marketPrediction.simScenarioCurve'))) {
       (option.legend.data as any[]).push(t('marketPrediction.simScenarioCurve'))
@@ -422,178 +484,88 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="market-prediction-page">
-    <!-- 顶部金融看板与参数控制栏 -->
-    <el-card class="section-card header-terminal-card" shadow="never">
-      <div class="terminal-bar">
-        <div class="terminal-title-group">
-          <div class="title-with-badge">
-            <h2 class="terminal-title">{{ t('marketPrediction.terminalTitle') }}</h2>
-            <el-tag effect="dark" type="success" size="small" round>LIVE QUANT</el-tag>
-          </div>
-          <p class="terminal-subtitle">{{ t('marketPrediction.terminalSubtitle') }}</p>
-        </div>
-
-        <div class="terminal-controls">
-          <el-select v-model="predictionType" style="width: 170px" size="default">
-            <el-option
-              v-for="opt in predictionTypeOptions"
-              :key="opt.value"
-              :label="opt.label()"
-              :value="opt.value"
-            />
-          </el-select>
-          <div class="horizon-toggle-group">
-            <el-button-group>
-              <el-button
-                v-for="days in horizonOptions"
-                :key="days"
-                :type="horizonDays === days ? 'primary' : 'default'"
-                size="default"
-                @click="horizonDays = days"
-              >
-                {{ days }} {{ t('marketPrediction.days') }}
-              </el-button>
-            </el-button-group>
-          </div>
-        </div>
-      </div>
-    </el-card>
+  <section class="market-prediction-page pen-enter">
+    <PageHeader
+      :title="t('marketPrediction.title')"
+      :description="t('marketPrediction.terminalSubtitle')"
+      :crumbs="[t('marketPrediction.breadcrumbAI'), t('marketPrediction.breadcrumbMarket')]"
+    />
 
     <PageHint :text="t('pageHints.marketPrediction')" />
 
-    <!-- 顶部核心量化行情与模型评估指标条 -->
-    <el-row :gutter="14" class="metrics-row">
-      <!-- 1. 当前现货基准价 -->
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card shadow="hover" class="metric-card">
-          <div class="metric-header">
-            <span class="metric-title">{{ t('marketPrediction.metricSpotPrice') }}</span>
-            <el-tag type="success" size="small">{{ spotPriceChange }}</el-tag>
-          </div>
-          <div class="metric-body">
-            <span class="metric-number">{{ spotBasePrice.toFixed(2) }}</span>
-            <span class="metric-unit">元/吨</span>
-          </div>
-          <div class="metric-footer">
-            <span>全国 CEA 碳市场挂牌加权均价</span>
-          </div>
-        </el-card>
-      </el-col>
+    <StatStrip :items="overviewStats" :loading="loading" />
 
-      <!-- 2. AI 预测期末目标价 -->
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card shadow="hover" class="metric-card">
-          <div class="metric-header">
-            <span class="metric-title">{{ t('marketPrediction.metricTargetPrice') }}</span>
-            <el-tag :type="trendTagType" size="small">{{ expectedChangePercent }}</el-tag>
-          </div>
-          <div class="metric-body">
-            <span class="metric-number" style="color: var(--color-chart-1);">{{ Number(targetEndPrice).toFixed(2) }}</span>
-            <span class="metric-unit">元/吨</span>
-          </div>
-          <div class="metric-footer">
-            <span>预期通道走势: <strong>{{ trendDirection }}</strong></span>
-          </div>
-        </el-card>
-      </el-col>
-
-      <!-- 3. 模型拟合优度与评估 -->
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card shadow="hover" class="metric-card">
-          <div class="metric-header">
-            <span class="metric-title">{{ t('marketPrediction.metricModelConfidence') }}</span>
-            <el-tag type="info" size="small">95% CI</el-tag>
-          </div>
-          <div class="metric-body">
-            <span class="metric-number" style="color: var(--color-status-success);">91.2%</span>
-            <span class="metric-unit">R² 优度</span>
-          </div>
-          <div class="metric-footer">
-            <span>时序平稳度与残差收敛可控</span>
-          </div>
-        </el-card>
-      </el-col>
-
-      <!-- 4. 算法引擎与版本 -->
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card shadow="hover" class="metric-card">
-          <div class="metric-header">
-            <span class="metric-title">{{ t('marketPrediction.metricModelArchitecture') }}</span>
-            <el-tag type="warning" size="small">Hybrid</el-tag>
-          </div>
-          <div class="metric-body" style="font-size: 17px; font-weight: 700; color: var(--color-text-muted); line-height: 38px;">
-            Prophet + XGBoost
-          </div>
-          <div class="metric-footer">
-            <span>引擎驱动版本: <code>{{ forecastResponse?.modelVersion || '1.0.0' }}</code></span>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <!-- 主走势大图卡片 -->
-    <el-card class="section-card chart-main-card" shadow="never" v-loading="loading">
-      <div class="chart-card-header">
-        <div class="chart-title-left">
-          <div style="display: inline-flex; align-items: center; gap: 6px;">
-            <el-icon color="var(--color-chart-1)" :size="16"><TrendCharts /></el-icon>
-            <strong style="font-size: 15px; color: var(--color-text);">{{ t('marketPrediction.chartTitle') }}</strong>
-          </div>
-          <span style="font-size: 12px; color: var(--color-text-muted); margin-left: 8px;">
-            (蓝线：AI 预测中位走势 ｜ 浅蓝阴影：95% 置信波动区间通道)
-          </span>
-        </div>
-        <div class="chart-actions-right">
-          <el-tag effect="plain" type="info" size="small">
-            样本采样周期: {{ horizonDays }} 天
-          </el-tag>
-        </div>
-      </div>
-
-      <el-empty
-        v-if="!loading && dataPoints.length === 0"
-        :description="emptyStateMessage || t('marketPrediction.noData')"
-        class="chart-empty"
-      />
-      <div v-show="dataPoints.length > 0" ref="chartRef" class="chart-box" />
-    </el-card>
-
-    <!-- AI 碳价敏感度与多情景动态推演沙盘 (Scenario Simulation Sandbox) -->
-    <el-card class="section-card sandbox-card" shadow="never">
-      <template #header>
-        <div class="card-title-flex">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <div style="display: inline-flex; align-items: center; gap: 6px;">
-              <el-icon color="var(--color-chart-3)" :size="16"><DataLine /></el-icon>
-              <strong style="color: var(--color-text); font-size: 15px;">{{ t('marketPrediction.sandboxTitle') }}</strong>
-            </div>
-            <el-tag :type="isSimulationActive ? 'warning' : 'info'" size="small" effect="plain">
-              {{ isSimulationActive ? t('marketPrediction.sandboxSimulating') : t('marketPrediction.sandboxBaseline') }}
-            </el-tag>
-          </div>
-          <el-button size="small" link type="primary" :icon="Refresh" :disabled="!isSimulationActive" @click="resetSimulation">
-            {{ t('marketPrediction.btnResetSim') }}
+    <FilterBar :aria-label="t('marketPrediction.selectType')">
+      <label class="pen-field">
+        <span class="pen-field__label">{{ t('marketPrediction.selectType') }}</span>
+        <el-select v-model="predictionType" style="width: 190px" size="default">
+          <el-option
+            v-for="opt in predictionTypeOptions"
+            :key="opt.value"
+            :label="opt.label()"
+            :value="opt.value"
+          />
+        </el-select>
+      </label>
+      <div class="pen-field horizon-row">
+        <span class="pen-field__label">{{ t('marketPrediction.selectHorizon') }}</span>
+        <el-button-group>
+          <el-button
+            v-for="days in horizonOptions"
+            :key="days"
+            :type="horizonDays === days ? 'primary' : 'default'"
+            size="default"
+            @click="horizonDays = days"
+          >
+            {{ days }} {{ t('marketPrediction.days') }}
           </el-button>
-        </div>
+        </el-button-group>
+      </div>
+    </FilterBar>
+
+    <DataPanel
+      :title="t('marketPrediction.chartTitle')"
+      :meta="t('marketPrediction.statSampleMeta', { days: horizonDays })"
+    >
+      <template #actions>
+        <el-tag effect="plain" type="info" size="small">{{ trendDirection }}</el-tag>
       </template>
 
-      <p style="font-size: 13px; color: var(--color-text-muted); line-height: 1.6; margin: 0 0 16px;">
-        {{ t('marketPrediction.sandboxDesc') }}
-      </p>
+      <div v-loading="loading" class="chart-wrap">
+        <el-empty
+          v-if="!loading && dataPoints.length === 0"
+          :description="emptyStateMessage || t('marketPrediction.noData')"
+          class="chart-empty"
+        />
+        <div v-show="dataPoints.length > 0" ref="chartRef" class="chart-box" />
+      </div>
+    </DataPanel>
 
-      <el-row :gutter="24">
-        <!-- 左侧三个交互滑块 -->
-        <el-col :xs="24" :md="14">
+    <!-- AI 碳价敏感度与多情景动态推演沙盘 (Scenario Simulation Sandbox) -->
+    <DataPanel
+      :title="t('marketPrediction.sandboxTitle')"
+      :meta="isSimulationActive ? t('marketPrediction.sandboxSimulating') : t('marketPrediction.sandboxBaseline')"
+    >
+      <template #actions>
+        <el-button size="small" link type="primary" :icon="Refresh" :disabled="!isSimulationActive" @click="resetSimulation">
+          {{ t('marketPrediction.btnResetSim') }}
+        </el-button>
+      </template>
+
+      <div class="panel-pad">
+        <p class="panel-desc">{{ t('marketPrediction.sandboxDesc') }}</p>
+
+        <div class="sandbox-grid">
+          <!-- 左侧三个交互滑块 -->
           <div class="slider-group">
             <!-- 滑块 1: 动力煤现货价格变动率 -->
             <div class="slider-item">
               <div class="slider-label-row">
-                <span class="slider-label" style="display: inline-flex; align-items: center; gap: 4px;">
-                  <el-icon color="var(--color-status-danger)" :size="14"><PriceTag /></el-icon>
+                <span class="slider-label">
+                  <el-icon color="var(--color-chart-1)" :size="14"><PriceTag /></el-icon>
                   {{ t('marketPrediction.simCoalLabel') }}
                 </span>
-                <span class="slider-val" :style="{ color: simCoalDelta > 0 ? 'var(--color-status-danger)' : (simCoalDelta < 0 ? 'var(--color-status-success)' : 'var(--color-text-muted)') }">
+                <span class="slider-val" :class="simCoalDelta > 0 ? 'is-neg' : (simCoalDelta < 0 ? 'is-pos' : 'is-neu')">
                   {{ simCoalDelta > 0 ? '+' : '' }}{{ simCoalDelta }}%
                 </span>
               </div>
@@ -601,13 +573,13 @@ onBeforeUnmount(() => {
             </div>
 
             <!-- 滑块 2: 配额基准线紧缩幅度 -->
-            <div class="slider-item" style="margin-top: 22px;">
+            <div class="slider-item">
               <div class="slider-label-row">
-                <span class="slider-label" style="display: inline-flex; align-items: center; gap: 4px;">
+                <span class="slider-label">
                   <el-icon color="var(--color-chart-1)" :size="14"><Document /></el-icon>
                   {{ t('marketPrediction.simQuotaLabel') }}
                 </span>
-                <span class="slider-val" :style="{ color: simQuotaTightening > 0 ? 'var(--color-status-danger)' : (simQuotaTightening < 0 ? 'var(--color-status-success)' : 'var(--color-text-muted)') }">
+                <span class="slider-val" :class="simQuotaTightening > 0 ? 'is-neg' : (simQuotaTightening < 0 ? 'is-pos' : 'is-neu')">
                   {{ simQuotaTightening > 0 ? '+' : '' }}{{ simQuotaTightening }}%
                 </span>
               </div>
@@ -615,35 +587,33 @@ onBeforeUnmount(() => {
             </div>
 
             <!-- 滑块 3: 区域清洁能源替代率 -->
-            <div class="slider-item" style="margin-top: 22px;">
+            <div class="slider-item">
               <div class="slider-label-row">
-                <span class="slider-label" style="display: inline-flex; align-items: center; gap: 4px;">
-                  <el-icon color="var(--color-status-success)" :size="14"><Lightning /></el-icon>
+                <span class="slider-label">
+                  <el-icon color="var(--color-chart-1)" :size="14"><Lightning /></el-icon>
                   {{ t('marketPrediction.simGreenPowerLabel') }}
                 </span>
-                <span class="slider-val" style="color: var(--color-status-success);">
+                <span class="slider-val is-pos">
                   +{{ simGreenPowerDelta }}%
                 </span>
               </div>
               <el-slider v-model="simGreenPowerDelta" :min="0" :max="30" :step="5" :marks="{ 0: '0%', 15: '+15%', 30: '+30%' }" />
             </div>
           </div>
-        </el-col>
 
-        <!-- 右侧推演结果与实时白话诊断 -->
-        <el-col :xs="24" :md="10">
+          <!-- 右侧推演结果与实时白话诊断 -->
           <div class="sandbox-result-box">
             <div class="sim-price-card">
               <div class="sim-price-label">{{ t('marketPrediction.simTargetPrice') }}</div>
               <div class="sim-price-row">
                 <span class="sim-price-num">{{ simulatedEndPrice.toFixed(2) }}</span>
-                <span class="sim-price-unit">元/吨</span>
+                <span class="sim-price-unit">{{ t('marketPrediction.statPriceUnit') }}</span>
                 <el-tag :type="simulatedEndPrice > targetEndPrice ? 'danger' : (simulatedEndPrice < targetEndPrice ? 'success' : 'info')" size="small">
                   {{ simulatedChangePercent }}
                 </el-tag>
               </div>
               <div class="sim-contrast-tip">
-                基准预测: {{ targetEndPrice.toFixed(2) }} 元 ｜ 情景偏差: {{ (simulatedEndPrice - targetEndPrice).toFixed(2) }} 元
+                {{ t('marketPrediction.simBaselineCompare', { baseline: targetEndPrice.toFixed(2), diff: (simulatedEndPrice - targetEndPrice).toFixed(2) }) }}
               </div>
             </div>
 
@@ -652,33 +622,26 @@ onBeforeUnmount(() => {
               <p class="sim-insight-body">{{ dynamicScenarioInsight.advice }}</p>
             </div>
           </div>
-        </el-col>
-      </el-row>
-    </el-card>
+        </div>
+      </div>
+    </DataPanel>
 
     <!-- 下半部：XAI 特征归因分析 + AI 量化交易策略建议 -->
-    <el-row :gutter="14" class="analysis-row">
+    <div class="analysis-row">
       <!-- 左侧：XAI 特征归因解释 -->
-      <el-col :xs="24" :md="12">
-        <el-card class="section-card sub-card" shadow="never">
-          <template #header>
-            <div class="card-title-flex">
-              <div style="display: inline-flex; align-items: center; gap: 6px;">
-                <el-icon color="var(--color-chart-1)" :size="15"><Search /></el-icon>
-                <strong style="color: var(--color-text);">{{ t('marketPrediction.xaiCardTitle') }}</strong>
-              </div>
-              <el-tag size="small" type="primary" effect="plain">SHAP 贡献权重</el-tag>
-            </div>
-          </template>
-          <p style="font-size: 12.5px; color: var(--color-text-muted); line-height: 1.6; margin-top: 0; margin-bottom: 14px;">
-            {{ t('marketPrediction.xaiCardDesc') }}
-          </p>
+      <DataPanel :title="t('marketPrediction.xaiCardTitle')">
+        <template #actions>
+          <el-tag size="small" type="primary" effect="plain">{{ t('marketPrediction.shapTag') }}</el-tag>
+        </template>
+
+        <div class="panel-pad">
+          <p class="panel-desc">{{ t('marketPrediction.xaiCardDesc') }}</p>
 
           <div class="xai-list">
             <div v-for="(feat, i) in xaiFeatures" :key="i" class="xai-item">
               <div class="xai-label-row">
                 <span class="xai-name">{{ t(feat.nameKey) }}</span>
-                <span class="xai-weight">权重贡献: <strong>{{ feat.weight }}%</strong></span>
+                <span class="xai-weight">{{ t('marketPrediction.xaiWeight') }}: <strong>{{ feat.weight }}%</strong></span>
               </div>
               <el-progress
                 :percentage="feat.weight"
@@ -689,24 +652,18 @@ onBeforeUnmount(() => {
               <div class="xai-tip">{{ t(feat.tipKey) }}</div>
             </div>
           </div>
-        </el-card>
-      </el-col>
+        </div>
+      </DataPanel>
 
       <!-- 右侧：AI 操盘与企业履约决策 -->
-      <el-col :xs="24" :md="12">
-        <el-card class="section-card sub-card" shadow="never">
-          <template #header>
-            <div class="card-title-flex">
-              <div style="display: inline-flex; align-items: center; gap: 6px;">
-                <el-icon color="var(--color-accent)" :size="15"><Guide /></el-icon>
-                <strong style="color: var(--color-text);">{{ t('marketPrediction.advisoryCardTitle') }}</strong>
-              </div>
-              <el-tag size="small" type="success" effect="plain">履约决策驱动</el-tag>
-            </div>
-          </template>
+      <DataPanel :title="t('marketPrediction.advisoryCardTitle')">
+        <template #actions>
+          <el-tag size="small" type="success" effect="plain">{{ t('marketPrediction.advisoryTag') }}</el-tag>
+        </template>
 
+        <div class="panel-pad">
           <div class="strategy-banner" :class="'strategy-banner--' + trendTagType">
-            <div class="strategy-badge">推荐策略</div>
+            <div class="strategy-badge">{{ t('marketPrediction.strategyBadge') }}</div>
             <strong class="strategy-headline">
               {{ trendDirection === t('marketPrediction.trendUp') ? t('marketPrediction.strategyBuyTitle') : t('marketPrediction.strategyWaitTitle') }}
             </strong>
@@ -717,27 +674,27 @@ onBeforeUnmount(() => {
 
           <div class="strategy-metrics-box">
             <div class="strat-item">
-              <span class="strat-label">当前支撑位 (下轨):</span>
-              <strong style="color: var(--color-status-success);">{{ dataPoints[0]?.lowerBound ? Number(dataPoints[0].lowerBound).toFixed(2) : '55.30' }} 元/吨</strong>
+              <span class="strat-label">{{ t('marketPrediction.supportLabel') }}</span>
+              <strong class="is-pos">{{ dataPoints[0]?.lowerBound ? Number(dataPoints[0].lowerBound).toFixed(2) : '55.30' }} {{ t('marketPrediction.statPriceUnit') }}</strong>
             </div>
             <div class="strat-item">
-              <span class="strat-label">预期阻力位 (上轨):</span>
-              <strong style="color: var(--color-status-danger);">{{ dataPoints[0]?.upperBound ? Number(dataPoints[0].upperBound).toFixed(2) : '64.80' }} 元/吨</strong>
+              <span class="strat-label">{{ t('marketPrediction.resistanceLabel') }}</span>
+              <strong class="is-neg">{{ dataPoints[0]?.upperBound ? Number(dataPoints[0].upperBound).toFixed(2) : '64.80' }} {{ t('marketPrediction.statPriceUnit') }}</strong>
             </div>
             <div class="strat-item">
-              <span class="strat-label">建议建仓窗口:</span>
-              <span style="color: var(--color-chart-1); font-weight: 600;">未来 7~10 天</span>
+              <span class="strat-label">{{ t('marketPrediction.windowLabel') }}</span>
+              <span class="strat-window">{{ t('marketPrediction.windowValue') }}</span>
             </div>
           </div>
 
-          <div style="margin-top: 18px; display: flex; justify-content: flex-end;">
+          <div class="strategy-actions">
             <el-button type="primary" size="default" :icon="Promotion" @click="goToTrading">
               {{ t('marketPrediction.btnGoToTrading') }}
             </el-button>
           </div>
-        </el-card>
-      </el-col>
-    </el-row>
+        </div>
+      </DataPanel>
+    </div>
   </section>
 </template>
 
@@ -745,113 +702,27 @@ onBeforeUnmount(() => {
 .market-prediction-page {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-5);
 }
 
-.section-card {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  background: var(--color-surface);
+.panel-pad {
+  padding: var(--space-4);
 }
 
-.header-terminal-card {
-  padding: 4px;
+.panel-desc {
+  margin: 0 0 var(--space-4);
+  font-size: var(--fs-sub);
+  line-height: 1.6;
+  color: var(--pen-muted);
 }
 
-.terminal-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
+.horizon-row {
+  min-width: 0;
 }
 
-.title-with-badge {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.terminal-title {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--color-text);
-  margin: 0;
-}
-
-.terminal-subtitle {
-  font-size: 13px;
-  color: var(--color-text-muted);
-  margin: 4px 0 0;
-}
-
-.terminal-controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.metrics-row {
-  margin: 0;
-}
-
-.metric-card {
-  border-radius: 10px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  padding: 4px 8px;
-}
-
-.metric-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.metric-title {
-  font-size: 12.5px;
-  color: var(--color-text-muted);
-  font-weight: 500;
-}
-
-.metric-body {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  margin-bottom: 6px;
-}
-
-.metric-number {
-  font-size: 28px;
-  font-weight: 800;
-  color: var(--color-text);
-  line-height: 1;
-}
-
-.metric-unit {
-  font-size: 12px;
-  color: var(--color-text-muted);
-}
-
-.metric-footer {
-  font-size: 11.5px;
-  color: var(--color-text-muted);
-  border-top: 1px dashed var(--color-border);
-  padding-top: 6px;
-}
-
-.chart-main-card {
-  padding: 8px;
-}
-
-.chart-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-  padding: 0 4px;
+/* ---------- 图表区 ---------- */
+.chart-wrap {
+  padding: var(--space-4);
 }
 
 .chart-box {
@@ -865,124 +736,17 @@ onBeforeUnmount(() => {
   align-items: center;
 }
 
-.analysis-row {
-  margin: 0;
-}
-
-.sub-card {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.card-title-flex {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.xai-list {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.xai-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.xai-label-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 13px;
-}
-
-.xai-name {
-  color: var(--color-text-muted);
-  font-weight: 600;
-}
-
-.xai-weight {
-  color: var(--color-text-muted);
-  font-size: 12px;
-}
-
-.xai-tip {
-  font-size: 11.5px;
-  color: var(--color-text-muted);
-  margin-top: 2px;
-}
-
-.strategy-banner {
-  padding: 14px 16px;
-  border-radius: 8px;
-  margin-bottom: 14px;
-  background: var(--pen-success-soft);
-  border: 1px solid var(--color-status-success-soft);
-}
-
-.strategy-banner--danger {
-  background: var(--color-status-danger-soft);
-  border-color: var(--color-status-danger-soft);
-}
-
-.strategy-banner--warning {
-  background: var(--pen-warning-soft);
-  border-color: var(--color-status-warning-soft);
-}
-
-.strategy-badge {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  color: var(--color-status-success);
-  margin-bottom: 4px;
-}
-
-.strategy-headline {
-  font-size: 15px;
-  color: var(--color-text);
-  display: block;
-  margin-bottom: 4px;
-}
-
-.strategy-detail {
-  font-size: 12.5px;
-  color: var(--color-text-muted);
-  line-height: 1.6;
-  margin: 0;
-}
-
-.strategy-metrics-box {
-  background: var(--color-surface);
-  border-radius: 8px;
-  border: 1px solid var(--color-border);
-  padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 13px;
-}
-
-.strat-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.strat-label {
-  color: var(--color-text-muted);
-}
-
-.sandbox-card {
-  background: var(--color-surface);
+/* ---------- 情景推演沙盘 ---------- */
+.sandbox-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: var(--space-6);
 }
 
 .slider-group {
   display: flex;
   flex-direction: column;
+  gap: var(--space-6);
 }
 
 .slider-item {
@@ -994,66 +758,86 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  margin-bottom: 2px;
+  font-size: var(--fs-body);
+  font-weight: 500;
+  color: var(--pen-muted);
+  margin-bottom: var(--space-1);
+}
+
+.slider-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 
 .slider-val {
-  font-weight: 700;
-  font-size: 13.5px;
+  font-weight: 500;
+  font-size: var(--fs-body);
+  font-variant-numeric: tabular-nums;
+}
+
+.slider-val.is-pos {
+  color: var(--pen-success);
+}
+
+.slider-val.is-neg {
+  color: var(--pen-danger);
+}
+
+.slider-val.is-neu {
+  color: var(--pen-faint);
 }
 
 .sandbox-result-box {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  height: 100%;
+  gap: var(--space-3);
 }
 
 .sim-price-card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 12px 14px;
+  background: var(--pen-raised);
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-card);
+  padding: var(--space-3) var(--space-4);
 }
 
 .sim-price-label {
-  font-size: 12px;
-  color: var(--color-text-muted);
-  margin-bottom: 4px;
+  font-size: var(--fs-caption);
+  color: var(--pen-faint);
+  margin-bottom: var(--space-1);
 }
 
 .sim-price-row {
   display: flex;
   align-items: baseline;
-  gap: 6px;
-  margin-bottom: 4px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
 }
 
 .sim-price-num {
-  font-size: 26px;
-  font-weight: 800;
-  color: var(--color-text);
-  line-height: 1;
+  font-size: var(--fs-stat);
+  font-weight: 500;
+  color: var(--pen-ink);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
 .sim-price-unit {
-  font-size: 12px;
-  color: var(--color-text-muted);
+  font-size: var(--fs-caption);
+  color: var(--pen-faint);
 }
 
 .sim-contrast-tip {
-  font-size: 11.5px;
-  color: var(--color-text-muted);
+  font-size: var(--fs-caption);
+  color: var(--pen-faint);
 }
 
 .sim-insight-card {
-  padding: 12px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--pen-border);
+  background: var(--pen-surface);
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1061,31 +845,169 @@ onBeforeUnmount(() => {
 }
 
 .sim-insight-card--danger {
-  background: var(--color-status-danger-soft);
-  border-color: var(--color-status-danger-soft);
+  background: var(--pen-danger-soft);
+  border-color: var(--pen-danger-soft);
 }
 
 .sim-insight-card--success {
   background: var(--pen-success-soft);
-  border-color: var(--color-status-success-soft);
+  border-color: var(--pen-success-soft);
 }
 
 .sim-insight-card--info {
-  background: var(--color-status-info-soft);
-  border-color: var(--color-status-info-soft);
+  background: var(--pen-note-bg);
+  border-color: var(--pen-note-bd);
 }
 
 .sim-insight-title {
-  font-size: 13px;
-  color: var(--color-text);
-  margin-bottom: 6px;
+  font-size: var(--fs-body);
+  color: var(--pen-ink);
+  margin-bottom: var(--space-1-5);
   display: block;
 }
 
 .sim-insight-body {
-  font-size: 12px;
-  color: var(--color-text-muted);
+  font-size: var(--fs-sub);
+  color: var(--pen-muted);
   line-height: 1.6;
   margin: 0;
+}
+
+/* ---------- XAI / 决策建议 ---------- */
+.analysis-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.xai-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.xai-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.xai-label-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--fs-body);
+}
+
+.xai-name {
+  color: var(--pen-muted);
+  font-weight: 500;
+}
+
+.xai-weight {
+  color: var(--pen-faint);
+  font-size: var(--fs-caption);
+}
+
+.xai-tip {
+  font-size: var(--fs-caption);
+  color: var(--pen-faint);
+}
+
+.strategy-banner {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-card);
+  margin-bottom: var(--space-3);
+  background: var(--pen-success-soft);
+  border: 1px solid var(--pen-success-soft);
+}
+
+.strategy-banner--danger {
+  background: var(--pen-danger-soft);
+  border-color: var(--pen-danger-soft);
+}
+
+.strategy-banner--warning {
+  background: var(--pen-warning-soft);
+  border-color: var(--pen-warning-soft);
+}
+
+.strategy-badge {
+  font-size: var(--fs-caption);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--pen-faint);
+  margin-bottom: var(--space-1);
+}
+
+.strategy-headline {
+  font-size: var(--fs-body);
+  color: var(--pen-ink);
+  display: block;
+  margin-bottom: var(--space-1);
+}
+
+.strategy-detail {
+  font-size: var(--fs-sub);
+  color: var(--pen-muted);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.strategy-metrics-box {
+  background: var(--pen-raised);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--pen-border);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: var(--fs-body);
+}
+
+.strat-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.strat-label {
+  color: var(--pen-muted);
+}
+
+.strat-item .is-pos {
+  color: var(--pen-success);
+}
+
+.strat-item .is-neg {
+  color: var(--pen-danger);
+}
+
+.strat-window {
+  color: var(--pen-muted);
+  font-weight: 500;
+}
+
+.strategy-actions {
+  margin-top: var(--space-5);
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (max-width: 1024px) {
+  .sandbox-grid,
+  .analysis-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .market-prediction-page {
+    gap: var(--space-3);
+  }
+
+  .chart-box {
+    height: 320px;
+  }
 }
 </style>

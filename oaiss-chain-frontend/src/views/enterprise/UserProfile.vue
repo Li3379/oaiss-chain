@@ -27,11 +27,14 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
+import { Clock, Key, Lock, Tickets } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { changePassword, getProfile, reportStayTime, updateProfile } from '../../api/user'
 import { getMyEnterpriseAdmission } from '../../api/enterprise'
 import { deleteKeyPair, generateKeyPair, getKeyPair } from '../../api/signature'
-import PageContainer from '../../components/PageContainer.vue'
+import PageHeader from '../../components/pen/PageHeader.vue'
+import StatStrip from '../../components/pen/StatStrip.vue'
+import DataPanel from '../../components/pen/DataPanel.vue'
 import PageHint from '../../components/PageHint.vue'
 import TermTip from '../../components/TermTip.vue'
 import type {
@@ -227,6 +230,54 @@ const signatureStatusText = computed(() => {
   return signatureKeyPair.value.keyStatusText || t('userProfile.signatureReady')
 })
 
+/** 统计条：全部由已加载的本页数据推导，不新增接口请求 */
+const securityStats = computed(() => {
+  const hasKey = Boolean(signatureKeyPair.value)
+  const keyActive = signatureKeyPair.value?.keyStatus === 1
+  const certActive = admissionStatus.value?.status === 1
+
+  return [
+    {
+      label: t('userProfile.keyPairStatus'),
+      value: signatureStatusText.value,
+      unit: '',
+      delta: hasKey
+        ? t('userProfile.statKeyHint', { version: signatureKeyVersionText.value })
+        : t('userProfile.statKeyMissingHint'),
+      tone: keyActive ? ('pos' as const) : (hasKey ? ('neg' as const) : ('neu' as const)),
+      icon: Key,
+    },
+    {
+      label: t('certificateManage.certStatus'),
+      value: admissionStatusText.value,
+      unit: '',
+      delta: admissionStatus.value?.certificateNo
+        ? t('userProfile.statCertHint', { certNo: admissionStatus.value.certificateNo })
+        : t('userProfile.statCertMissingHint'),
+      tone: certActive ? ('pos' as const) : (admissionStatus.value ? ('neg' as const) : ('neu' as const)),
+      icon: Tickets,
+    },
+    {
+      label: t('userProfile.onlineStayDuration'),
+      value: stayDurationText.value,
+      unit: '',
+      delta: t('userProfile.statStayHint'),
+      tone: 'neu' as const,
+      icon: Clock,
+    },
+    {
+      label: t('userProfile.accountStatus'),
+      value: profile.value?.userTypeDesc || t('userProfile.roleUnset'),
+      unit: '',
+      delta: profile.value?.username
+        ? t('userProfile.statAccountHint', { username: profile.value.username })
+        : t('userProfile.statAccountMissingHint'),
+      tone: profile.value ? ('pos' as const) : ('neu' as const),
+      icon: Lock,
+    },
+  ]
+})
+
 const signaturePublicKeyPreview = computed(() => {
   const publicKey = signatureKeyPair.value?.publicKey?.trim()
   if (!publicKey) return ''
@@ -339,83 +390,96 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <PageContainer :title="t('userProfile.title')" :description="t('userProfile.description')">
+  <section class="profile-page pen-enter">
+    <PageHeader
+      :title="t('userProfile.title')"
+      :description="t('userProfile.description')"
+      :crumbs="[t('menu.personalCenter'), t('menu.accountSettings')]"
+    />
+
     <PageHint :text="t('pageHints.userProfile')" />
-    <section class="profile-page">
-      <el-card class="section-card" shadow="never">
-        <el-tabs v-model="activeTab">
-          <el-tab-pane :label="t('userProfile.basicInfo')" name="info">
-            <div v-loading="profileLoading" style="padding: 20px 0">
-              <el-form
-                ref="editFormRef"
-                :model="editForm"
-                :rules="editRules"
-                label-width="100px"
-                class="profile-form"
-  scroll-to-error>
-                <el-form-item :label="t('userProfile.username')">
-                  <el-input :model-value="profile?.username" disabled />
-                </el-form-item>
-                <el-form-item :label="t('userProfile.role')">
-                  <el-input :model-value="profile?.userTypeDesc" disabled />
-                </el-form-item>
-                <el-form-item :label="t('userProfile.realName')" prop="realName">
-                  <el-input v-model="editForm.realName" :placeholder="t('userProfile.enterRealName')" />
-                </el-form-item>
-                <el-form-item :label="t('userProfile.email')" prop="email">
-                  <el-input v-model="editForm.email" :placeholder="t('userProfile.enterEmail')" />
-                </el-form-item>
-                <el-form-item :label="t('userProfile.phone')">
-                  <el-input v-model="editForm.phone" :placeholder="t('userProfile.enterPhone')" />
-                </el-form-item>
-                <el-form-item :label="t('userProfile.company')">
-                  <el-input v-model="editForm.company" :placeholder="t('userProfile.enterCompany')" />
-                </el-form-item>
-                <el-form-item :label="t('userProfile.address')">
-                  <el-input v-model="editForm.address" :placeholder="t('userProfile.enterAddress')" />
-                </el-form-item>
-                <el-form-item :label="t('userProfile.onlineStayDuration')">
-                  <el-tag type="info" size="large">{{ stayDurationText }}</el-tag>
-                </el-form-item>
-                <el-form-item>
-                  <el-button type="primary" :loading="editLoading" @click="onSaveProfile">{{ t('userProfile.saveChanges') }}</el-button>
-                </el-form-item>
-              </el-form>
-            </div>
-          </el-tab-pane>
 
-          <el-tab-pane :label="t('userProfile.changePassword')" name="password">
-            <div style="padding: 20px 0">
-              <el-form
-                ref="pwdFormRef"
-                :model="pwdForm"
-                :rules="pwdRules"
-                label-width="100px"
-                class="pwd-form"
-  scroll-to-error>
-                <el-form-item :label="t('userProfile.currentPassword')" prop="oldPassword">
-                  <el-input v-model="pwdForm.oldPassword" type="password" show-password :placeholder="t('userProfile.enterCurrentPassword')" />
-                </el-form-item>
-                <el-form-item :label="t('userProfile.newPassword')" prop="newPassword">
-                  <el-input v-model="pwdForm.newPassword" type="password" show-password :placeholder="t('userProfile.enterNewPassword')" />
-                </el-form-item>
-                <el-form-item :label="t('userProfile.confirmPassword')" prop="confirmPassword">
-                  <el-input v-model="pwdForm.confirmPassword" type="password" show-password :placeholder="t('userProfile.confirmNewPassword')" />
-                </el-form-item>
-                <el-form-item>
-                  <el-button type="primary" :loading="pwdLoading" @click="onChangePassword">{{ t('userProfile.changePassword') }}</el-button>
-                </el-form-item>
-              </el-form>
-            </div>
-          </el-tab-pane>
-        </el-tabs>
-      </el-card>
+    <StatStrip :items="securityStats" :loading="profileLoading || signatureLoading || admissionLoading" />
 
-      <el-card class="section-card" shadow="never">
-        <template #header>
-          <span>{{ t('certificateManage.myAdmission') }}</span>
-        </template>
-        <el-descriptions :column="2" border v-loading="admissionLoading">
+    <el-tabs v-model="activeTab" class="profile-tabs">
+      <el-tab-pane :label="t('userProfile.basicInfo')" name="info" />
+      <el-tab-pane :label="t('userProfile.changePassword')" name="password" />
+    </el-tabs>
+
+    <DataPanel
+      :title="activeTab === 'info' ? t('userProfile.basicInfo') : t('userProfile.changePassword')"
+      :meta="activeTab === 'info' ? t('userProfile.panelProfileMeta') : t('userProfile.panelPasswordMeta')"
+    >
+      <div v-show="activeTab === 'info'" v-loading="profileLoading" class="panel-pad">
+        <el-form
+          ref="editFormRef"
+          :model="editForm"
+          :rules="editRules"
+          label-width="100px"
+          class="profile-form"
+          scroll-to-error
+        >
+          <el-form-item :label="t('userProfile.username')">
+            <el-input :model-value="profile?.username" disabled />
+          </el-form-item>
+          <el-form-item :label="t('userProfile.role')">
+            <el-input :model-value="profile?.userTypeDesc" disabled />
+          </el-form-item>
+          <el-form-item :label="t('userProfile.realName')" prop="realName">
+            <el-input v-model="editForm.realName" :placeholder="t('userProfile.enterRealName')" />
+          </el-form-item>
+          <el-form-item :label="t('userProfile.email')" prop="email">
+            <el-input v-model="editForm.email" :placeholder="t('userProfile.enterEmail')" />
+          </el-form-item>
+          <el-form-item :label="t('userProfile.phone')">
+            <el-input v-model="editForm.phone" :placeholder="t('userProfile.enterPhone')" />
+          </el-form-item>
+          <el-form-item :label="t('userProfile.company')">
+            <el-input v-model="editForm.company" :placeholder="t('userProfile.enterCompany')" />
+          </el-form-item>
+          <el-form-item :label="t('userProfile.address')">
+            <el-input v-model="editForm.address" :placeholder="t('userProfile.enterAddress')" />
+          </el-form-item>
+          <el-form-item :label="t('userProfile.onlineStayDuration')">
+            <el-tag type="info" size="large">{{ stayDurationText }}</el-tag>
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" :loading="editLoading" @click="onSaveProfile">{{ t('userProfile.saveChanges') }}</el-button>
+          </el-form-item>
+        </el-form>
+      </div>
+
+      <div v-show="activeTab === 'password'" class="panel-pad">
+        <el-form
+          ref="pwdFormRef"
+          :model="pwdForm"
+          :rules="pwdRules"
+          label-width="100px"
+          class="pwd-form"
+          scroll-to-error
+        >
+          <el-form-item :label="t('userProfile.currentPassword')" prop="oldPassword">
+            <el-input v-model="pwdForm.oldPassword" type="password" show-password :placeholder="t('userProfile.enterCurrentPassword')" />
+          </el-form-item>
+          <el-form-item :label="t('userProfile.newPassword')" prop="newPassword">
+            <el-input v-model="pwdForm.newPassword" type="password" show-password :placeholder="t('userProfile.enterNewPassword')" />
+          </el-form-item>
+          <el-form-item :label="t('userProfile.confirmPassword')" prop="confirmPassword">
+            <el-input v-model="pwdForm.confirmPassword" type="password" show-password :placeholder="t('userProfile.confirmNewPassword')" />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" :loading="pwdLoading" @click="onChangePassword">{{ t('userProfile.changePassword') }}</el-button>
+          </el-form-item>
+        </el-form>
+      </div>
+    </DataPanel>
+
+    <DataPanel
+      :title="t('certificateManage.myAdmission')"
+      :meta="t('userProfile.panelCertMeta')"
+    >
+      <div v-loading="admissionLoading" class="panel-pad">
+        <el-descriptions :column="2" border>
           <el-descriptions-item :label="t('certificateManage.certStatus')">
             <el-tag :type="admissionStatusType">{{ admissionStatusText }}</el-tag>
           </el-descriptions-item>
@@ -426,106 +490,103 @@ onUnmounted(() => {
             {{ admissionStatus.issuedDate }}
           </el-descriptions-item>
         </el-descriptions>
-      </el-card>
+      </div>
+    </DataPanel>
 
-      <el-card class="section-card" shadow="never" data-testid="signature-card">
-        <template #header>
-          <div class="signature-card__header">
-            <div>
-              <div class="signature-card__title">
-                <span>{{ t('userProfile.digitalSignature') }}<TermTip term="rsaKey" /></span>
-              </div>
-              <div class="signature-card__description">{{ t('userProfile.digitalSignatureDescription') }}</div>
-            </div>
-            <el-space wrap>
-              <el-button
-                :loading="signatureLoading"
-                data-testid="signature-refresh-button"
-                @click="loadSignatureKeyPair"
-              >
-                {{ t('userProfile.refreshKeyPair') }}
-              </el-button>
-              <el-button
-                v-if="!signatureKeyPair"
-                type="primary"
-                :loading="signatureActionLoading"
-                data-testid="signature-generate-button"
-                @click="onGenerateKeyPair"
-              >
-                {{ t('userProfile.generateKeyPair') }}
-              </el-button>
-              <el-button
-                v-else
-                type="danger"
-                plain
-                :loading="signatureActionLoading"
-                data-testid="signature-delete-button"
-                @click="onDeleteKeyPair"
-              >
-                {{ t('userProfile.deleteKeyPair') }}
-              </el-button>
-            </el-space>
-          </div>
-        </template>
+    <DataPanel
+      :title="t('userProfile.digitalSignature')"
+      :meta="t('userProfile.digitalSignatureDescription')"
+      data-testid="signature-card"
+    >
+      <template #actions>
+        <el-button
+          :loading="signatureLoading"
+          data-testid="signature-refresh-button"
+          @click="loadSignatureKeyPair"
+        >
+          {{ t('userProfile.refreshKeyPair') }}
+        </el-button>
+        <el-button
+          v-if="!signatureKeyPair"
+          type="primary"
+          :loading="signatureActionLoading"
+          data-testid="signature-generate-button"
+          @click="onGenerateKeyPair"
+        >
+          {{ t('userProfile.generateKeyPair') }}
+        </el-button>
+        <el-button
+          v-else
+          type="danger"
+          plain
+          :loading="signatureActionLoading"
+          data-testid="signature-delete-button"
+          @click="onDeleteKeyPair"
+        >
+          {{ t('userProfile.deleteKeyPair') }}
+        </el-button>
+      </template>
 
-        <div v-loading="signatureLoading">
-          <div class="signature-status-row">
-            <span class="signature-status-row__label">{{ t('userProfile.keyPairStatus') }}</span>
-            <el-tag :type="signatureStatusType" data-testid="signature-status">
-              {{ signatureStatusText }}
-            </el-tag>
-          </div>
+      <div v-loading="signatureLoading" class="panel-pad">
+        <div class="signature-status-row">
+          <span class="signature-status-row__label">{{ t('userProfile.keyPairStatus') }}<TermTip term="rsaKey" /></span>
+          <el-tag :type="signatureStatusType" data-testid="signature-status">
+            {{ signatureStatusText }}
+          </el-tag>
+        </div>
 
-          <el-empty
-            v-if="signatureLoaded && !signatureKeyPair"
-            :description="t('userProfile.signatureEmptyDescription')"
-            :image-size="92"
-          />
+        <el-empty
+          v-if="signatureLoaded && !signatureKeyPair"
+          :description="t('userProfile.signatureEmptyDescription')"
+          :image-size="92"
+        />
 
-          <div v-else-if="signatureKeyPair" class="signature-details">
-            <el-descriptions :column="2" border>
-              <el-descriptions-item :label="t('userProfile.keyVersion')">
-                <span data-testid="signature-key-version">{{ signatureKeyVersionText }}</span>
-              </el-descriptions-item>
-              <el-descriptions-item :label="t('userProfile.keyUsage')">
-                {{ signatureKeyUsageText }}
-              </el-descriptions-item>
-              <el-descriptions-item :label="t('userProfile.createdAt')">
-                {{ formatDateTime(signatureKeyPair.createdAt) }}
-              </el-descriptions-item>
-              <el-descriptions-item :label="t('userProfile.expiresAt')">
-                {{ formatDateTime(signatureKeyPair.expiresAt) }}
-              </el-descriptions-item>
-            </el-descriptions>
+        <div v-else-if="signatureKeyPair" class="signature-details">
+          <el-descriptions :column="2" border>
+            <el-descriptions-item :label="t('userProfile.keyVersion')">
+              <span data-testid="signature-key-version">{{ signatureKeyVersionText }}</span>
+            </el-descriptions-item>
+            <el-descriptions-item :label="t('userProfile.keyUsage')">
+              {{ signatureKeyUsageText }}
+            </el-descriptions-item>
+            <el-descriptions-item :label="t('userProfile.createdAt')">
+              {{ formatDateTime(signatureKeyPair.createdAt) }}
+            </el-descriptions-item>
+            <el-descriptions-item :label="t('userProfile.expiresAt')">
+              {{ formatDateTime(signatureKeyPair.expiresAt) }}
+            </el-descriptions-item>
+          </el-descriptions>
 
-            <div class="signature-public-key">
-              <div class="signature-public-key__label">{{ t('userProfile.publicKeyPreview') }}</div>
-              <el-input
-                type="textarea"
-                :rows="4"
-                readonly
-                resize="none"
-                data-testid="signature-public-key"
-                :model-value="signaturePublicKeyPreview"
-              />
-            </div>
+          <div class="signature-public-key">
+            <div class="signature-public-key__label">{{ t('userProfile.publicKeyPreview') }}</div>
+            <el-input
+              type="textarea"
+              :rows="4"
+              readonly
+              resize="none"
+              data-testid="signature-public-key"
+              :model-value="signaturePublicKeyPreview"
+            />
           </div>
         </div>
-      </el-card>
-    </section>
-  </PageContainer>
+      </div>
+    </DataPanel>
+  </section>
 </template>
 
 <style scoped>
 .profile-page {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-5);
 }
 
-.section-card {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
+.panel-pad {
+  padding: var(--space-4) var(--space-4) var(--space-5);
+}
+
+.profile-tabs {
+  margin-bottom: calc(var(--space-2) * -1);
 }
 
 .profile-form {
@@ -536,52 +597,36 @@ onUnmounted(() => {
   max-width: 500px;
 }
 
-.signature-card__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.signature-card__title {
-  font-size: var(--text-md);
-  font-weight: 600;
-  color: var(--color-text);
-}
-
-.signature-card__description {
-  margin-top: 4px;
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
-}
-
 .signature-status-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
+  gap: var(--space-2-5);
+  margin-bottom: var(--space-4);
 }
 
 .signature-status-row__label {
-  font-size: var(--text-base);
-  color: var(--color-text-muted);
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--fs-caption);
+  font-weight: 500;
+  color: var(--pen-faint);
 }
 
 .signature-details {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .signature-public-key {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .signature-public-key__label {
-  font-size: var(--text-base);
+  font-size: var(--fs-caption);
   font-weight: 500;
-  color: var(--color-text);
+  color: var(--pen-faint);
 }
 </style>

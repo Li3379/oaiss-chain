@@ -16,14 +16,19 @@
  *     * POST /api/v1/trade/{id}/cancel   -> cancelTrade() 撤销未成交订单
  * ==============================================================================
  */
-import { ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { CircleCheck, Clock, Histogram, Wallet } from '@element-plus/icons-vue'
 import { getMyTrades, cancelTrade } from '../../api/trade'
 import type { TradeResponse } from '../../types'
 import { formatDateTime, formatNumber } from '../../utils/format'
 import PageHint from '../../components/PageHint.vue'
 import StatusTag from '../../components/StatusTag.vue'
+import PageHeader from '../../components/pen/PageHeader.vue'
+import StatStrip from '../../components/pen/StatStrip.vue'
+import FilterBar from '../../components/pen/FilterBar.vue'
+import DataPanel from '../../components/pen/DataPanel.vue'
 
 const { t } = useI18n()
 
@@ -142,52 +147,103 @@ const handleCancel = async (row: TradeResponse) => {
 onMounted(() => {
   loadTrades()
 })
+
+/** 页头右上角主操作：刷新当前订单台账（索引 0） */
+const onHeaderAction = (_index: number) => {
+  onQuery()
+}
+
+/** 首屏统计条：仅由已加载的本页订单推导，不新增接口请求 */
+const orderStats = computed(() => {
+  const rows = tableData.value
+  const pending = rows.filter((r) => r.status === 0 || r.status === 1).length
+  const completed = rows.filter((r) => r.status === 2).length
+  const cancelled = rows.filter((r) => r.status === 3).length
+  const volume = rows.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0)
+  const amount = rows.reduce((sum, r) => sum + (Number(r.totalAmount) || 0), 0)
+
+  return [
+    {
+      label: t('ordersManage.statTotal'),
+      value: total.value,
+      unit: t('ordersManage.unitOrders'),
+      delta: t('ordersManage.statTotalHint', { count: rows.length }),
+      tone: 'neu' as const,
+      icon: CircleCheck,
+    },
+    {
+      label: t('ordersManage.statPending'),
+      value: pending,
+      unit: t('ordersManage.unitOrders'),
+      delta: t('ordersManage.statPendingHint'),
+      tone: pending > 0 ? ('neu' as const) : ('pos' as const),
+      icon: Clock,
+    },
+    {
+      label: t('ordersManage.statVolume'),
+      value: Number(volume.toFixed(2)),
+      unit: t('common.unit_ton'),
+      delta: t('ordersManage.statVolumeHint', { count: completed }),
+      tone: 'neu' as const,
+      icon: Histogram,
+    },
+    {
+      label: t('ordersManage.statAmount'),
+      value: Number(amount.toFixed(2)),
+      unit: t('common.unit_coin'),
+      delta: t('ordersManage.statAmountHint', { count: cancelled }),
+      tone: 'neu' as const,
+      icon: Wallet,
+    },
+  ]
+})
 </script>
 
 <template>
-  <section class="orders-page">
-    <el-card class="section-card" shadow="never">
-      <el-breadcrumb separator="/">
-        <el-breadcrumb-item>{{ t('ordersManage.breadcrumbTrading') }}</el-breadcrumb-item>
-        <el-breadcrumb-item>{{ t('ordersManage.breadcrumbOrders') }}</el-breadcrumb-item>
-      </el-breadcrumb>
-    </el-card>
+  <section class="orders-page pen-enter">
+    <PageHeader
+      :title="t('menu.orderManage')"
+      :description="t('ordersManage.pageDescription')"
+      :crumbs="[t('ordersManage.breadcrumbTrading'), t('ordersManage.breadcrumbOrders')]"
+      :actions="[{ label: t('common.refresh'), variant: 'default' }]"
+      @action="onHeaderAction"
+    />
 
     <PageHint :text="t('pageHints.ordersManage')" />
 
-    <el-card class="section-card" shadow="never">
-      <el-form :inline="true" class="search-form">
-        <el-form-item :label="t('ordersManage.colTradeNo')">
-          <el-input v-model="searchForm.tradeNo" :placeholder="t('ordersManage.placeholderTradeNo')" clearable />
-        </el-form-item>
+    <StatStrip :items="orderStats" :loading="loading" />
 
-        <el-form-item :label="t('ordersManage.colTradeType')">
-          <el-select v-model="searchForm.tradeType" :placeholder="t('ordersManage.placeholderTradeType')" clearable style="width: 150px">
-            <el-option v-for="item in tradeTypeOptions" :key="item.value" :label="t(item.label)" :value="item.value" />
-          </el-select>
-        </el-form-item>
+    <FilterBar :aria-label="t('ordersManage.filterLabel')">
+      <label class="pen-field">
+        <span class="pen-field__label">{{ t('ordersManage.colTradeNo') }}</span>
+        <el-input v-model="searchForm.tradeNo" :placeholder="t('ordersManage.placeholderTradeNo')" clearable />
+      </label>
 
-        <el-form-item :label="t('ordersManage.dateRange')">
-          <el-date-picker
-            v-model="searchForm.dateRange"
-            type="daterange"
-            :range-separator="t('ordersManage.dateSeparator')"
-            :start-placeholder="t('ordersManage.startDate')"
-            :end-placeholder="t('ordersManage.endDate')"
-            value-format="YYYY-MM-DD"
-          />
-        </el-form-item>
+      <label class="pen-field">
+        <span class="pen-field__label">{{ t('ordersManage.colTradeType') }}</span>
+        <el-select v-model="searchForm.tradeType" :placeholder="t('ordersManage.placeholderTradeType')" clearable class="filter-select">
+          <el-option v-for="item in tradeTypeOptions" :key="item.value" :label="t(item.label)" :value="item.value" />
+        </el-select>
+      </label>
 
-        <el-form-item>
-          <el-button type="primary" @click="onQuery">{{ t('common.search') }}</el-button>
-          <el-button @click="onReset">{{ t('common.reset') }}</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+      <label class="pen-field">
+        <span class="pen-field__label">{{ t('ordersManage.dateRange') }}</span>
+        <el-date-picker
+          v-model="searchForm.dateRange"
+          type="daterange"
+          :range-separator="t('ordersManage.dateSeparator')"
+          :start-placeholder="t('ordersManage.startDate')"
+          :end-placeholder="t('ordersManage.endDate')"
+          value-format="YYYY-MM-DD"
+        />
+      </label>
 
-    <el-card class="section-card" shadow="never">
-      <div class="table-tip">{{ t('common.total', { count: total }) }}</div>
-      <el-table :data="tableData" border v-loading="loading" :empty-text="t('ordersManage.emptyText')" @selection-change="onSelectionChange">
+      <el-button type="primary" @click="onQuery">{{ t('common.search') }}</el-button>
+      <el-button @click="onReset">{{ t('common.reset') }}</el-button>
+    </FilterBar>
+
+    <DataPanel :title="t('ordersManage.panelTitle')" :meta="t('common.total', { count: total })">
+      <el-table :data="tableData" v-loading="loading" :empty-text="t('ordersManage.emptyText')" @selection-change="onSelectionChange">
         <el-table-column type="selection" width="56" />
         <el-table-column :label="t('tradingMarket.colIndex')" width="80">
           <template #default="scope">
@@ -226,7 +282,7 @@ onMounted(() => {
         </el-table-column>
       </el-table>
 
-      <div class="pagination-row">
+      <template #footer>
         <el-pagination
           v-model:current-page="currentPage"
           v-model:page-size="pageSize"
@@ -237,8 +293,8 @@ onMounted(() => {
           @size-change="onSizeChange"
           @current-change="onCurrentChange"
         />
-      </div>
-    </el-card>
+      </template>
+    </DataPanel>
 
     <el-dialog v-model="detailDialogVisible" :title="t('ordersManage.dialogDetail')" width="700px">
       <el-descriptions :column="2" border v-if="currentDetailTrade">
@@ -266,28 +322,10 @@ onMounted(() => {
 .orders-page {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-5);
 }
 
-.section-card {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-}
-
-.search-form {
-  display: flex;
-  flex-wrap: wrap;
-}
-
-.table-tip {
-  margin-bottom: 10px;
-  color: var(--color-text-muted);
-  font-size: var(--text-sm);
-}
-
-.pagination-row {
-  margin-top: 14px;
-  display: flex;
-  justify-content: flex-end;
+.filter-select {
+  width: 150px;
 }
 </style>

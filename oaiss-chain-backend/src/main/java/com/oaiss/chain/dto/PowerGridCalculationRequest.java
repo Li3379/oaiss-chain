@@ -19,13 +19,22 @@ import java.math.BigDecimal;
 @Data
 public class PowerGridCalculationRequest {
 
-    /** 输配电量 (MWh) */
-    @NotNull(message = "输配电量不能为空")
+    /**
+     * 输配电量 (MWh)。
+     *
+     * @deprecated 国标净电量式不使用该字段（D4）。保留以兼容旧调用方，
+     *             新逻辑按 (上网 + 输入 − 输出 − 售电) 计算。
+     */
+    @Deprecated
     @DecimalMin(value = "0", message = "输配电量不能为负数")
     private BigDecimal transmissionVolume;
 
-    /** 线损率 (0-1) */
-    @NotNull(message = "线损率不能为空")
+    /**
+     * 线损率 (0-1)。
+     *
+     * @deprecated 国标净电量式不使用该字段（D4）。保留以兼容旧调用方。
+     */
+    @Deprecated
     @DecimalMin(value = "0", message = "线损率不能为负数")
     @DecimalMax(value = "1", message = "线损率不能超过1")
     private BigDecimal lineLossRate;
@@ -46,6 +55,14 @@ public class PowerGridCalculationRequest {
     /** 外售电量 (MWh) — 可选 */
     @DecimalMin(value = "0", message = "外售电量不能为负数")
     private BigDecimal exportedElectricity;
+
+    /**
+     * 售电量 EL售电 (MWh)。
+     *
+     * <p>国标式 `(上网 + 输入 − 输出 − 售电) × EF` 的第四项。
+     * v1 DTO 完全没有这个字段，导致公式无法按国标实现（D4）。</p>
+     */
+    private BigDecimal soldElectricity;
 
     /** 外购电力排放因子 (tCO2/MWh) — 可选 */
     @DecimalMin(value = "0", message = "外购电力排放因子不能为负数")

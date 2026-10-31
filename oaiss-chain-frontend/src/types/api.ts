@@ -42,6 +42,10 @@ export interface PageRequest {
   size?: number
   status?: number | string
   userType?: number | string
+  /** 交易类型（1-拍卖, 2-P2P, 3-配额分配），/search/trades 使用 */
+  tradeType?: number
+  /** 企业 ID，/search/reports 使用 */
+  enterpriseId?: number
   title?: string
   accountingPeriod?: string
   sortBy?: string

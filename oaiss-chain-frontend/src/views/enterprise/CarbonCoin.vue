@@ -16,16 +16,19 @@
  *     * POST /api/v1/carbon-coin/transfer     -> transferCoins() 执行企业间转账
  * ==============================================================================
  */
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
+import { CircleCheck, ShoppingCart, TrendCharts, Wallet } from '@element-plus/icons-vue'
 import { getMyAccount, getTransactions, transferCoins } from '../../api/carbonCoin'
-import PageContainer from '../../components/PageContainer.vue'
 import TermTip from '../../components/TermTip.vue'
 import PageHint from '../../components/PageHint.vue'
 import { formatDateTime, formatNumber } from '../../utils/format'
 import type { CarbonCoinAccountResponse, CarbonCoinTransaction } from '../../types'
 import EmptyHint from '../../components/EmptyHint.vue'
+import PageHeader from '../../components/pen/PageHeader.vue'
+import StatStrip from '../../components/pen/StatStrip.vue'
+import DataPanel from '../../components/pen/DataPanel.vue'
 
 const { t } = useI18n()
 
@@ -129,7 +132,6 @@ const onSizeChange = (size: number) => {
   currentPage.value = 1
   loadTransactions()
 }
-
 const onCurrentChange = (page: number) => {
   currentPage.value = page
   loadTransactions()
@@ -163,12 +165,9 @@ const getTransactionTypeText = (type: number) => {
   return map[type] || t('common.status')
 }
 
-const getAccountStatusType = (status?: number) => (status === 1 ? 'success' : 'warning')
-
 const getAccountStatusText = (status?: number) => (
   status === 1 ? t('carbonCoin.statusActive') : t('carbonCoin.statusInactive')
 )
-
 
 const getAmountClass = (type: number) => {
   const positiveTypes = [1, 2, 6]
@@ -185,100 +184,126 @@ onMounted(() => {
   loadAccount()
   loadTransactions()
 })
+
+/** 页头右上角主操作：发起碳币转账（索引 0） */
+const onHeaderAction = (_index: number) => {
+  openTransferDialog()
+}
+
+/** 首屏统计条：全部取自已加载的账户数据，不新增接口请求 */
+const accountStats = computed(() => {
+  const acc = accountData.value
+  const statusText = getAccountStatusText(acc?.status)
+
+  return [
+    {
+      label: t('carbonCoin.balance'),
+      value: Number((acc?.balance || 0).toFixed(2)),
+      unit: t('carbonCoin.unit'),
+      delta: t('carbonCoin.statBalanceHint'),
+      tone: 'neu' as const,
+      icon: Wallet,
+    },
+    {
+      label: t('carbonCoin.accountStatus'),
+      value: statusText,
+      unit: '',
+      delta: t('carbonCoin.statStatusHint'),
+      tone: acc?.status === 1 ? ('pos' as const) : ('neg' as const),
+      icon: CircleCheck,
+    },
+    {
+      label: t('carbonCoin.totalRecharge'),
+      value: Number((acc?.totalRecharged || 0).toFixed(2)),
+      unit: t('carbonCoin.unit'),
+      delta: t('carbonCoin.statRechargeHint'),
+      tone: 'pos' as const,
+      icon: TrendCharts,
+    },
+    {
+      label: t('carbonCoin.totalConsume'),
+      value: Number((acc?.totalSpent || 0).toFixed(2)),
+      unit: t('carbonCoin.unit'),
+      delta: t('carbonCoin.statConsumeHint'),
+      tone: 'neu' as const,
+      icon: ShoppingCart,
+    },
+  ]
+})
 </script>
 
 <template>
-  <PageContainer :title="t('carbonCoin.title')" :description="t('carbonCoin.description')">
+  <section class="carbon-coin-page pen-enter">
+    <PageHeader
+      :title="t('carbonCoin.title')"
+      :description="t('carbonCoin.description')"
+      :crumbs="[t('menu.accountManage'), t('menu.carbonCoinAccount')]"
+      :actions="[{ label: t('carbonCoin.transferBtn'), variant: 'primary' }]"
+      @action="onHeaderAction"
+    />
+
     <PageHint :text="t('pageHints.carbonCoin')" />
-    <section class="carbon-coin-page">
-      <el-card class="section-card" shadow="never" v-loading="accountLoading">
-        <template #header>
-          <span class="card-header">{{ t('carbonCoin.accountInfo') }}</span>
-        </template>
-        <div v-if="accountData" class="account-info">
-          <div class="info-card main-balance">
-            <div class="info-label">{{ t('carbonCoin.balance') }}<TermTip term="carbonCoin" /></div>
-            <div class="info-value">{{ formatNumber(accountData.balance || 0) }}</div>
-            <div class="info-unit">{{ t('carbonCoin.unit') }}</div>
-          </div>
-          <div class="info-card" data-testid="carbon-coin-status-card">
-            <div class="info-label">{{ t('carbonCoin.accountStatus') }}</div>
-            <div class="info-status">
-              <el-tag :type="getAccountStatusType(accountData.status)" size="large">
-                {{ getAccountStatusText(accountData.status) }}
-              </el-tag>
-            </div>
-          </div>
-          <div class="info-card">
-            <div class="info-label">{{ t('carbonCoin.totalRecharge') }}</div>
-            <div class="info-value">{{ formatNumber(accountData.totalRecharged || 0) }}</div>
-            <div class="info-unit">{{ t('carbonCoin.unit') }}</div>
-          </div>
-          <div class="info-card">
-            <div class="info-label">{{ t('carbonCoin.totalConsume') }}</div>
-            <div class="info-value spent">{{ formatNumber(accountData.totalSpent || 0) }}</div>
-            <div class="info-unit">{{ t('carbonCoin.unit') }}</div>
-          </div>
-        </div>
-        <EmptyHint
-          v-else
-          :description="t('nextSteps.emptyCoinTip')"
-          :action-text="t('nextSteps.emptyCoinAction')"
-          to="/enterprise/trading/market"
+
+    <div class="account-info" data-testid="carbon-coin-status-card">
+      <p class="info-label">{{ t('carbonCoin.accountInfo') }}<TermTip term="carbonCoin" /></p>
+      <StatStrip :items="accountStats" :loading="accountLoading" />
+    </div>
+
+    <EmptyHint
+      v-if="!accountData && !accountLoading"
+      :description="t('nextSteps.emptyCoinTip')"
+      :action-text="t('nextSteps.emptyCoinAction')"
+      to="/enterprise/trading/market"
+    />
+
+    <DataPanel :title="t('carbonCoin.txRecord')" :meta="t('common.total', { count: total })">
+      <template #actions>
+        <el-button type="primary" @click="openTransferDialog">{{ t('carbonCoin.transferBtn') }}</el-button>
+      </template>
+
+      <el-table :data="transactionData" v-loading="transactionLoading">
+        <el-table-column :label="t('common.colIndex')" width="80">
+          <template #default="scope">
+            {{ (currentPage - 1) * pageSize + scope.$index + 1 }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="txNo" :label="t('carbonCoin.colTxNo')" min-width="180" />
+        <el-table-column prop="txType" :label="t('carbonCoin.colTxType')" min-width="120">
+          <template #default="{ row }">
+            <el-tag :type="getTransactionTypeTag(row.txType)">
+              {{ getTransactionTypeText(row.txType) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="amount" :label="t('carbonCoin.colAmount')" min-width="120">
+          <template #default="{ row }">
+            <span :class="getAmountClass(row.txType)">
+              {{ formatAmount(row.txType, row.amount) }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="balanceAfter" :label="t('carbonCoin.colBalanceAfter')" min-width="120">
+          <template #default="{ row }">{{ formatNumber(row.balanceAfter) }}</template>
+        </el-table-column>
+        <el-table-column prop="remark" :label="t('carbonCoin.colRemark')" min-width="200" show-overflow-tooltip />
+        <el-table-column prop="createdAt" :label="t('carbonCoin.colTime')" min-width="170">
+          <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
+        </el-table-column>
+      </el-table>
+
+      <template #footer>
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          background
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next, jumper"
+          :total="total"
+          @size-change="onSizeChange"
+          @current-change="onCurrentChange"
         />
-        <div class="transfer-action">
-          <el-button type="primary" @click="openTransferDialog">{{ t('carbonCoin.transferBtn') }}</el-button>
-        </div>
-      </el-card>
-
-      <el-card class="section-card" shadow="never">
-        <template #header>
-          <span class="card-header">{{ t('carbonCoin.txRecord') }}</span>
-        </template>
-        <el-table :data="transactionData" border v-loading="transactionLoading">
-          <el-table-column :label="t('common.colIndex')" width="80">
-            <template #default="scope">
-              {{ (currentPage - 1) * pageSize + scope.$index + 1 }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="txNo" :label="t('carbonCoin.colTxNo')" min-width="180" />
-          <el-table-column prop="txType" :label="t('carbonCoin.colTxType')" min-width="120">
-            <template #default="{ row }">
-              <el-tag :type="getTransactionTypeTag(row.txType)">
-                {{ getTransactionTypeText(row.txType) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="amount" :label="t('carbonCoin.colAmount')" min-width="120">
-            <template #default="{ row }">
-              <span :class="getAmountClass(row.txType)">
-                {{ formatAmount(row.txType, row.amount) }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="balanceAfter" :label="t('carbonCoin.colBalanceAfter')" min-width="120">
-            <template #default="{ row }">{{ formatNumber(row.balanceAfter) }}</template>
-          </el-table-column>
-          <el-table-column prop="remark" :label="t('carbonCoin.colRemark')" min-width="200" show-overflow-tooltip />
-          <el-table-column prop="createdAt" :label="t('carbonCoin.colTime')" min-width="170">
-            <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
-          </el-table-column>
-        </el-table>
-
-        <div class="pagination-row">
-          <el-pagination
-            v-model:current-page="currentPage"
-            v-model:page-size="pageSize"
-            background
-            :page-sizes="[10, 20, 50]"
-            layout="total, sizes, prev, pager, next, jumper"
-            :total="total"
-            @size-change="onSizeChange"
-            @current-change="onCurrentChange"
-          />
-        </div>
-      </el-card>
-    </section>
+      </template>
+    </DataPanel>
 
     <!-- Transfer Dialog -->
     <el-dialog
@@ -320,97 +345,39 @@ onMounted(() => {
         <el-button type="primary" :loading="transferLoading" @click="handleTransfer">{{ t('common.confirm') }}</el-button>
       </template>
     </el-dialog>
-  </PageContainer>
+  </section>
 </template>
 
 <style scoped>
 .carbon-coin-page {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-}
-
-.section-card {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-}
-
-.card-header {
-  font-weight: 600;
-  font-size: var(--text-md);
+  gap: var(--space-5);
 }
 
 .account-info {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  padding: 10px 0;
-}
-
-.info-card {
-  background: var(--el-fill-color-light);
-  border-radius: 8px;
-  padding: 20px;
-  text-align: center;
-  transition: transform 0.2s;
-}
-
-.info-card:hover {
-  transform: translateY(-2px);
-}
-
-.info-card.main-balance {
-  background: var(--color-accent);
-  color: white;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
 .info-label {
-  font-size: var(--text-base);
-  margin-bottom: 12px;
-  opacity: 0.9;
-}
-
-.info-value {
-  font-size: 32px;
-  font-weight: 700;
-  margin-bottom: 8px;
-  line-height: 1;
-}
-
-.info-unit {
-  font-size: var(--text-xs);
-  opacity: 0.8;
-}
-
-.info-value.spent {
-  color: var(--el-color-warning);
-}
-
-.info-status {
-  margin-top: 18px;
-  display: flex;
-  justify-content: center;
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  font-size: var(--fs-caption);
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--pen-faint);
 }
 
 .amount-positive {
-  color: var(--el-color-success);
+  color: var(--pen-success);
   font-weight: 600;
 }
 
 .amount-negative {
-  color: var(--el-color-danger);
+  color: var(--pen-danger);
   font-weight: 600;
-}
-
-.pagination-row {
-  margin-top: 14px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.transfer-action {
-  margin-top: 16px;
-  display: flex;
-  justify-content: flex-end;
 }
 </style>

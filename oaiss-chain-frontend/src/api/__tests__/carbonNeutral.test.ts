@@ -88,22 +88,28 @@ describe('carbonNeutral api contract', () => {
   it('forwards lifecycle actions to correct endpoints', async () => {
     await submitProject(1)
     await startProject(1)
-    await applyCertification(1)
+    await applyCertification(1, { certOrg: 'CNCA' })
     await terminateProject(1, { reason: 'budget' })
 
     expect(requestMocks.postMock).toHaveBeenNthCalledWith(1, '/carbon-neutral/1/submit')
     expect(requestMocks.postMock).toHaveBeenNthCalledWith(2, '/carbon-neutral/1/start')
-    expect(requestMocks.postMock).toHaveBeenNthCalledWith(3, '/carbon-neutral/1/apply-certification')
+    expect(requestMocks.postMock).toHaveBeenNthCalledWith(3, '/carbon-neutral/1/apply-certification', { certOrg: 'CNCA' })
     expect(requestMocks.postMock).toHaveBeenNthCalledWith(4, '/carbon-neutral/1/terminate', { reason: 'budget' })
   })
 
   it('forwards verification and monitoring to correct endpoints', async () => {
-    const verifyData: import('../../types').ProjectVerificationRequest = { projectId: 1, verifiedReduction: 100, remark: 'ok' }
-    await submitVerification(1, verifyData)
+    // 后端 SubmitVerificationRequest 只接受 verifierId；核证结果走 verifyProject
+    await submitVerification(1, { verifierId: 4 })
     await updateMonitoring(1, { monitoringData: { co2: 100 } })
 
-    expect(requestMocks.postMock).toHaveBeenCalledWith('/carbon-neutral/1/submit-verification', verifyData)
+    expect(requestMocks.postMock).toHaveBeenCalledWith('/carbon-neutral/1/submit-verification', { verifierId: 4 })
     expect(requestMocks.putMock).toHaveBeenCalledWith('/carbon-neutral/1/monitoring', { monitoringData: { co2: 100 } })
+  })
+
+  it('sends the certificate number required by the certify endpoint', async () => {
+    await completeCertification(1, { certNo: 'CERT-001' })
+
+    expect(requestMocks.postMock).toHaveBeenCalledWith('/carbon-neutral/1/certify', { certNo: 'CERT-001' })
   })
 
   it('rejects reviewProject when projectId is falsy', async () => {
@@ -122,7 +128,7 @@ describe('carbonNeutral api contract', () => {
   })
 
   it('rejects completeCertification when projectId is falsy', async () => {
-    await expect(completeCertification(0 as unknown as number))
+    await expect(completeCertification(0 as unknown as number, { certNo: 'CERT-001' }))
       .rejects.toThrow('项目ID不能为空')
   })
 })

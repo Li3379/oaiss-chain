@@ -25,6 +25,7 @@
 import { computed, reactive, ref, onMounted } from "vue"
 import { useI18n } from "vue-i18n"
 import { ElMessage, ElMessageBox } from "element-plus"
+import { CircleCheck, Clock, Histogram, PriceTag } from "@element-plus/icons-vue"
 import { getMyTrades, createP2PTrade, cancelTrade, confirmTrade } from "../../api/trade"
 import type { TradeIdentityFilter, TradeResponse } from "../../types"
 import { formatDateTime } from "../../utils/format"
@@ -34,6 +35,10 @@ import { getScoreRanking } from "../../api/credit"
 import { getEnterpriseById } from "../../api/enterprise"
 import { useAppStore } from "../../store"
 import StatusTag from '../../components/StatusTag.vue'
+import PageHeader from '../../components/pen/PageHeader.vue'
+import StatStrip from '../../components/pen/StatStrip.vue'
+import FilterBar from '../../components/pen/FilterBar.vue'
+import DataPanel from '../../components/pen/DataPanel.vue'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -261,44 +266,88 @@ const onConfirmTrade = async (row: TradeResponse) => {
 onMounted(() => {
   loadTrades()
 })
+
+/** 首屏统计条：仅由已加载的本页交易列表推导，不新增接口请求 */
+const p2pStats = computed(() => {
+  const rows = tableData.value
+  const pending = rows.filter((r) => r.status === 0).length
+  const completed = rows.filter((r) => r.status === 2).length
+  const volume = rows.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0)
+  const bestPrice = rows.reduce((max, r) => Math.max(max, Number(r.unitPrice) || 0), 0)
+
+  return [
+    {
+      label: t('tradingP2P.statTotal'),
+      value: total.value,
+      unit: t('tradingP2P.unitDeals'),
+      delta: t('tradingP2P.statTotalHint'),
+      tone: 'neu' as const,
+      icon: CircleCheck,
+    },
+    {
+      label: t('tradingP2P.statPending'),
+      value: pending,
+      unit: t('tradingP2P.unitDeals'),
+      delta: t('tradingP2P.statPendingHint'),
+      tone: pending > 0 ? ('neu' as const) : ('pos' as const),
+      icon: Clock,
+    },
+    {
+      label: t('tradingP2P.statVolume'),
+      value: Number(volume.toFixed(2)),
+      unit: t('common.unit_ton'),
+      delta: t('tradingP2P.statVolumeHint', { count: completed }),
+      tone: 'neu' as const,
+      icon: Histogram,
+    },
+    {
+      label: t('tradingP2P.statBestPrice'),
+      value: Number(bestPrice.toFixed(2)),
+      unit: t('tradingP2P.unitPricePerTon'),
+      delta: t('tradingP2P.statBestPriceHint'),
+      tone: 'neu' as const,
+      icon: PriceTag,
+    },
+  ]
+})
 </script>
 
 <template>
-  <section class="p2p-page">
-    <el-card class="section-card" shadow="never">
-      <el-breadcrumb separator="/">
-        <el-breadcrumb-item>{{ t('tradingP2P.breadcrumbTrading') }}</el-breadcrumb-item>
-        <el-breadcrumb-item>{{ t('tradingP2P.breadcrumbP2P') }}</el-breadcrumb-item>
-      </el-breadcrumb>
-    </el-card>
+  <section class="p2p-page pen-enter">
+    <PageHeader
+      :title="t('menu.p2pTrading')"
+      :description="t('tradingP2P.pageDescription')"
+      :crumbs="[t('tradingP2P.breadcrumbTrading'), t('tradingP2P.breadcrumbP2P')]"
+    />
 
     <PageHint :text="t('pageHints.tradingP2P')" />
 
-    <el-card class="section-card" shadow="never">
-      <el-form :inline="true" class="search-form">
-        <el-form-item :label="t('tradingP2P.colCounterpartyName')">
-          <el-input v-model="searchForm.keyword" :placeholder="t('common.enterKeyword')" clearable />
-        </el-form-item>
+    <StatStrip :items="p2pStats" :loading="loading" />
 
-        <el-form-item :label="t('tradingP2P.identityFilterLabel')">
-          <el-select v-model="searchForm.identity" :placeholder="t('tradingP2P.identityFilterPlaceholder')" clearable>
-            <el-option v-for="item in identityOptions" :key="item.value" :label="t(item.label)" :value="item.value" />
-          </el-select>
-        </el-form-item>
+    <FilterBar :aria-label="t('tradingP2P.filterLabel')">
+      <label class="pen-field">
+        <span class="pen-field__label">{{ t('tradingP2P.colCounterpartyName') }}</span>
+        <el-input v-model="searchForm.keyword" :placeholder="t('common.enterKeyword')" clearable />
+      </label>
 
-        <el-form-item :label="t('tradingP2P.colTradeNo')">
-          <el-input v-model="searchForm.tradeNo" :placeholder="t('common.enterKeyword')" clearable />
-        </el-form-item>
+      <label class="pen-field">
+        <span class="pen-field__label">{{ t('tradingP2P.identityFilterLabel') }}</span>
+        <el-select v-model="searchForm.identity" :placeholder="t('tradingP2P.identityFilterPlaceholder')" clearable>
+          <el-option v-for="item in identityOptions" :key="item.value" :label="t(item.label)" :value="item.value" />
+        </el-select>
+      </label>
 
-        <el-form-item>
-          <el-button type="primary" @click="onQuery">{{ t('common.search') }}</el-button>
-          <el-button type="primary" @click="openAddDialog">{{ t('tradingP2P.dialogCreate') }}</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+      <label class="pen-field">
+        <span class="pen-field__label">{{ t('tradingP2P.colTradeNo') }}</span>
+        <el-input v-model="searchForm.tradeNo" :placeholder="t('common.enterKeyword')" clearable />
+      </label>
 
-    <el-card class="section-card" shadow="never">
-      <el-table :data="tableData" border v-loading="loading" :empty-text="t('tradingP2P.emptyText')">
+      <el-button type="primary" @click="onQuery">{{ t('common.search') }}</el-button>
+      <el-button type="primary" @click="openAddDialog">{{ t('tradingP2P.dialogCreate') }}</el-button>
+    </FilterBar>
+
+    <DataPanel :title="t('tradingP2P.panelTitle')" :meta="t('common.total', { count: total })">
+      <el-table :data="tableData" v-loading="loading" :empty-text="t('tradingP2P.emptyText')">
         <el-table-column :label="t('tradingMarket.colIndex')" width="80">
           <template #default="scope">
             {{ (page - 1) * pageSize + scope.$index + 1 }}
@@ -330,12 +379,12 @@ onMounted(() => {
               <el-button link type="primary" @click="onConfirmTrade(row)">{{ t('common.confirm') }}</el-button>
               <el-button link type="danger" @click="onCancelTrade(row)">{{ t('ordersManage.btnCancel') }}</el-button>
             </div>
-            <span v-else style="color: var(--color-text-muted); font-size: var(--text-xs);">-</span>
+            <span v-else class="action-placeholder">-</span>
           </template>
         </el-table-column>
       </el-table>
 
-      <div class="pagination-row">
+      <template #footer>
         <el-pagination
           v-model:current-page="page"
           v-model:page-size="pageSize"
@@ -346,8 +395,8 @@ onMounted(() => {
           @size-change="onSizeChange"
           @current-change="onPageChange"
         />
-      </div>
-    </el-card>
+      </template>
+    </DataPanel>
 
     <el-dialog v-model="dialogVisible" :title="t('tradingP2P.dialogCreate')" width="520px" destroy-on-close>
       <el-form ref="dialogFormRef" :model="dialogForm" :rules="dialogRules" label-width="100px" scroll-to-error>
@@ -398,49 +447,40 @@ onMounted(() => {
 .p2p-page {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-}
-
-.section-card {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-}
-
-.search-form {
-  display: flex;
-  flex-wrap: wrap;
-}
-
-.pagination-row {
-  margin-top: 14px;
-  display: flex;
-  justify-content: flex-end;
+  gap: var(--space-5);
 }
 
 .action-buttons {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
+}
+
+.action-placeholder {
+  color: var(--pen-faint);
+  font-size: var(--fs-caption);
 }
 
 .p2p-estimate-card {
-  margin: -4px 0 16px 100px;
-  padding: 8px 12px;
-  background: rgba(20, 167, 154, 0.08);
-  border-radius: 8px;
+  margin: calc(-1 * var(--space-1)) 0 var(--space-4) 100px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--pen-sunken);
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-card);
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
 .p2p-estimate-label {
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
+  font-size: var(--fs-sub);
+  color: var(--pen-muted);
 }
 
 .p2p-estimate-val {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--el-color-primary);
+  font-size: var(--fs-h1);
+  font-weight: 500;
+  color: var(--pen-ink);
+  font-variant-numeric: tabular-nums;
 }
 </style>

@@ -1,0 +1,654 @@
+/* ============================================================================
+   pen「石墨台账」视觉层 —— 对照 pencli/UI_Desgin.pen 的实测规格
+   ----------------------------------------------------------------------------
+   所有数值取自设计源（UI_Desgin.pen 的 frame/rectangle 属性）与参考图象素探针，
+   不是估计值：
+     - 卡片圆角 2px（设计稿 763 个 frame 中 cornerRadius=2，参考图角部实测 2px）
+     - 主按钮高 34px、内边距 0 14px；输入框高 36px、内边距 0 11px
+     - 页头 H1 24px/500，副标 12.5px；表头 34px 高、字号 10px/500
+     - 表格行高 44px；状态胶囊高 23px、字号 11px、含 5px 圆点
+     - 面板头 44px；内容区 padding 22px 26px、gap 18px
+   本文件只做「呈现」，不改任何业务结构、i18n 键与路由。
+   ========================================================================== */
+
+:root {
+  /* ---------- 原语补充：设计源里存在但旧令牌层未收录的色值 ---------- */
+  --pen-shell: #FAFAFA;         /* 左图标栏底 */
+  --pen-shell-top: #FFFFFF;     /* 顶栏底 */
+  --pen-nav-active: #ECECEC;    /* 图标栏当前项底 */
+  --pen-raised-active: #E4E4E4; /* 次级按钮按下 */
+  --pen-sunken: #F5F5F5;        /* 输入框/表头底 */
+  --pen-track: #E8E8E8;         /* 进度条轨道 */
+  --pen-note-bg: #F2F6FC;       /* 提示条底 */
+  --pen-note-bd: #D8E3F2;       /* 提示条边 */
+  --pen-brand-mark: #141414;    /* 品牌标记底（设计源 brandMark） */
+
+  /* 交互派生色（hover/active/滚动条），集中定义以满足「无裸 hex」门禁 */
+  --pen-action-hover: #2A2A2A;
+  --pen-action-active: #000000;
+  --pen-scroll-thumb-hover: #CFCFCF;
+
+  /* 浮层投影：全站仅对话框/下拉使用（设计稿要求内容区零阴影） */
+  --pen-overlay-shadow: 0 12px 32px rgba(10, 10, 10, 0.1);
+  --pen-popover-shadow: 0 8px 24px rgba(10, 10, 10, 0.08);
+
+  /* 状态胶囊四族（浅底 + 深墨，参考图实测配对） */
+  --pen-pill-pos-bg: #DCFAE5;
+  --pen-pill-pos-ink: #04250E;
+  --pen-pill-pos-bd: #B7E7C6;
+  --pen-pill-neg-bg: #FFEDEA;
+  --pen-pill-neg-ink: #831C1E;
+  --pen-pill-neg-bd: #F5C6C2;
+  --pen-pill-warn-bg: #FFFBEB;
+  --pen-pill-warn-ink: #92400E;
+  --pen-pill-warn-bd: #F0DCB5;
+  --pen-pill-neu-bg: #EEEEEE;
+  --pen-pill-neu-ink: #3D3D3D;
+  --pen-pill-neu-bd: #E0E0E0;
+  --pen-pill-info-bg: #E8EEF9;
+  --pen-pill-info-ink: #1D4E9E;
+  --pen-pill-info-bd: #CBD9EF;
+
+  /* ---------- 形状：设计稿统一 2px（不是 8px） ---------- */
+  --radius-card: 2px;
+  --radius-control: 2px;
+  --radius-pill: 2px;
+
+  /* ---------- 字号：设计源实测档位 ---------- */
+  --fs-caption: 10.5px;   /* 字段标签、卡片标题、表头次要信息 */
+  --fs-th: 10px;          /* 表头大写标签 */
+  --fs-pill: 11px;        /* 状态胶囊 */
+  --fs-sub: 12.5px;       /* 页头副标、表格数值（次要列） */
+  --fs-body: 13px;        /* 正文、表格主列、按钮 */
+  --fs-h1: 24px;          /* 页头标题 */
+  --fs-stat: 25px;        /* 统计卡数值 */
+
+  /* ---------- 间距：8px 栅格（设计稿用 3/4/6/8/10/12/18/22/26） ---------- */
+  --space-0-5: 3px;
+  --space-1: 4px;
+  --space-1-5: 6px;
+  --space-2: 8px;
+  --space-2-5: 10px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 18px;
+  --space-6: 22px;
+  --space-7: 26px;
+
+  /* ---------- Element Plus 形状/尺寸对齐设计稿 ---------- */
+  --el-border-radius-base: 2px;
+  --el-border-radius-small: 2px;
+  --el-border-radius-round: 999px;
+
+  --el-font-size-base: 13px;
+  --el-font-size-small: 12px;
+  --el-font-size-extra-small: 11px;
+
+  --el-component-size: 34px;
+  --el-component-size-small: 28px;
+  --el-component-size-large: 38px;
+
+  /* 表格：表头 34px 高（设计稿），行 44px */
+  --el-table-header-bg-color: var(--pen-sunken);
+  --el-table-header-text-color: var(--pen-faint);
+  --el-table-border-color: var(--pen-border);
+  --el-table-row-hover-bg-color: var(--pen-sunken);
+  --el-table-text-color: var(--pen-ink);
+  --el-table-bg-color: var(--pen-surface);
+  --el-table-tr-bg-color: var(--pen-surface);
+  --el-table-fixed-box-shadow: none;
+
+  /* 卡片/弹层：无阴影，靠发丝线分隔 */
+  --el-box-shadow: none;
+  --el-box-shadow-light: none;
+  --el-box-shadow-lighter: none;
+  --el-box-shadow-dark: none;
+  --el-border-color: var(--pen-border);
+  --el-border-color-light: var(--pen-border);
+  --el-border-color-lighter: var(--pen-border);
+  --el-fill-color-blank: var(--pen-surface);
+  --el-fill-color-light: var(--pen-sunken);
+  --el-fill-color-lighter: var(--pen-sunken);
+  --el-bg-color: var(--pen-surface);
+  --el-bg-color-page: var(--pen-ground);
+  --el-bg-color-overlay: var(--pen-surface);
+
+  --el-text-color-primary: var(--pen-ink);
+  --el-text-color-regular: var(--pen-muted);
+  --el-text-color-secondary: var(--pen-faint);
+  --el-text-color-placeholder: var(--pen-faint);
+
+  /* ---------- 动效：统一曲线与时长（UX 一致性） ---------- */
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 260ms;
+  --motion-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* ============================================================================
+   全局基底
+   ========================================================================== */
+body {
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 台账读数感：数字/哈希/编号统一等宽 */
+code,
+kbd,
+pre,
+.tabular,
+.el-table .cell,
+.el-descriptions__content {
+  font-variant-numeric: tabular-nums;
+}
+
+code,
+pre,
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.94em;
+}
+
+/* ============================================================================
+   Element Plus 外表统一：直角、发丝线、无阴影
+   ========================================================================== */
+
+/* 卡片：设计稿里没有阴影，只有 1px 边与 2px 圆角 */
+.el-card {
+  border-radius: var(--radius-card);
+  border: 1px solid var(--pen-border);
+  box-shadow: none !important;
+  overflow: hidden;
+}
+
+.el-card__header {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--pen-border);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--pen-ink);
+}
+
+.el-card__body {
+  padding: var(--space-4);
+}
+
+/* 按钮：34px 高，主操作墨色、次级描边 */
+.el-button {
+  border-radius: var(--radius-control);
+  font-size: var(--fs-body);
+  font-weight: 500;
+  transition: background-color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+
+.el-button--primary {
+  --el-button-bg-color: var(--pen-action);
+  --el-button-border-color: var(--pen-action);
+  --el-button-hover-bg-color: var(--pen-action-hover);
+  --el-button-hover-border-color: var(--pen-action-hover);
+  --el-button-active-bg-color: var(--pen-action-active);
+  --el-button-active-border-color: var(--pen-action-active);
+  color: var(--color-on-inverse);
+}
+
+.el-button--default:not(.is-text):not(.is-link) {
+  background: var(--pen-surface);
+  border-color: var(--pen-border);
+  color: var(--pen-ink);
+}
+
+.el-button--default:not(.is-text):not(.is-link):hover {
+  background: var(--pen-raised);
+  border-color: var(--pen-border);
+  color: var(--pen-ink);
+}
+
+.el-button--default:not(.is-text):not(.is-link):active {
+  background: var(--pen-raised-active);
+}
+
+/* 次级强调按钮（设计稿的「描边主操作」） */
+.el-button.is-plain.el-button--primary {
+  background: var(--pen-surface);
+  border-color: var(--pen-border);
+  color: var(--pen-ink);
+}
+
+.el-button.is-plain.el-button--primary:hover {
+  background: var(--pen-raised);
+  border-color: var(--pen-border);
+  color: var(--pen-ink);
+}
+
+/* 文本/链接按钮：设计稿的表格操作列 */
+.el-button.is-link {
+  font-size: var(--fs-body);
+}
+
+/* 输入类控件：36px 高、浅底、发丝线 */
+.el-input__wrapper,
+.el-textarea__inner,
+.el-select__wrapper {
+  background-color: var(--pen-sunken);
+  box-shadow: 0 0 0 1px var(--pen-border) inset;
+  border-radius: var(--radius-control);
+  transition: box-shadow var(--motion-fast) var(--motion-ease),
+    background-color var(--motion-fast) var(--motion-ease);
+}
+
+.el-input__wrapper:hover,
+.el-textarea__inner:hover,
+.el-select__wrapper:hover {
+  box-shadow: 0 0 0 1px var(--pen-border) inset;
+  background-color: var(--pen-surface);
+}
+
+.el-input__wrapper.is-focus,
+.el-textarea__inner:focus,
+.el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 1px var(--pen-ink) inset;
+  background-color: var(--pen-surface);
+}
+
+/* 表格：表头 34px、行 44px、无竖线（设计稿只有横向发丝线） */
+.el-table {
+  --el-table-border-color: var(--pen-border);
+  font-size: var(--fs-body);
+  color: var(--pen-ink);
+}
+
+.el-table th.el-table__cell {
+  height: 34px;
+  padding: 0;
+  background: var(--pen-sunken) !important;
+  border-bottom: 1px solid var(--pen-border);
+  font-size: var(--fs-th);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--pen-faint);
+  text-transform: uppercase;
+}
+
+.el-table td.el-table__cell {
+  height: 44px;
+  padding: 0;
+  border-bottom: 1px solid var(--pen-border);
+  font-size: var(--fs-body);
+}
+
+.el-table .cell {
+  padding: 0 var(--space-2);
+  line-height: 1.5;
+}
+
+/* 设计稿表格是无竖线的台账样式 */
+.el-table--border .el-table__cell {
+  border-right: none;
+}
+
+.el-table--border::after,
+.el-table--group::after,
+.el-table::before {
+  display: none;
+}
+
+.el-table__inner-wrapper::before {
+  display: none;
+}
+
+.el-table tbody tr {
+  transition: background-color var(--motion-fast) var(--motion-ease);
+}
+
+/* 状态胶囊：5px 圆点 + 11px 文字（设计稿 pill 规格） */
+.el-tag {
+  height: 23px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-pill);
+  font-weight: 500;
+  line-height: 1;
+}
+
+.el-tag--success {
+  --el-tag-bg-color: var(--pen-pill-pos-bg);
+  --el-tag-border-color: var(--pen-pill-pos-bd);
+  --el-tag-text-color: var(--pen-pill-pos-ink);
+}
+
+.el-tag--danger {
+  --el-tag-bg-color: var(--pen-pill-neg-bg);
+  --el-tag-border-color: var(--pen-pill-neg-bd);
+  --el-tag-text-color: var(--pen-pill-neg-ink);
+}
+
+.el-tag--warning {
+  --el-tag-bg-color: var(--pen-pill-warn-bg);
+  --el-tag-border-color: var(--pen-pill-warn-bd);
+  --el-tag-text-color: var(--pen-pill-warn-ink);
+}
+
+.el-tag--info {
+  --el-tag-bg-color: var(--pen-pill-neu-bg);
+  --el-tag-border-color: var(--pen-pill-neu-bd);
+  --el-tag-text-color: var(--pen-pill-neu-ink);
+}
+
+.el-tag--primary {
+  --el-tag-bg-color: var(--pen-pill-info-bg);
+  --el-tag-border-color: var(--pen-pill-info-bd);
+  --el-tag-text-color: var(--pen-pill-info-ink);
+}
+
+/* 页签：下划线式（设计稿 Tabs 规格） */
+.el-tabs__header {
+  margin-bottom: var(--space-4);
+}
+
+.el-tabs__nav-wrap::after {
+  height: 1px;
+  background-color: var(--pen-border);
+}
+
+.el-tabs__item {
+  height: 38px;
+  font-size: var(--fs-body);
+  color: var(--pen-faint);
+}
+
+.el-tabs__item.is-active {
+  color: var(--pen-ink);
+  font-weight: 500;
+}
+
+.el-tabs__active-bar {
+  height: 2px;
+  border-radius: 1px;
+  background-color: var(--pen-chart);
+}
+
+/* 面包屑：10.5px、末段加深 */
+.el-breadcrumb {
+  font-size: var(--fs-caption);
+  line-height: 1.4;
+}
+
+.el-breadcrumb__inner {
+  color: var(--pen-faint);
+  font-weight: 400;
+}
+
+.el-breadcrumb__item:last-child .el-breadcrumb__inner {
+  color: var(--pen-muted);
+  font-weight: 400;
+}
+
+.el-breadcrumb__separator {
+  color: var(--pen-faint);
+  margin: 0 4px;
+}
+
+/* 分页：设计稿是「共 N 条 · 每页 M 条」的低调样式 */
+.el-pagination {
+  font-size: var(--fs-sub);
+  color: var(--pen-muted);
+}
+
+.el-pagination button,
+.el-pager li {
+  min-width: 28px;
+  height: 28px;
+  border-radius: var(--radius-control);
+  font-size: var(--fs-sub);
+}
+
+.el-pagination.is-background .el-pager li {
+  background: var(--pen-surface);
+  border: 1px solid var(--pen-border);
+  color: var(--pen-muted);
+}
+
+.el-pagination.is-background .el-pager li.is-active {
+  background: var(--pen-action);
+  border-color: var(--pen-action);
+  color: var(--color-on-inverse);
+  font-weight: 500;
+}
+
+.el-pagination.is-background .btn-prev,
+.el-pagination.is-background .btn-next {
+  background: var(--pen-surface);
+  border: 1px solid var(--pen-border);
+}
+
+/* 表单标签：10.5px 大写感（设计稿 Field 规格） */
+.el-form-item__label {
+  font-size: var(--fs-sub);
+  color: var(--pen-muted);
+  font-weight: 500;
+}
+
+/* 描述列表：发丝线网格，无外框 */
+.el-descriptions__label {
+  color: var(--pen-faint);
+  font-weight: 500;
+  font-size: var(--fs-sub);
+}
+
+.el-descriptions__content {
+  color: var(--pen-ink);
+  font-size: var(--fs-body);
+}
+
+.el-descriptions__body .el-descriptions__table.is-bordered .el-descriptions__cell {
+  border-color: var(--pen-border);
+}
+
+/* 对话框/抽屉/下拉：唯一允许浮起的地方，用 1px 边 + 微弱投影 */
+/* 用 .el-overlay 前缀提高特异性：Element Plus 在组件挂载时注入的
+   .el-dialog 规则晚于本文件，且同样声明了 --el-dialog-margin-top，
+   只写 .el-dialog 会被它反超（top 仍为 15vh）。 */
+.el-overlay .el-dialog {
+  /* 弹窗几何契约：顶部留白收紧，整体高度必须落在视口内，
+     内容超长时只滚动 body，保证 footer 的确认按钮永远可点 */
+  margin: 6vh auto var(--space-4);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 6vh - var(--space-4));
+  border-radius: var(--radius-card);
+  border: 1px solid var(--pen-border);
+  box-shadow: var(--pen-overlay-shadow);
+}
+
+/* 中等宽度视口下，写死的 px 宽度（如 width="760px"）不能顶出屏幕 */
+.el-overlay .el-dialog:not(.is-fullscreen):not(.is-align-center) {
+  width: min(var(--el-dialog-width, 50%), calc(100vw - 32px));
+}
+
+.el-overlay .el-dialog.is-fullscreen {
+  max-height: none;
+}
+
+.el-dialog__header {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--pen-border);
+  margin-right: 0;
+  flex: 0 0 auto;
+}
+
+.el-dialog__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--pen-ink);
+}
+
+.el-dialog__body {
+  padding: var(--space-5) var(--space-4);
+  /* 超长表单只在这里滚动，标题与底部按钮保持固定 */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.el-dialog__footer {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--pen-border);
+  flex: 0 0 auto;
+}
+
+.el-drawer {
+  border-left: 1px solid var(--pen-border);
+}
+
+.el-popper {
+  border-radius: var(--radius-control);
+  border: 1px solid var(--pen-border) !important;
+  box-shadow: var(--pen-popover-shadow) !important;
+}
+
+/* 空态：设计稿是低调的一句话，不要大插画 */
+.el-empty {
+  padding: var(--space-6) 0;
+}
+
+.el-empty__description p {
+  font-size: var(--fs-sub);
+  color: var(--pen-faint);
+}
+
+/* 步骤条：设计稿是墨色实心节点 */
+.el-step__head.is-finish,
+.el-step__head.is-process {
+  color: var(--pen-ink);
+  border-color: var(--pen-ink);
+}
+
+.el-step__title.is-finish,
+.el-step__title.is-process {
+  color: var(--pen-ink);
+  font-size: var(--fs-sub);
+}
+
+.el-step__description {
+  font-size: var(--fs-caption);
+}
+
+/* 提示条：设计稿 noteBg/noteBd */
+.el-alert {
+  border-radius: var(--radius-card);
+  border: 1px solid var(--pen-note-bd);
+  background: var(--pen-note-bg);
+  padding: var(--space-2) var(--space-3);
+}
+
+.el-alert--info.is-light {
+  background: var(--pen-note-bg);
+  border-color: var(--pen-note-bd);
+  color: var(--pen-muted);
+}
+
+.el-alert__title {
+  font-size: var(--fs-sub);
+}
+
+/* 进度条 */
+.el-progress-bar__outer {
+  background-color: var(--pen-track);
+  border-radius: 1px;
+}
+
+.el-progress-bar__inner {
+  border-radius: 1px;
+  transition: width var(--motion-slow) var(--motion-ease);
+}
+
+/* 开关/单选/复选：墨色选中态 */
+.el-switch.is-checked .el-switch__core {
+  background-color: var(--pen-action);
+  border-color: var(--pen-action);
+}
+
+.el-radio-button__original-radio:checked + .el-radio-button__inner {
+  background-color: var(--pen-action);
+  border-color: var(--pen-action);
+  box-shadow: -1px 0 0 0 var(--pen-action);
+}
+
+.el-checkbox__input.is-checked .el-checkbox__inner,
+.el-radio__input.is-checked .el-radio__inner {
+  background-color: var(--pen-action);
+  border-color: var(--pen-action);
+}
+
+.el-radio__input.is-checked + .el-radio__label,
+.el-checkbox__input.is-checked + .el-checkbox__label {
+  color: var(--pen-ink);
+}
+
+/* 消息提示：与整体语言一致，无圆角堆叠 */
+.el-message {
+  border-radius: var(--radius-card);
+  border: 1px solid var(--pen-border);
+  box-shadow: var(--pen-popover-shadow);
+  min-width: 320px;
+}
+
+.el-message__content {
+  font-size: var(--fs-body);
+}
+
+/* 滚动条：细、灰、不抢视线 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--pen-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--pen-scroll-thumb-hover);
+}
+
+/* ============================================================================
+   动效：一致的入场与反馈（含 reduced-motion 降级）
+   ========================================================================== */
+@keyframes pen-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 只回填 backwards：动画结束后不能把 transform 留在元素上。
+   宿主页根节点带 transform 会成为 position:fixed 后代的包含块，
+   页面内 el-dialog 的遮罩就会被关进内容区（弹窗被压扁/按钮出屏）。 */
+.pen-enter {
+  animation: pen-fade-up var(--motion-slow) var(--motion-ease) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -20,11 +20,15 @@
  */
 import { computed, ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Coin, DataAnalysis, TrendCharts, Wallet } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { getEnterpriseInfo, getQuotaInfo, updateContact } from '../../api/enterprise'
 import { getMyAccount } from '../../api/carbonCoin'
 import type { EnterpriseQuotaResponse, EnterpriseResponse } from '../../types'
 import { formatDateTime, formatNumber } from '../../utils/format'
+import PageHeader from '../../components/pen/PageHeader.vue'
+import StatStrip from '../../components/pen/StatStrip.vue'
+import DataPanel from '../../components/pen/DataPanel.vue'
 import PageHint from '../../components/PageHint.vue'
 import TermTip from '../../components/TermTip.vue'
 
@@ -51,6 +55,50 @@ const remainingQuota = computed(() => {
 const usageRate = computed(() => {
   const value = Number(quotaInfo.value?.usageRate)
   return Number.isFinite(value) ? `${value.toFixed(2)}%` : '-'
+})
+
+/** 统计条：全部由已加载的本页数据推导，不新增接口请求 */
+const overviewStats = computed(() => {
+  const totalQuota = Number(quotaInfo.value?.totalQuota) || 0
+  const usedQuota = Number(quotaInfo.value?.usedQuota) || 0
+  const remaining = Number(quotaInfo.value?.remainingQuota) || 0
+  const tradable = formatNumber(quotaInfo.value?.tradableQuota)
+  const coin = Number(carbonCoinBalance.value) || 0
+
+  return [
+    {
+      label: t('enterpriseInfo.totalQuota'),
+      value: totalQuota,
+      unit: 'tCO2e',
+      delta: t('enterpriseInfo.statQuotaHint'),
+      tone: 'neu' as const,
+      icon: DataAnalysis,
+    },
+    {
+      label: t('enterpriseInfo.usedQuota'),
+      value: usedQuota,
+      unit: 'tCO2e',
+      delta: t('enterpriseInfo.statUsedHint', { rate: usageRate.value }),
+      tone: 'neu' as const,
+      icon: TrendCharts,
+    },
+    {
+      label: t('enterpriseInfo.remainingQuota'),
+      value: remaining,
+      unit: 'tCO2e',
+      delta: t('enterpriseInfo.statRemainingHint', { tradable }),
+      tone: remaining > 0 ? ('pos' as const) : ('neg' as const),
+      icon: Wallet,
+    },
+    {
+      label: t('carbonCoin.balance'),
+      value: coin,
+      unit: t('common.unit_coin'),
+      delta: t('enterpriseInfo.statCoinHint'),
+      tone: coin > 0 ? ('pos' as const) : ('neu' as const),
+      icon: Coin,
+    },
+  ]
 })
 
 const contactDialogVisible = ref(false)
@@ -85,6 +133,11 @@ const openContactDialog = () => {
   contactDialogVisible.value = true
 }
 
+/** 页头右上角主操作：编辑联系方式 */
+const onHeaderAction = () => {
+  openContactDialog()
+}
+
 const submitContact = async () => {
   contactLoading.value = true
   try {
@@ -106,24 +159,24 @@ onMounted(() => fetchInfo())
 </script>
 
 <template>
-  <section class="info-page">
-    <el-card class="section-card" shadow="never">
-      <el-breadcrumb separator="/">
-        <el-breadcrumb-item>{{ t('enterpriseInfo.breadcrumbEnterprise') }}</el-breadcrumb-item>
-        <el-breadcrumb-item>{{ t('enterpriseInfo.breadcrumbInfo') }}</el-breadcrumb-item>
-      </el-breadcrumb>
-    </el-card>
+  <section class="info-page pen-enter">
+    <PageHeader
+      :title="t('enterpriseInfo.enterpriseInfoTitle')"
+      :description="t('enterpriseInfo.pageDescription')"
+      :crumbs="[t('enterpriseInfo.breadcrumbEnterprise'), t('enterpriseInfo.breadcrumbInfo')]"
+      :actions="[{ label: t('enterpriseInfo.editContact'), variant: 'primary' }]"
+      @action="onHeaderAction"
+    />
 
     <PageHint :text="t('pageHints.enterpriseInfo')" />
 
-    <div v-loading="loading">
-      <el-card class="section-card" shadow="never">
-        <template #header>
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span>{{ t('enterpriseInfo.enterpriseInfoTitle') }}</span>
-            <el-button type="primary" size="small" @click="openContactDialog">{{ t('enterpriseInfo.editContact') }}</el-button>
-          </div>
-        </template>
+    <StatStrip :items="overviewStats" :loading="loading" />
+
+    <DataPanel
+      :title="t('enterpriseInfo.panelBasicTitle')"
+      :meta="t('enterpriseInfo.panelBasicMeta')"
+    >
+      <div v-loading="loading" class="panel-pad">
         <el-descriptions v-if="enterpriseInfo" :column="2" border>
           <el-descriptions-item :label="t('enterpriseInfo.companyName')">{{ enterpriseName }}</el-descriptions-item>
           <el-descriptions-item :label="t('enterpriseInfo.industry')">{{ enterpriseInfo.industry || '-' }}</el-descriptions-item>
@@ -132,12 +185,14 @@ onMounted(() => fetchInfo())
           <el-descriptions-item :label="t('enterpriseInfo.registrationDate')">{{ registrationTime }}</el-descriptions-item>
           <el-descriptions-item :label="t('enterpriseInfo.address')">{{ enterpriseInfo.address || '-' }}</el-descriptions-item>
         </el-descriptions>
-      </el-card>
+      </div>
+    </DataPanel>
 
-      <el-card class="section-card" shadow="never" style="margin-top: 14px;">
-        <template #header>
-          <span>{{ t('enterpriseInfo.quotaInfoTitle') }}</span>
-        </template>
+    <DataPanel
+      :title="t('enterpriseInfo.quotaInfoTitle')"
+      :meta="t('enterpriseInfo.panelQuotaMeta', { rate: usageRate })"
+    >
+      <div v-loading="loading" class="panel-pad">
         <el-descriptions v-if="quotaInfo" :column="2" border>
           <el-descriptions-item>
             <template #label><span>{{ t('enterpriseInfo.totalQuota') }}<TermTip term="carbonQuota" /></span></template>
@@ -149,8 +204,8 @@ onMounted(() => fetchInfo())
           <el-descriptions-item :label="t('enterpriseInfo.usageRate')">{{ usageRate }}</el-descriptions-item>
           <el-descriptions-item :label="t('carbonCoin.balance')">{{ formatNumber(carbonCoinBalance) }}</el-descriptions-item>
         </el-descriptions>
-      </el-card>
-    </div>
+      </div>
+    </DataPanel>
 
     <el-dialog v-model="contactDialogVisible" :title="t('enterpriseInfo.editContactTitle')" width="500px" destroy-on-close>
       <el-form label-width="100px">
@@ -173,11 +228,10 @@ onMounted(() => fetchInfo())
 .info-page {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-5);
 }
 
-.section-card {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
+.panel-pad {
+  padding: var(--space-4) var(--space-4) var(--space-5);
 }
 </style>

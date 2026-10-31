@@ -26,7 +26,7 @@
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { DataAnalysis, TrendCharts } from '@element-plus/icons-vue'
+import { Coin, DataAnalysis, Tickets, TrendCharts } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import echarts from '../../utils/echarts'
 import { getMyReports } from '../../api/carbon'
@@ -35,6 +35,10 @@ import { getMyScore } from '../../api/credit'
 import { getMyAccount } from '../../api/carbonCoin'
 import { getMyEnterpriseAdmission, getQuotaInfo } from '../../api/enterprise'
 import type { CarbonReportResponse, EnterpriseAdmissionResponse, EnterpriseQuotaResponse, TradeResponse } from '../../types'
+import PageHeader from '../../components/pen/PageHeader.vue'
+import StatStrip from '../../components/pen/StatStrip.vue'
+import FilterBar from '../../components/pen/FilterBar.vue'
+import DataPanel from '../../components/pen/DataPanel.vue'
 import PageHint from '../../components/PageHint.vue'
 import { formatNumber } from '../../utils/format'
 
@@ -213,10 +217,44 @@ function cssToken(name: string, fallback: string): string {
   return value || fallback
 }
 
-const overviewCards = computed(() => [
-  { label: t('companyDashboard.cardCarbonCoin'), value: formatNumber(currentData.value.summary.carbonCoinTotal) },
-  { label: t('companyDashboard.cardCarbonQuota'), value: formatNumber(currentData.value.summary.carbonQuotaTotal) },
-  { label: t('companyDashboard.cardCreditScore'), value: currentData.value.summary.creditScore },
+/** 统计条：直接取已加载的汇总数据，不新增接口请求 */
+const overviewStats = computed(() => [
+  {
+    label: t('companyDashboard.cardCarbonCoin'),
+    value: formatNumber(currentData.value.summary.carbonCoinTotal),
+    unit: '',
+    delta: t('companyDashboard.statCoinHint'),
+    tone: 'neu' as const,
+    icon: Coin,
+  },
+  {
+    label: t('companyDashboard.cardCarbonQuota'),
+    value: formatNumber(currentData.value.summary.carbonQuotaTotal),
+    unit: 'tCO2e',
+    delta: t('companyDashboard.statQuotaHint'),
+    tone: 'neu' as const,
+    icon: DataAnalysis,
+  },
+  {
+    label: t('companyDashboard.cardCreditScore'),
+    value: currentData.value.summary.creditScore,
+    unit: t('companyDashboard.statUnitScore'),
+    delta: t('companyDashboard.statCreditHint'),
+    tone: currentData.value.summary.creditScore > 0 ? ('pos' as const) : ('neu' as const),
+    icon: TrendCharts,
+  },
+  {
+    label: t('companyDashboard.admissionStatus'),
+    value: admissionStatus.value
+      ? (admissionStatus.value.status === 1 ? t('certificateManage.active') : t('certificateManage.revoked'))
+      : t('certificateManage.notIssued'),
+    unit: '',
+    delta: admissionStatus.value?.certificateNo
+      ? t('companyDashboard.statAdmissionHint', { certNo: admissionStatus.value.certificateNo })
+      : t('companyDashboard.statAdmissionMissing'),
+    tone: admissionStatus.value?.status === 1 ? ('pos' as const) : ('neu' as const),
+    icon: Tickets,
+  },
 ])
 
 const percentFormatter = (params: { name: string; value: number }, sourceArr: number[]) => {
@@ -233,7 +271,7 @@ const chartEmptyTitle = (data: number[]) =>
         text: t('companyDashboard.noChartData'),
         left: 'center' as const,
         top: 'middle' as const,
-        textStyle: { color: 'var(--color-text-muted)', fontSize: 13, fontWeight: 400 as const },
+        textStyle: { color: cssToken('--pen-faint', '#6B6B6B'), fontSize: 13, fontWeight: 400 as const },
       }]
 
 const buildBarOption = (title: string, labels: string[], data: number[], color: string) => ({
@@ -320,15 +358,15 @@ const getChartConfigs = () => {
   return [
     {
       ref: chartTradeBarRef,
-      option: buildBarOption(t('companyDashboard.chartTransactionBar'), d.tradeLabels, d.tradeCount, cssToken('--color-chart-1', '#1D5FBF')),
+      option: buildBarOption(t('companyDashboard.chartTransactionBar'), d.tradeLabels, d.tradeCount, cssToken('--pen-chart', '#1D5FBF')),
     },
     {
       ref: chartTrendLineRef,
-      option: buildLineOption(t('companyDashboard.chartAIPrediction'), d.reportLabels, d.aiTrend, cssToken('--color-chart-2', '#6E93CE')),
+      option: buildLineOption(t('companyDashboard.chartAIPrediction'), d.reportLabels, d.aiTrend, cssToken('--pen-chart-2', '#6E93CE')),
     },
     {
       ref: chartSuggestBarRef,
-      option: buildBarOption(t('companyDashboard.chartAISuggestion'), d.reportLabels, d.aiSuggest, cssToken('--color-chart-3', '#A8BFE0')),
+      option: buildBarOption(t('companyDashboard.chartAISuggestion'), d.reportLabels, d.aiSuggest, cssToken('--pen-chart-3', '#A8BFE0')),
     },
     {
       ref: chartEmissionPieRef,
@@ -340,7 +378,7 @@ const getChartConfigs = () => {
     },
     {
       ref: chartCreditLineRef,
-      option: buildLineOption(t('companyDashboard.chartCreditLine'), d.creditLabels, d.creditTrend, cssToken('--color-chart-info', '#D3DEED')),
+      option: buildLineOption(t('companyDashboard.chartCreditLine'), d.creditLabels, d.creditTrend, cssToken('--pen-chart-4', '#D3DEED')),
     },
   ]
 }
@@ -493,65 +531,44 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="dashboard-page">
-    <el-card class="section-card" shadow="never">
-      <el-breadcrumb separator="/">
-        <el-breadcrumb-item>{{ t('companyDashboard.breadcrumbCompany') }}</el-breadcrumb-item>
-        <el-breadcrumb-item>{{ t('companyDashboard.breadcrumbDashboard') }}</el-breadcrumb-item>
-      </el-breadcrumb>
-    </el-card>
+  <section class="dashboard-page pen-enter">
+    <PageHeader
+      :title="t('companyDashboard.pageTitle')"
+      :description="t('companyDashboard.pageDescription')"
+      :crumbs="[t('companyDashboard.breadcrumbCompany'), t('companyDashboard.breadcrumbDashboard')]"
+    />
 
     <PageHint :text="t('pageHints.companyDashboard')" />
 
-    <!-- AI 每日低碳战略晨报 (AI Morning Executive Briefing Ribbon) -->
-    <el-card class="section-card executive-briefing-card" shadow="never">
-      <div class="briefing-flex">
-        <div class="briefing-left">
-          <div class="briefing-title-row">
-            <span class="briefing-badge">AI EXECUTIVE BRIEFING</span>
-            <strong class="briefing-headline">{{ t('companyDashboard.briefingTitle') }}</strong>
-            <el-tag type="success" size="small" effect="plain">AAA 稳健级 ｜ 85分</el-tag>
-          </div>
-          <p class="briefing-text">
-            {{ t('companyDashboard.briefingDesc') }}
-          </p>
-        </div>
-        <div class="briefing-right">
-          <router-link to="/enterprise/market-prediction" class="el-button el-button--primary el-button--default">
-            <el-icon><TrendCharts /></el-icon>
-            <span>{{ t('companyDashboard.btnMarketTerminal') }}</span>
-          </router-link>
-          <router-link to="/enterprise/enterprise-inference" class="el-button el-button--success is-plain el-button--default">
-            <el-icon><DataAnalysis /></el-icon>
-            <span>{{ t('companyDashboard.btnHealthCenter') }}</span>
-          </router-link>
-        </div>
-      </div>
-    </el-card>
+    <StatStrip :items="overviewStats" :loading="loading" />
 
-    <el-card class="section-card" shadow="never">
-      <div class="search-row">
-        <div class="search-left">
-          <el-input v-model="queryForm.assetNo" :placeholder="t('companyDashboard.searchAssetNo')" clearable />
-          <el-input v-model="queryForm.otherCondition" :placeholder="t('companyDashboard.searchCategory')" clearable />
-          <el-input v-model="queryForm.keyword" :placeholder="t('companyDashboard.searchPeriodRegion')" clearable />
-          <el-button :loading="loading" type="primary" @click="onSearch">{{ t('common.search') }}</el-button>
-        </div>
-
-        <div class="search-right">
-          <span class="dimension-label">{{ t('companyDashboard.timeDimension') }}:</span>
-          <el-radio-group v-model="timeDimension">
-            <el-radio-button value="day">{{ t('companyDashboard.timeDay') }}</el-radio-button>
-            <el-radio-button value="month">{{ t('companyDashboard.timeMonth') }}</el-radio-button>
-            <el-radio-button value="year">{{ t('companyDashboard.timeYear') }}</el-radio-button>
-          </el-radio-group>
-        </div>
+    <FilterBar :aria-label="t('companyDashboard.filterLabel')">
+      <label class="pen-field">
+        <span class="pen-field__label">{{ t('companyDashboard.searchAssetNo') }}</span>
+        <el-input v-model="queryForm.assetNo" :placeholder="t('companyDashboard.searchAssetNo')" clearable />
+      </label>
+      <label class="pen-field">
+        <span class="pen-field__label">{{ t('companyDashboard.searchCategory') }}</span>
+        <el-input v-model="queryForm.otherCondition" :placeholder="t('companyDashboard.searchCategory')" clearable />
+      </label>
+      <label class="pen-field">
+        <span class="pen-field__label">{{ t('companyDashboard.searchPeriodRegion') }}</span>
+        <el-input v-model="queryForm.keyword" :placeholder="t('companyDashboard.searchPeriodRegion')" clearable />
+      </label>
+      <el-button :loading="loading" type="primary" @click="onSearch">{{ t('common.search') }}</el-button>
+      <div class="pen-field search-right">
+        <span class="pen-field__label">{{ t('companyDashboard.timeDimension') }}</span>
+        <el-radio-group v-model="timeDimension">
+          <el-radio-button value="day">{{ t('companyDashboard.timeDay') }}</el-radio-button>
+          <el-radio-button value="month">{{ t('companyDashboard.timeMonth') }}</el-radio-button>
+          <el-radio-button value="year">{{ t('companyDashboard.timeYear') }}</el-radio-button>
+        </el-radio-group>
       </div>
-    </el-card>
+    </FilterBar>
 
     <el-alert
       v-if="!loading && filterEmpty"
-      class="section-card"
+      class="filter-empty-note"
       :title="t('companyDashboard.noMatchTitle')"
       :description="t('companyDashboard.noMatchDesc')"
       type="warning"
@@ -563,170 +580,180 @@ onBeforeUnmount(() => {
       <el-skeleton :rows="3" animated />
     </div>
 
-    <div v-else class="overview-grid">
-      <el-card v-for="item in overviewCards" :key="item.label" class="overview-card" shadow="hover">
-        <div class="metric-label">{{ item.label }}</div>
-        <div class="metric-value">{{ item.value }}</div>
-      </el-card>
-    </div>
+    <DataPanel
+      :title="t('companyDashboard.briefingPanelTitle')"
+      :meta="t('companyDashboard.briefingPanelMeta')"
+    >
+      <template #actions>
+        <router-link to="/enterprise/market-prediction" class="pen-action-link pen-action-link--primary">
+          <el-icon><TrendCharts /></el-icon>
+          <span>{{ t('companyDashboard.btnMarketTerminal') }}</span>
+        </router-link>
+        <router-link to="/enterprise/enterprise-inference" class="pen-action-link">
+          <el-icon><DataAnalysis /></el-icon>
+          <span>{{ t('companyDashboard.btnHealthCenter') }}</span>
+        </router-link>
+      </template>
 
-    <el-card v-if="admissionStatus !== null" class="section-card" shadow="never">
-      <el-space>
-        <span>{{ t('companyDashboard.admissionStatus') }}:</span>
-        <el-tag :type="admissionStatus.status === 1 ? 'success' : 'danger'">
-          {{ admissionStatus.status === 1 ? t('certificateManage.active') : t('certificateManage.revoked') }}
-        </el-tag>
-        <span v-if="admissionStatus.certificateNo" style="color: var(--color-text-muted); font-size: var(--text-sm);">
-          {{ admissionStatus.certificateNo }}
-        </span>
-      </el-space>
-    </el-card>
+      <div class="briefing-body">
+        <div class="briefing-title-row">
+          <span class="briefing-badge">AI EXECUTIVE BRIEFING</span>
+          <strong class="briefing-headline">{{ t('companyDashboard.briefingTitle') }}</strong>
+          <el-tag type="success" size="small" effect="plain">AAA 稳健级 ｜ 85分</el-tag>
+        </div>
+        <p class="briefing-text">
+          {{ t('companyDashboard.briefingDesc') }}
+        </p>
+      </div>
+    </DataPanel>
 
-    <div v-if="!loading" class="chart-grid">
-      <el-card class="chart-card" shadow="never"><div ref="chartTradeBarRef" class="chart-box" /></el-card>
-      <el-card class="chart-card" shadow="never"><div ref="chartTrendLineRef" class="chart-box" /></el-card>
-      <el-card class="chart-card" shadow="never"><div ref="chartSuggestBarRef" class="chart-box" /></el-card>
-      <el-card class="chart-card" shadow="never"><div ref="chartEmissionPieRef" class="chart-box" /></el-card>
-      <el-card class="chart-card" shadow="never"><div ref="chartTradePieRef" class="chart-box" /></el-card>
-      <el-card class="chart-card" shadow="never"><div ref="chartCreditLineRef" class="chart-box" /></el-card>
-    </div>
+    <DataPanel
+      v-if="admissionStatus !== null"
+      :title="t('companyDashboard.admissionStatus')"
+      :meta="admissionStatus.certificateNo || ''"
+    >
+      <div class="panel-pad">
+        <div class="admission-row">
+          <el-tag :type="admissionStatus.status === 1 ? 'success' : 'danger'">
+            {{ admissionStatus.status === 1 ? t('certificateManage.active') : t('certificateManage.revoked') }}
+          </el-tag>
+          <span v-if="admissionStatus.certificateNo" class="admission-row__cert">
+            {{ admissionStatus.certificateNo }}
+          </span>
+        </div>
+      </div>
+    </DataPanel>
+
+    <section v-if="!loading" class="chart-grid" :aria-label="t('companyDashboard.panelChartsMeta')">
+      <DataPanel :title="t('companyDashboard.chartTransactionBar')">
+        <div class="chart-body"><div ref="chartTradeBarRef" class="chart-box" /></div>
+      </DataPanel>
+      <DataPanel :title="t('companyDashboard.chartAIPrediction')">
+        <div class="chart-body"><div ref="chartTrendLineRef" class="chart-box" /></div>
+      </DataPanel>
+      <DataPanel :title="t('companyDashboard.chartAISuggestion')">
+        <div class="chart-body"><div ref="chartSuggestBarRef" class="chart-box" /></div>
+      </DataPanel>
+      <DataPanel :title="t('companyDashboard.chartEmissionPie')">
+        <div class="chart-body"><div ref="chartEmissionPieRef" class="chart-box" /></div>
+      </DataPanel>
+      <DataPanel :title="t('companyDashboard.chartTransactionPie')">
+        <div class="chart-body"><div ref="chartTradePieRef" class="chart-box" /></div>
+      </DataPanel>
+      <DataPanel :title="t('companyDashboard.chartCreditLine')">
+        <div class="chart-body"><div ref="chartCreditLineRef" class="chart-box" /></div>
+      </DataPanel>
+    </section>
   </section>
 </template>
 
 <style scoped>
-.executive-briefing-card {
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  padding: 6px 10px;
-}
-
-.briefing-flex {
+.dashboard-page {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
+  flex-direction: column;
+  gap: var(--space-5);
 }
 
-.briefing-left {
-  flex: 1;
-  min-width: 300px;
+.panel-pad {
+  padding: var(--space-4);
+}
+
+.search-right {
+  margin-left: auto;
+}
+
+.filter-empty-note {
+  margin-bottom: 0;
+}
+
+/* ---------- AI 晨报面板 ---------- */
+.briefing-body {
+  padding: var(--space-4);
 }
 
 .briefing-title-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 6px;
+  flex-wrap: wrap;
+  gap: var(--space-2-5);
+  margin-bottom: var(--space-1-5);
 }
 
 .briefing-badge {
-  font-size: 11px;
-  font-weight: 800;
-  color: var(--color-chart-1);
-  background: var(--color-status-info-soft);
-  padding: 2px 8px;
-  border-radius: 4px;
-  letter-spacing: 0.5px;
+  padding: var(--space-0-5) var(--space-2);
+  border-radius: var(--radius-control);
+  background: var(--pen-pill-info-bg);
+  color: var(--pen-pill-info-ink);
+  font-size: var(--fs-pill);
+  font-weight: 500;
+  letter-spacing: 0.04em;
 }
 
 .briefing-headline {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--color-text);
+  font-size: var(--fs-body);
+  font-weight: 500;
+  color: var(--pen-ink);
 }
 
 .briefing-text {
-  font-size: 13px;
-  color: var(--color-text-muted);
-  line-height: 1.6;
   margin: 0;
+  font-size: var(--fs-sub);
+  line-height: 1.7;
+  color: var(--pen-muted);
 }
 
-.briefing-right {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+.pen-action-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  height: 28px;
+  padding: 0 var(--space-2-5);
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-control);
+  background: var(--pen-surface);
+  color: var(--pen-ink);
+  font-size: var(--fs-caption);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
 }
 
-.dashboard-page {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+.pen-action-link--primary {
+  background: var(--pen-action);
+  border-color: var(--pen-action);
+  color: var(--color-on-inverse);
 }
 
-.section-card,
-.chart-card,
-.overview-card {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
+.pen-action-link:hover {
+  border-color: var(--pen-muted);
 }
 
-.search-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+.pen-action-link--primary:hover {
+  background: var(--pen-action-hover);
+  border-color: var(--pen-action-hover);
 }
 
-.search-left {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(130px, 1fr));
-  gap: 10px;
-  flex: 1;
-}
-
-.search-right {
+/* ---------- 准入状态 ---------- */
+.admission-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
-.dimension-label {
-  color: var(--color-text-muted);
-  font-size: var(--text-sm);
+.admission-row__cert {
+  font-size: var(--fs-sub);
+  color: var(--pen-muted);
 }
 
-.loading-container {
-  padding: 20px;
-  background: white;
-  border-radius: 12px;
-}
-
-.overview-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
-  gap: 12px;
-}
-
-.overview-card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-}
-
-.metric-label {
-  color: var(--color-text-muted);
-  font-size: var(--text-sm);
-}
-
-.metric-value {
-  font-size: 30px;
-  margin-top: 10px;
-  color: var(--color-brand-strong);
-  font-weight: 700;
-  line-height: 1;
-}
-
-.metric-unit {
-  margin-top: 8px;
-  color: var(--color-brand-muted);
-  font-size: var(--text-xs);
-}
-
+/* ---------- 图表 ---------- */
 .chart-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(280px, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
+}
+
+.chart-body {
+  padding: var(--space-2) var(--space-3) var(--space-3);
 }
 
 .chart-box {
@@ -734,25 +761,22 @@ onBeforeUnmount(() => {
   height: 330px;
 }
 
+.loading-container {
+  padding: var(--space-5);
+  background: var(--pen-surface);
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-card);
+}
+
 @media (max-width: 1280px) {
-  .search-left {
-    grid-template-columns: repeat(2, minmax(180px, 1fr));
+  .chart-grid {
+    grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 768px) {
-  .search-left {
-    grid-template-columns: 1fr;
-  }
-
-  .overview-grid,
   .chart-grid {
     grid-template-columns: 1fr;
-  }
-
-  .search-right {
-    width: 100%;
-    justify-content: flex-start;
   }
 }
 </style>

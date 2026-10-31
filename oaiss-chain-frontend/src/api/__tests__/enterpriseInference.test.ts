@@ -24,6 +24,9 @@ describe('enterpriseInference api contract', () => {
 
   it('forwards request to correct endpoint with enterprise ID', async () => {
     await getEnterpriseInference(42)
-    expect(requestMocks.getMock).toHaveBeenCalledWith('/predict/enterprise/42/inference')
+    // suppressErrorMessage：未填报企业后端返回 3004 时不叠加红色弹窗，由页面空态承接
+    expect(requestMocks.getMock).toHaveBeenCalledWith('/predict/enterprise/42/inference', {
+      suppressErrorMessage: true,
+    })
   })
 })

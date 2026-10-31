@@ -18,15 +18,19 @@
  *     * GET /api/v1/blockchain/transaction/{hash} -> queryTransaction() 按TxID穿透查询
  * ==============================================================================
  */
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Document } from '@element-plus/icons-vue'
+import { Connection, Document, Files, Tickets } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { getLatestBlocks, getStatus, getTransactions, queryTransaction } from '../../api/blockchain'
 import { formatDateTime } from '../../utils/format'
-import PageContainer from '../../components/PageContainer.vue'
+import PageHeader from '../../components/pen/PageHeader.vue'
+import StatStrip from '../../components/pen/StatStrip.vue'
+import FilterBar from '../../components/pen/FilterBar.vue'
+import DataPanel from '../../components/pen/DataPanel.vue'
 import PageHint from '../../components/PageHint.vue'
 import TermTip from '../../components/TermTip.vue'
+import { DATA_CENTER_ART } from '../../config/penImagery'
 import type { BlockchainBlockResponse, BlockchainStatusResponse, BlockchainTransactionResponse } from '../../types'
 
 const { t } = useI18n()
@@ -80,6 +84,48 @@ const formatStatusValue = (value: unknown) => {
 const statusTagType = (connected: unknown) => {
   return connected ? 'success' : 'danger'
 }
+
+/** 首屏统计条：全部由已加载的本页数据推导，不新增接口请求 */
+const overviewStats = computed(() => {
+  const connected = Boolean(chainStatus.value?.connected)
+  const channel = chainStatus.value?.channel
+  const mode = chainStatus.value?.mode
+
+  return [
+    {
+      label: t('blockchain.statusTitle'),
+      value: formatStatusValue(chainStatus.value?.connected),
+      unit: '',
+      delta: channel ? `${t('blockchain.statusChannel')}: ${channel}` : t('blockchain.statChannelHint'),
+      tone: connected ? ('pos' as const) : ('neg' as const),
+      icon: Connection,
+    },
+    {
+      label: t('blockchain.statusPeers'),
+      value: formatStatusValue(chainStatus.value?.peers),
+      unit: t('blockchain.statUnitNodes'),
+      delta: mode ? `${t('blockchain.statusMode')}: ${mode}` : t('blockchain.statChannelHint'),
+      tone: 'neu' as const,
+      icon: Files,
+    },
+    {
+      label: t('blockchain.tabBlocks'),
+      value: blocksTotal.value,
+      unit: t('blockchain.statUnitBlocks'),
+      delta: t('blockchain.statBlocksHint'),
+      tone: 'neu' as const,
+      icon: Document,
+    },
+    {
+      label: t('blockchain.tabTransactions'),
+      value: transactionsTotal.value,
+      unit: t('blockchain.statUnitTx'),
+      delta: t('blockchain.statTxHint'),
+      tone: transactionsTotal.value > 0 ? ('pos' as const) : ('neu' as const),
+      icon: Tickets,
+    },
+  ]
+})
 
 const loadStatus = async () => {
   try {
@@ -226,24 +272,56 @@ onMounted(() => {
 </script>
 
 <template>
-  <PageContainer :title="t('blockchain.title')" :description="t('blockchain.description')">
+  <section class="blockchain-page pen-enter">
+    <PageHeader
+      :title="t('blockchain.title')"
+      :description="t('blockchain.description')"
+      :crumbs="[t('blockchain.breadcrumbChain'), t('blockchain.breadcrumbExplorer')]"
+    />
+
     <PageHint :text="t('pageHints.blockchain')" />
-    <section class="blockchain-page">
-      <el-card class="section-card" shadow="never">
+
+    <StatStrip :items="overviewStats" :loading="statusLoading || blocksLoading || transactionsLoading" />
+
+    <FilterBar :aria-label="t('blockchain.queryTitle')">
+      <label class="pen-field query-field">
+        <span class="pen-field__label">{{ t('blockchain.colTxHash') }}</span>
+        <el-input
+          v-model="txHashQuery"
+          data-testid="blockchain-tx-query-input"
+          :placeholder="t('blockchain.queryPlaceholder')"
+          clearable
+          @keyup.enter="submitTxQuery"
+        />
+      </label>
+      <el-button
+        type="primary"
+        :loading="txQueryLoading"
+        data-testid="blockchain-tx-query-submit"
+        @click="submitTxQuery"
+      >
+        {{ t('blockchain.queryAction') }}
+      </el-button>
+    </FilterBar>
+
+    <!-- 网络拓扑状态 + 哈希溯源结果：合并为单一面板 -->
+    <DataPanel :title="t('blockchain.panelStatusQueryTitle')" :meta="t('blockchain.panelStatusQueryMeta')">
+      <template #actions>
+        <el-tag
+          class="status-tag"
+          :type="statusTagType(chainStatus?.connected)"
+          data-testid="blockchain-status-tag"
+        >
+          {{ formatStatusValue(chainStatus?.connected) }}
+        </el-tag>
+      </template>
+
+      <div class="panel-pad">
         <div class="status-query-grid">
           <div class="status-panel">
-            <div class="panel-header">
-              <div>
-                <h3 class="panel-title">{{ t('blockchain.statusTitle') }}</h3>
-                <p class="panel-subtitle">{{ t('blockchain.statusDescription') }}</p>
-              </div>
-              <el-tag
-                class="status-tag"
-                :type="statusTagType(chainStatus?.connected)"
-                data-testid="blockchain-status-tag"
-              >
-                {{ formatStatusValue(chainStatus?.connected) }}
-              </el-tag>
+            <div class="sub-head">
+              <span class="sub-head__title">{{ t('blockchain.statusTitle') }}</span>
+              <span class="sub-head__desc">{{ t('blockchain.statusDescription') }}</span>
             </div>
 
             <div v-loading="statusLoading" class="status-metrics">
@@ -267,29 +345,9 @@ onMounted(() => {
           </div>
 
           <div class="query-panel">
-            <div class="panel-header">
-              <div>
-                <h3 class="panel-title">{{ t('blockchain.queryTitle') }}</h3>
-                <p class="panel-subtitle">{{ t('blockchain.queryDescription') }}</p>
-              </div>
-            </div>
-
-            <div class="query-form">
-              <el-input
-                v-model="txHashQuery"
-                data-testid="blockchain-tx-query-input"
-                :placeholder="t('blockchain.queryPlaceholder')"
-                clearable
-                @keyup.enter="submitTxQuery"
-              />
-              <el-button
-                type="primary"
-                :loading="txQueryLoading"
-                data-testid="blockchain-tx-query-submit"
-                @click="submitTxQuery"
-              >
-                {{ t('blockchain.queryAction') }}
-              </el-button>
+            <div class="sub-head">
+              <span class="sub-head__title">{{ t('blockchain.queryTitle') }}</span>
+              <span class="sub-head__desc">{{ t('blockchain.queryDescription') }}</span>
             </div>
 
             <el-alert
@@ -312,7 +370,7 @@ onMounted(() => {
 
               <div class="query-result-row">
                 <span class="status-label">{{ t('blockchain.colTxHash') }}</span>
-                <strong>{{ formatStatusValue(txQueryResult.txHash) }}</strong>
+                <strong class="query-hash">{{ formatStatusValue(txQueryResult.txHash) }}</strong>
               </div>
               <div class="query-result-row">
                 <span class="status-label">{{ t('blockchain.colTxStatus') }}</span>
@@ -325,150 +383,168 @@ onMounted(() => {
                 <strong>{{ formatDateTime(typeof txQueryResult.timestamp === 'string' ? txQueryResult.timestamp : '') || formatStatusValue(txQueryResult.timestamp) }}</strong>
               </div>
             </div>
+
+            <p v-else-if="!txQueryError" class="query-empty">{{ t('blockchain.queryEmpty') }}</p>
           </div>
         </div>
-      </el-card>
+      </div>
+    </DataPanel>
 
-      <el-card class="section-card" shadow="never">
-        <el-tabs v-model="activeTab" class="blockchain-tabs">
-          <el-tab-pane :label="t('blockchain.tabBlocks')" name="blocks">
-            <el-table :data="blocks" border v-loading="blocksLoading" :empty-text="blocksLoading ? t('common.loading') : t('common.noData')">
-              <el-table-column :label="t('common.operation')" width="80">
-                <template #default="scope">
-                  {{ (blocksCurrentPage - 1) * blocksPageSize + scope.$index + 1 }}
-                </template>
-              </el-table-column>
-              <el-table-column prop="blockNumber" :label="t('blockchain.colBlockHeight')" min-width="120">
-                <template #header>
-                  <span>{{ t('blockchain.colBlockHeight') }}<TermTip term="blockchainHash" /></span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="blockHash" :label="t('blockchain.colBlockHash')" min-width="200" show-overflow-tooltip />
-              <el-table-column prop="blockType" :label="t('blockchain.colBlockType')" min-width="100">
-                <template #default="{ row }">
-                  <el-tag :type="getBlockTypeTag(row.blockType)">
-                    {{ getBlockTypeText(row.blockType) }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="txCount" :label="t('blockchain.colTxCount')" min-width="100" />
-              <el-table-column prop="miner" :label="t('blockchain.colMinerAddress')" min-width="180" show-overflow-tooltip>
-                <template #default="{ row }">{{ row.miner || '-' }}</template>
-              </el-table-column>
-              <el-table-column prop="timestamp" :label="t('blockchain.colTimestamp')" min-width="170">
-                <template #default="{ row }">{{ formatDateTime(row.timestamp) }}</template>
-              </el-table-column>
-            </el-table>
+    <el-tabs v-model="activeTab" class="blockchain-tabs">
+      <el-tab-pane :label="t('blockchain.tabBlocks')" name="blocks">
+        <DataPanel
+          :title="t('blockchain.tabBlocks')"
+          :meta="t('common.total', { count: blocksTotal })"
+        >
+          <el-table :data="blocks" v-loading="blocksLoading" :empty-text="blocksLoading ? t('common.loading') : t('common.noData')">
+            <el-table-column :label="t('common.operation')" width="80">
+              <template #default="scope">
+                {{ (blocksCurrentPage - 1) * blocksPageSize + scope.$index + 1 }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="blockNumber" :label="t('blockchain.colBlockHeight')" min-width="120">
+              <template #header>
+                <span>{{ t('blockchain.colBlockHeight') }}<TermTip term="blockchainHash" /></span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="blockHash" :label="t('blockchain.colBlockHash')" min-width="200" show-overflow-tooltip />
+            <el-table-column prop="blockType" :label="t('blockchain.colBlockType')" min-width="100">
+              <template #default="{ row }">
+                <el-tag :type="getBlockTypeTag(row.blockType)">
+                  {{ getBlockTypeText(row.blockType) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="txCount" :label="t('blockchain.colTxCount')" min-width="100" />
+            <el-table-column prop="miner" :label="t('blockchain.colMinerAddress')" min-width="180" show-overflow-tooltip>
+              <template #default="{ row }">{{ row.miner || '-' }}</template>
+            </el-table-column>
+            <el-table-column prop="timestamp" :label="t('blockchain.colTimestamp')" min-width="170">
+              <template #default="{ row }">{{ formatDateTime(row.timestamp) }}</template>
+            </el-table-column>
+          </el-table>
 
-            <div class="pagination-row">
-              <el-pagination
-                v-model:current-page="blocksCurrentPage"
-                v-model:page-size="blocksPageSize"
-                background
-                :page-sizes="[10, 20, 50]"
-                layout="total, sizes, prev, pager, next, jumper"
-                :total="blocksTotal"
-                @size-change="onBlocksSizeChange"
-                @current-change="onBlocksCurrentChange"
-              />
-            </div>
-          </el-tab-pane>
+          <template #footer>
+            <el-pagination
+              v-model:current-page="blocksCurrentPage"
+              v-model:page-size="blocksPageSize"
+              background
+              :page-sizes="[10, 20, 50]"
+              layout="total, sizes, prev, pager, next, jumper"
+              :total="blocksTotal"
+              @size-change="onBlocksSizeChange"
+              @current-change="onBlocksCurrentChange"
+            />
+          </template>
+        </DataPanel>
+      </el-tab-pane>
 
-          <el-tab-pane :label="t('blockchain.tabTransactions')" name="transactions">
-            <el-table :data="transactions" border v-loading="transactionsLoading" :empty-text="transactionsLoading ? t('common.loading') : t('common.noData')">
-              <el-table-column :label="t('common.operation')" width="80">
-                <template #default="scope">
-                  {{ (transactionsCurrentPage - 1) * transactionsPageSize + scope.$index + 1 }}
-                </template>
-              </el-table-column>
-              <el-table-column prop="txHash" :label="t('blockchain.colTxHash')" min-width="200" show-overflow-tooltip>
-                <template #header>
-                  <span>{{ t('blockchain.colTxHash') }}<TermTip term="blockchainHash" /></span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="blockNumber" :label="t('blockchain.colBlockHeight')" min-width="120" />
-              <el-table-column prop="fromAddress" :label="t('blockchain.colSender')" min-width="180" show-overflow-tooltip>
-                <template #default="{ row }">{{ row.fromAddress || '-' }}</template>
-              </el-table-column>
-              <el-table-column prop="toAddress" :label="t('blockchain.colReceiver')" min-width="180" show-overflow-tooltip>
-                <template #default="{ row }">{{ row.toAddress || '-' }}</template>
-              </el-table-column>
-              <el-table-column prop="amount" :label="t('blockchain.colAmount')" min-width="120">
-                <template #default="{ row }">{{ row.amount ?? '-' }}</template>
-              </el-table-column>
-              <el-table-column prop="status" :label="t('blockchain.colTxStatus')" min-width="100">
-                <template #default="{ row }">
-                  <el-tag :type="getTransactionStatusTag(row.status)">
-                    {{ getTransactionStatusText(row.status) }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="timestamp" :label="t('blockchain.colTimestamp')" min-width="170">
-                <template #default="{ row }">{{ formatDateTime(row.timestamp) }}</template>
-              </el-table-column>
-            </el-table>
+      <el-tab-pane :label="t('blockchain.tabTransactions')" name="transactions">
+        <DataPanel
+          :title="t('blockchain.tabTransactions')"
+          :meta="t('common.total', { count: transactionsTotal })"
+        >
+          <el-table :data="transactions" v-loading="transactionsLoading" :empty-text="transactionsLoading ? t('common.loading') : t('common.noData')">
+            <el-table-column :label="t('common.operation')" width="80">
+              <template #default="scope">
+                {{ (transactionsCurrentPage - 1) * transactionsPageSize + scope.$index + 1 }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="txHash" :label="t('blockchain.colTxHash')" min-width="200" show-overflow-tooltip>
+              <template #header>
+                <span>{{ t('blockchain.colTxHash') }}<TermTip term="blockchainHash" /></span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="blockNumber" :label="t('blockchain.colBlockHeight')" min-width="120" />
+            <el-table-column prop="fromAddress" :label="t('blockchain.colSender')" min-width="180" show-overflow-tooltip>
+              <template #default="{ row }">{{ row.fromAddress || '-' }}</template>
+            </el-table-column>
+            <el-table-column prop="toAddress" :label="t('blockchain.colReceiver')" min-width="180" show-overflow-tooltip>
+              <template #default="{ row }">{{ row.toAddress || '-' }}</template>
+            </el-table-column>
+            <el-table-column prop="amount" :label="t('blockchain.colAmount')" min-width="120">
+              <template #default="{ row }">{{ row.amount ?? '-' }}</template>
+            </el-table-column>
+            <el-table-column prop="status" :label="t('blockchain.colTxStatus')" min-width="100">
+              <template #default="{ row }">
+                <el-tag :type="getTransactionStatusTag(row.status)">
+                  {{ getTransactionStatusText(row.status) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="timestamp" :label="t('blockchain.colTimestamp')" min-width="170">
+              <template #default="{ row }">{{ formatDateTime(row.timestamp) }}</template>
+            </el-table-column>
+          </el-table>
 
-            <div class="pagination-row">
-              <el-pagination
-                v-model:current-page="transactionsCurrentPage"
-                v-model:page-size="transactionsPageSize"
-                background
-                :page-sizes="[10, 20, 50]"
-                layout="total, sizes, prev, pager, next, jumper"
-                :total="transactionsTotal"
-                @size-change="onTransactionsSizeChange"
-                @current-change="onTransactionsCurrentChange"
-              />
-            </div>
-          </el-tab-pane>
-        </el-tabs>
-      </el-card>
-    </section>
-  </PageContainer>
+          <template #footer>
+            <el-pagination
+              v-model:current-page="transactionsCurrentPage"
+              v-model:page-size="transactionsPageSize"
+              background
+              :page-sizes="[10, 20, 50]"
+              layout="total, sizes, prev, pager, next, jumper"
+              :total="transactionsTotal"
+              @size-change="onTransactionsSizeChange"
+              @current-change="onTransactionsCurrentChange"
+            />
+          </template>
+        </DataPanel>
+      </el-tab-pane>
+    </el-tabs>
+
+    <!-- pen 稿配图：联盟链的物理载体（真实机房设备，非发光特效） -->
+    <figure class="page-art">
+      <img :src="DATA_CENTER_ART" :alt="t('blockchain.pageArtAlt')" loading="lazy" decoding="async" />
+    </figure>
+  </section>
 </template>
 
 <style scoped>
 .blockchain-page {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-5);
+}
+
+.panel-pad {
+  padding: var(--space-4);
+}
+
+.query-field {
+  min-width: 360px;
+  flex: 1 1 360px;
 }
 
 .status-query-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(280px, 1fr));
-  gap: 18px;
-}
-
-.section-card {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
+  gap: var(--space-5);
 }
 
 .status-panel,
 .query-panel {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-3);
+  min-width: 0;
 }
 
-.panel-header {
+.sub-head {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
-.panel-title {
-  margin: 0;
-  font-size: var(--text-md);
-  font-weight: 600;
+.sub-head__title {
+  font-size: var(--fs-body);
+  font-weight: 500;
+  color: var(--pen-ink);
 }
 
-.panel-subtitle {
-  margin: 6px 0 0;
-  color: var(--el-text-color-secondary);
-  font-size: var(--text-sm);
+.sub-head__desc {
+  font-size: var(--fs-caption);
+  color: var(--pen-faint);
   line-height: 1.5;
 }
 
@@ -479,69 +555,89 @@ onMounted(() => {
 .status-metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(120px, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .status-metric,
 .query-result-row {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 12px;
-  border-radius: 10px;
-  background: var(--el-fill-color-light);
+  gap: var(--space-1-5);
+  padding: var(--space-3);
+  border-radius: var(--radius-card);
+  background: var(--pen-raised);
 }
 
 .status-label {
-  color: var(--el-text-color-secondary);
-  font-size: var(--text-xs);
-}
-
-.query-form {
-  display: flex;
-  gap: 10px;
+  color: var(--pen-faint);
+  font-size: var(--fs-caption);
 }
 
 .query-alert {
-  margin-top: 4px;
+  margin-top: 0;
+}
+
+.query-empty {
+  margin: 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-card);
+  background: var(--pen-raised);
+  color: var(--pen-faint);
+  font-size: var(--fs-sub);
 }
 
 .query-result {
   display: grid;
-  gap: 10px;
+  gap: var(--space-2-5);
 }
 
 .blockchain-explainer-card {
-  padding: 10px 14px;
-  background: rgba(20, 167, 154, 0.08);
-  border: 1px solid rgba(20, 167, 154, 0.25);
-  border-radius: 8px;
+  padding: var(--space-2-5) var(--space-3);
+  background: var(--pen-note-bg);
+  border: 1px solid var(--pen-note-bd);
+  border-radius: var(--radius-card);
   line-height: 1.6;
 }
 
 .explainer-title {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-weight: 600;
-  font-size: var(--text-sm);
-  color: var(--el-color-primary);
-  margin-bottom: 4px;
+  gap: var(--space-1-5);
+  font-weight: 500;
+  font-size: var(--fs-sub);
+  color: var(--pen-ink);
+  margin-bottom: var(--space-1);
 }
 
 .explainer-content {
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
+  font-size: var(--fs-caption);
+  color: var(--pen-muted);
+}
+
+.query-hash {
+  word-break: break-all;
+  font-size: var(--fs-sub);
 }
 
 .blockchain-tabs {
-  padding: 0 10px;
+  padding: 0;
 }
 
-.pagination-row {
-  margin-top: 14px;
-  display: flex;
-  justify-content: flex-end;
+/* pen 稿配图：通栏、150px 高、cover 填充、2px 圆角 */
+.page-art {
+  margin: 0;
+  width: 100%;
+  height: 150px;
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+.page-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 @media (max-width: 900px) {
@@ -553,8 +649,9 @@ onMounted(() => {
     grid-template-columns: 1fr 1fr;
   }
 
-  .query-form {
-    flex-direction: column;
+  .query-field {
+    min-width: 0;
+    flex-basis: 100%;
   }
 }
 </style>

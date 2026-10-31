@@ -24,7 +24,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { Cpu, InfoFilled } from '@element-plus/icons-vue'
+import { CircleCheck, Cpu, Histogram, InfoFilled, PriceTag, Wallet } from '@element-plus/icons-vue'
 import type { FormInstance, FormItemRule, FormRules } from 'element-plus'
 import {
   getAuctionOrders,
@@ -41,6 +41,9 @@ import type { AuctionOrderRequest, AuctionOrderResponse, MatchingResultResponse 
 import { formatDateTime, formatNumber } from '../../utils/format'
 import PageHint from '../../components/PageHint.vue'
 import StatusTag from '../../components/StatusTag.vue'
+import PageHeader from '../../components/pen/PageHeader.vue'
+import StatStrip from '../../components/pen/StatStrip.vue'
+import DataPanel from '../../components/pen/DataPanel.vue'
 
 const { t } = useI18n()
 
@@ -329,38 +332,84 @@ onMounted(() => {
   fetchData()
   loadUserAssets().then(() => loadProcurementAdvice())
 })
+
+/** 页头右上角主操作：创建挂单（索引 0） */
+const onHeaderAction = (_index: number) => {
+  openAddDialog()
+}
+
+/** 首屏统计条：全部取自本页已加载的数据（账户/配额/参考价/挂单列表），不新增接口请求 */
+const marketStats = computed(() => [
+  {
+    label: t('tradingMarket.statBalance'),
+    value: Number((userBalance.value || 0).toFixed(2)),
+    unit: t('common.unit_coin'),
+    delta: t('tradingMarket.statBalanceHint'),
+    tone: 'neu' as const,
+    icon: Wallet,
+  },
+  {
+    label: t('tradingMarket.statQuota'),
+    value: Number((userQuota.value || 0).toFixed(2)),
+    unit: t('common.unit_ton'),
+    delta: t('tradingMarket.statQuotaHint'),
+    tone: 'neu' as const,
+    icon: Histogram,
+  },
+  {
+    label: t('tradingMarket.statAiPrice'),
+    value: aiReferencePrice.value,
+    unit: t('tradingMarket.unitPricePerTon'),
+    delta: t('tradingMarket.statAiPriceHint'),
+    tone: 'neu' as const,
+    icon: PriceTag,
+  },
+  {
+    label: t('tradingMarket.statOrders'),
+    value: total.value,
+    unit: t('tradingMarket.unitDeals'),
+    delta: t('tradingMarket.statOrdersHint'),
+    tone: total.value > 0 ? ('pos' as const) : ('neu' as const),
+    icon: CircleCheck,
+  },
+])
+
 </script>
 
 <template>
-  <section class="market-page">
-    <el-card class="section-card" shadow="never">
-      <el-breadcrumb separator="/">
-        <el-breadcrumb-item>{{ t('tradingMarket.breadcrumbTrading') }}</el-breadcrumb-item>
-        <el-breadcrumb-item>{{ t('tradingMarket.breadcrumbAuction') }}</el-breadcrumb-item>
-      </el-breadcrumb>
-    </el-card>
+  <section class="market-page pen-enter">
+    <PageHeader
+      :title="t('menu.doubleAuction')"
+      :description="t('tradingMarket.pageDescription')"
+      :crumbs="[t('tradingMarket.breadcrumbTrading'), t('tradingMarket.breadcrumbAuction')]"
+      :actions="[{ label: t('tradingMarket.dialogCreate'), variant: 'primary' }]"
+      @action="onHeaderAction"
+    />
 
     <PageHint :text="t('pageHints.tradingMarket')" />
 
-    <!-- AI 智能履约与采购决策卡片 -->
-    <el-card v-if="adviceData" class="section-card" shadow="never" style="border: 1px solid rgba(64, 158, 255, 0.28); background: linear-gradient(180deg, rgba(64, 158, 255, 0.04) 0%, var(--color-surface-elevated) 100%);">
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;">
-        <div style="flex: 1;">
-          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-            <div style="display: inline-flex; align-items: center; gap: 6px;">
-              <el-icon color="var(--color-chart-1)" :size="15"><Cpu /></el-icon>
-              <strong style="font-size: 14px; color: var(--color-text);">{{ t('tradingMarket.aiAdviceCardTitle') }}</strong>
-            </div>
+    <!-- 撮合时钟提示：CDA 引擎由后端定时器驱动，企业无需也不该手动触发 -->
+    <aside class="auto-match-note" role="note">
+      <span class="auto-match-note__dot" aria-hidden="true" />
+      <span class="auto-match-note__text">{{ t('tradingMarket.autoMatchNote') }}</span>
+    </aside>
+
+    <!-- AI 智能履约与采购决策面板 -->
+    <section v-if="adviceData" class="advice-panel">
+      <div class="advice-panel__row">
+        <div class="advice-panel__main">
+          <div class="advice-panel__head">
+            <span class="advice-panel__title"><el-icon :size="15"><Cpu /></el-icon>{{ t('tradingMarket.aiAdviceCardTitle') }}</span>
             <el-tag :type="adviceData.risk_level === 'HIGH' ? 'danger' : (adviceData.risk_level === 'MEDIUM' ? 'warning' : 'success')" size="small">
               {{ t('tradingMarket.riskLevel') }}: {{ adviceData.risk_level }}
             </el-tag>
-            <span style="font-size: 12px; color: var(--color-text-muted);">缺口: {{ formatNumber(adviceData.shortfall_tons) }} 吨 ｜ 预估成本: {{ formatNumber(adviceData.estimated_cost) }} 元</span>
+            <span class="advice-panel__meta">缺口: {{ formatNumber(adviceData.shortfall_tons) }} 吨 ｜ 预估成本: {{ formatNumber(adviceData.estimated_cost) }} 元</span>
           </div>
-          <p style="font-size: 13px; color: var(--color-text-muted); line-height: 1.6; margin: 0 0 8px;">
+          <p class="advice-panel__text">
             {{ adviceData.advice }}
           </p>
-          <div v-if="adviceData.action_items?.length" style="display: flex; flex-direction: column; gap: 4px;">
-            <div v-for="(act, idx) in adviceData.action_items" :key="idx" style="font-size: 12px; color: var(--color-text-muted);">
+          <div v-if="adviceData.action_items?.length" class="advice-panel__actions-list">
+            <div v-for="(act, idx) in adviceData.action_items" :key="idx" class="advice-panel__action-item">
               • {{ act }}
             </div>
           </div>
@@ -369,21 +418,21 @@ onMounted(() => {
           {{ t('tradingMarket.dialogCreate') }}
         </el-button>
       </div>
-    </el-card>
+    </section>
 
-    <el-card class="section-card" shadow="never">
-      <div class="search-row">
-        <el-button type="primary" @click="onQuery">{{ t('common.search') }}</el-button>
+    <StatStrip :items="marketStats" :loading="tableLoading" />
+
+    <el-tabs v-model="activeTab" class="market-tabs" @tab-change="onTabChange">
+      <el-tab-pane :label="t('tradingMarket.tabAll')" name="all" />
+      <el-tab-pane :label="t('tradingMarket.tabMine')" name="my" />
+      <el-tab-pane :label="t('tradingMarket.tabMatch')" name="match" />
+    </el-tabs>
+
+    <DataPanel :title="t('tradingMarket.panelTitle')">
+      <template #actions>
+        <el-button @click="onQuery">{{ t('common.search') }}</el-button>
         <el-button type="primary" @click="openAddDialog">{{ t('tradingMarket.dialogCreate') }}</el-button>
-      </div>
-    </el-card>
-
-    <el-card class="section-card" shadow="never">
-      <el-tabs v-model="activeTab" @tab-change="onTabChange">
-        <el-tab-pane :label="t('tradingMarket.tabAll')" name="all" />
-        <el-tab-pane :label="t('tradingMarket.tabMine')" name="my" />
-        <el-tab-pane :label="t('tradingMarket.tabMatch')" name="match" />
-      </el-tabs>
+      </template>
 
       <div v-if="activeTab !== 'match'" class="table-tip">{{ t('common.total', { count: total }) }}</div>
 
@@ -391,7 +440,6 @@ onMounted(() => {
         v-if="activeTab !== 'match'"
         :data="tableData"
         :loading="tableLoading"
-        border
         @selection-change="onSelectionChange"
       >
         <el-table-column type="selection" width="56" />
@@ -423,19 +471,6 @@ onMounted(() => {
         </el-table-column>
       </el-table>
 
-      <div v-if="activeTab !== 'match'" class="pager-row">
-        <el-pagination
-          v-model:current-page="page"
-          v-model:page-size="pageSize"
-          background
-          :page-sizes="[10, 20, 50]"
-          layout="total, sizes, prev, pager, next, jumper"
-          :total="total"
-          @size-change="onSizeChange"
-          @current-change="onPageChange"
-        />
-      </div>
-
       <el-alert
         v-if="activeTab === 'match'"
         class="match-guide"
@@ -456,7 +491,6 @@ onMounted(() => {
         v-if="activeTab === 'match'"
         :data="matchData"
         :loading="matchLoading"
-        border
       >
         <el-table-column :label="t('tradingMarket.colIndex')" width="80">
           <template #default="scope">
@@ -472,8 +506,20 @@ onMounted(() => {
         </el-table-column>
       </el-table>
 
-      <div v-if="activeTab === 'match'" class="pager-row">
+      <template #footer>
         <el-pagination
+          v-if="activeTab !== 'match'"
+          v-model:current-page="page"
+          v-model:page-size="pageSize"
+          background
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next, jumper"
+          :total="total"
+          @size-change="onSizeChange"
+          @current-change="onPageChange"
+        />
+        <el-pagination
+          v-if="activeTab === 'match'"
           v-model:current-page="matchPage"
           v-model:page-size="matchPageSize"
           background
@@ -483,8 +529,8 @@ onMounted(() => {
           @size-change="onMatchSizeChange"
           @current-change="onMatchPageChange"
         />
-      </div>
-    </el-card>
+      </template>
+    </DataPanel>
 
     <el-dialog
       v-model="dialogVisible"
@@ -593,70 +639,144 @@ onMounted(() => {
 .market-page {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-5);
 }
 
-.section-card {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-}
-
-.search-row {
+/* 撮合时钟提示：低干扰发丝线细条，仅说明「系统会自动出清」 */
+.auto-match-note {
   display: flex;
-  gap: 10px;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 7px var(--space-3);
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-card);
+  background: var(--pen-surface);
+  color: var(--pen-muted);
+  font-size: var(--fs-caption);
+  line-height: 1.5;
+}
+
+.auto-match-note__dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pen-pill-pos-ink);
+}
+
+/* AI 履约建议面板：与 pen 面板同构（白底 + 发丝线 + 2px 圆角） */
+.advice-panel {
+  padding: var(--space-3) var(--space-4);
+  background: var(--pen-surface);
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-card);
+}
+
+.advice-panel__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.advice-panel__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.advice-panel__head {
+  display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2-5);
+  margin-bottom: var(--space-2);
+}
+
+.advice-panel__title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-size: var(--fs-body);
+  font-weight: 500;
+  color: var(--pen-ink);
+}
+
+.advice-panel__meta {
+  font-size: var(--fs-sub);
+  color: var(--pen-faint);
+}
+
+.advice-panel__text {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-body);
+  line-height: 1.6;
+  color: var(--pen-muted);
+}
+
+.advice-panel__actions-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.advice-panel__action-item {
+  font-size: var(--fs-sub);
+  color: var(--pen-muted);
+}
+
+.market-tabs {
+  margin-bottom: 0;
 }
 
 .table-tip {
-  margin-bottom: 10px;
-  color: var(--color-text-muted);
-  font-size: var(--text-sm);
+  padding: var(--space-3) var(--space-4) 0;
+  color: var(--pen-faint);
+  font-size: var(--fs-caption);
 }
 
-.pager-row {
-  margin-top: 14px;
-  display: flex;
-  justify-content: flex-end;
+.match-guide {
+  margin: var(--space-3) var(--space-4) 0;
 }
 
 .auction-preview-card {
-  margin-top: 10px;
-  padding: 12px 14px;
-  background: rgba(20, 167, 154, 0.08);
-  border: 1px solid rgba(20, 167, 154, 0.25);
-  border-radius: 8px;
+  margin-top: var(--space-2-5);
+  padding: var(--space-3) var(--space-3);
+  background: var(--pen-sunken);
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-card);
 }
 
 .preview-row {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  font-size: var(--text-sm);
-  color: var(--color-text);
+  gap: var(--space-2);
+  font-size: var(--fs-sub);
+  color: var(--pen-ink);
 }
 
 .preview-total {
-  font-size: 20px;
-  color: var(--el-color-primary);
-  font-weight: 700;
+  font-size: var(--fs-stat);
+  color: var(--pen-ink);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 
 .preview-unit {
-  color: var(--color-text-muted);
-  font-size: var(--text-xs);
+  color: var(--pen-faint);
+  font-size: var(--fs-caption);
 }
 
 .preview-tip {
-  margin-top: 6px;
-  font-size: var(--text-xs);
+  margin-top: var(--space-1-5);
+  font-size: var(--fs-caption);
   line-height: 1.5;
 }
 
 .preview-tip--buy {
-  color: var(--color-accent);
+  color: var(--pen-muted);
 }
 
 .preview-tip--sell {
-  color: var(--el-color-warning);
+  color: var(--pen-muted);
 }
 </style>

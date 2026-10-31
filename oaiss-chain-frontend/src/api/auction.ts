@@ -16,7 +16,6 @@ import type {
   MatchingResultResponse,
   PageRequest,
 } from '../types'
-
 /**
  * 【业务功能】：企业提交碳配额双向竞价买入挂单（买盘申报价与申购量）
  * 【对应前端页面】：TradingMarket.vue (/enterprise/trading/market)
@@ -68,13 +67,45 @@ export function getMatchResults(params?: PageRequest): Promise<MatchingResultPag
 }
 
 /**
- * 【业务功能】：管理员或撮合定时器触发双向拍卖撮合算法执行（K-Double Auction机制出清）
- * 【对应前端页面】：TradingMarket.vue (或系统自动化撮合服务)
- * 【界面触发操作】：点击【执行撮合】按钮手动出清或由撮合守护线程自动触发
+ * 【业务功能】：管理员手动立即触发一轮双向拍卖撮合出清（自动撮合的补偿入口）
+ * 【对应前端页面】：views/admin/AuctionMatching.vue (/admin/trading/matching)
+ * 【界面触发操作】：在撮合控制台点击【立即撮合】按钮
  * 【后端对应端点】：DoubleAuctionController -> POST /auction/match
+ *
+ * 说明：平台默认每 30 秒自动撮合（后端 AuctionMatchingScheduler），
+ *      本函数仅用于「不想等下一个周期」时的即时补触发。
  */
 export function executeMatching(): Promise<MatchingResultResponse[]> {
   return request.post('/auction/match')
+}
+
+/** 撮合控制台运行态：自动撮合开关、间隔、盘口待撮合规模、上次出清时间 */
+export interface AuctionMatchingStatus {
+  autoMatchingEnabled: boolean
+  intervalSeconds: number
+  pendingBuyOrders: number
+  pendingSellOrders: number
+  lastMatchAt: string | null
+}
+
+/**
+ * 【业务功能】：查询自动撮合运行态与当前盘口待撮合规模
+ * 【对应前端页面】：views/admin/AuctionMatching.vue (/admin/trading/matching)
+ * 【界面触发操作】：撮合控制台顶部状态条与盘口卡片自动加载
+ * 【后端对应端点】：DoubleAuctionController -> GET /auction/matching-status
+ */
+export function getMatchingStatus(): Promise<AuctionMatchingStatus> {
+  return request.get('/auction/matching-status')
+}
+
+/**
+ * 【业务功能】：管理员查询全平台撮合成交明细（不限本人）
+ * 【对应前端页面】：views/admin/AuctionMatching.vue (/admin/trading/matching)
+ * 【界面触发操作】：撮合控制台下方「全站成交明细」表格与分页
+ * 【后端对应端点】：DoubleAuctionController -> GET /auction/all-results
+ */
+export function getAllMatchResults(params?: PageRequest): Promise<MatchingResultPage> {
+  return request.get('/auction/all-results', { params })
 }
 
 export interface ProcurementAdviceResponse {

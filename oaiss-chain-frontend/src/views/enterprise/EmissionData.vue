@@ -21,10 +21,14 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
+import { Files, Medal, Odometer, Trophy } from '@element-plus/icons-vue'
 import { getIndustryRankings, getMyRating, predictEmission } from '../../api/emission'
 import { getEnterpriseInfo } from '../../api/enterprise'
 import type { CarbonPredictionResponse, EmissionRating, EnterpriseResponse } from '../../types'
-import PageContainer from '../../components/PageContainer.vue'
+import PageHeader from '../../components/pen/PageHeader.vue'
+import StatStrip from '../../components/pen/StatStrip.vue'
+import FilterBar from '../../components/pen/FilterBar.vue'
+import DataPanel from '../../components/pen/DataPanel.vue'
 import TermTip from '../../components/TermTip.vue'
 import PageHint from '../../components/PageHint.vue'
 
@@ -59,6 +63,53 @@ const latestPrediction = computed(() => {
 })
 
 const predictionHint = computed(() => t('emissionData.description'))
+
+/** 首屏统计条：全部由已加载的评级 / 排名数据推导，不新增接口请求 */
+const overviewStats = computed(() => {
+  const ratingRows = ratings.value
+  const rankingRows = rankings.value
+  const latest = ratingRows[0]
+  const avgScore = ratingRows.length
+    ? ratingRows.reduce((sum, row) => sum + (Number(row.ratingScore) || 0), 0) / ratingRows.length
+    : 0
+  const highLevel = latest?.ratingLevel === 'A' || latest?.ratingLevel === 'B'
+
+  return [
+    {
+      label: t('emissionData.statLatestLevel'),
+      value: latest?.ratingLevel || '-',
+      delta: latest
+        ? t('emissionData.statRatingYear', { year: latest.ratingYear })
+        : t('emissionData.statNoRating'),
+      tone: (latest ? (highLevel ? 'pos' : 'neu') : 'neu') as 'pos' | 'neu',
+      icon: Medal,
+    },
+    {
+      label: t('emissionData.statLatestScore'),
+      value: latest ? Number(latest.ratingScore) : 0,
+      unit: t('emissionData.statScoreUnit'),
+      delta: t('emissionData.statScoreHint'),
+      tone: 'neu' as const,
+      icon: Odometer,
+    },
+    {
+      label: t('emissionData.statAvgScore'),
+      value: Number(avgScore.toFixed(1)),
+      unit: t('emissionData.statScoreUnit'),
+      delta: t('emissionData.statRecordCount', { count: ratingRows.length }),
+      tone: 'neu' as const,
+      icon: Files,
+    },
+    {
+      label: t('emissionData.statRankingCount'),
+      value: rankingRows.length,
+      unit: t('emissionData.statUnitEnterprise'),
+      delta: t('emissionData.statRankingYear', { year: rankingsYear.value }),
+      tone: 'neu' as const,
+      icon: Trophy,
+    },
+  ]
+})
 
 const loadEnterpriseContext = async () => {
   try {
@@ -133,154 +184,167 @@ onMounted(() => {
 </script>
 
 <template>
-  <PageContainer :title="t('emissionData.title')" :description="t('emissionData.description')">
+  <section class="emission-page pen-enter">
+    <PageHeader
+      :title="t('emissionData.title')"
+      :description="t('emissionData.description')"
+      :crumbs="[t('emissionData.breadcrumbCategory'), t('emissionData.breadcrumbEmission')]"
+    />
+
     <PageHint :text="t('pageHints.emissionData')" />
-    <section class="emission-page">
-      <el-card class="section-card" shadow="never">
-        <el-tabs v-model="activeTab">
-          <el-tab-pane :label="t('emissionData.tabRating')" name="ratings">
-            <el-table :data="ratings" border v-loading="ratingsLoading">
-              <el-table-column :label="t('common.operation')" width="80">
-                <template #default="scope">{{ scope.$index + 1 }}</template>
+
+    <StatStrip :items="overviewStats" :loading="ratingsLoading || rankingsLoading" />
+
+    <el-tabs v-model="activeTab" class="emission-tabs">
+      <el-tab-pane :label="t('emissionData.tabRating')" name="ratings">
+        <DataPanel
+          :title="t('emissionData.panelRatingTitle')"
+          :meta="t('emissionData.panelRatingMeta', { total: ratings.length })"
+        >
+          <el-table :data="ratings" v-loading="ratingsLoading">
+            <el-table-column :label="t('common.operation')" width="80">
+              <template #default="scope">{{ scope.$index + 1 }}</template>
+            </el-table-column>
+            <el-table-column prop="ratingLevel" min-width="100">
+              <template #header><span>{{ t('emissionData.colRating') }}<TermTip term="emissionRating" /></span></template>
+              <template #default="{ row }">
+                <el-tag :type="getRatingTag(row.ratingLevel)">{{ row.ratingLevel }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="totalEmission" :label="t('emissionData.colTotalEmission')" min-width="140" />
+            <el-table-column prop="emissionIntensity" :label="t('emissionData.colIndustryAvg')" min-width="140">
+              <template #default="{ row }">{{ row.emissionIntensity ?? '-' }}</template>
+            </el-table-column>
+            <el-table-column prop="ratingScore" :label="t('emissionData.colScore')" min-width="100" />
+            <el-table-column prop="ratingYear" :label="t('emissionData.colRatingTime')" min-width="170" />
+          </el-table>
+        </DataPanel>
+      </el-tab-pane>
+
+      <el-tab-pane :label="t('emissionData.tabRanking')" name="rankings">
+        <FilterBar :aria-label="t('emissionData.filterLabel')">
+          <label class="pen-field">
+            <span class="pen-field__label">{{ t('emissionData.yearPicker') }}</span>
+            <el-date-picker
+              v-model="rankingsYear"
+              type="year"
+              value-format="YYYY"
+              :placeholder="t('emissionData.selectYear')"
+              @change="loadRankings"
+            />
+          </label>
+        </FilterBar>
+        <DataPanel
+          :title="t('emissionData.panelRankingTitle')"
+          :meta="t('emissionData.panelRankingMeta', { total: rankings.length })"
+        >
+          <el-table :data="rankings" v-loading="rankingsLoading">
+            <el-table-column :label="t('emissionData.colRank')" width="80">
+              <template #default="scope">{{ scope.$index + 1 }}</template>
+            </el-table-column>
+            <el-table-column prop="enterpriseId" :label="t('emissionData.colEnterpriseName')" min-width="200">
+              <template #default="{ row }">{{ getRankingEnterpriseLabel(row) }}</template>
+            </el-table-column>
+            <el-table-column prop="totalEmission" :label="t('emissionData.colTotalEmission')" min-width="140" />
+            <el-table-column prop="ratingLevel" min-width="80">
+              <template #header><span>{{ t('emissionData.colRating') }}<TermTip term="emissionRating" /></span></template>
+              <template #default="{ row }">
+                <el-tag :type="getRatingTag(row.ratingLevel)">{{ row.ratingLevel }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="ratingScore" :label="t('emissionData.colScore')" min-width="100" />
+          </el-table>
+        </DataPanel>
+      </el-tab-pane>
+
+      <el-tab-pane :label="t('emissionData.tabPrediction')" name="predict">
+        <DataPanel
+          :title="t('emissionData.panelPredictionTitle')"
+          :meta="t('emissionData.panelPredictionMeta', { total: predictResult?.predictions?.length || 0 })"
+        >
+          <div class="predict-panel">
+            <el-form label-width="140px">
+              <el-form-item :label="t('emissionData.enterpriseIdLabel')">
+                <el-input v-model="predictForm.enterpriseId" :placeholder="t('emissionData.enterpriseIdPlaceholder')" />
+              </el-form-item>
+              <el-form-item :label="t('emissionData.predictionMonths')">
+                <el-input-number v-model="predictForm.predictMonths" :min="1" :max="24" />
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" :loading="predictLoading" @click="onPredict">{{ t('emissionData.tabPrediction') }}</el-button>
+              </el-form-item>
+            </el-form>
+
+            <el-alert
+              :title="predictionHint"
+              type="info"
+              :closable="false"
+              show-icon
+              class="prediction-alert"
+            />
+
+            <el-descriptions
+              v-if="predictResult"
+              :title="t('emissionData.predictionResult')"
+              :column="2"
+              border
+              class="prediction-result"
+            >
+              <el-descriptions-item label="Enterprise ID">{{ predictResult.enterpriseId }}</el-descriptions-item>
+              <el-descriptions-item :label="t('emissionData.confidence')">{{ predictResult.confidence }}%</el-descriptions-item>
+              <el-descriptions-item label="Prediction Summary" :span="2">
+                {{ predictResult.message || '-' }}
+              </el-descriptions-item>
+              <el-descriptions-item :label="t('emissionData.predictedEmission')">
+                {{ latestPrediction ? `${latestPrediction.predictedEmission} tCO2e` : '-' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="Generated At">
+                {{ predictResult.generatedAt || '-' }}
+              </el-descriptions-item>
+            </el-descriptions>
+
+            <el-table
+              v-if="predictResult?.predictions?.length"
+              :data="predictResult.predictions"
+              class="prediction-table"
+            >
+              <el-table-column prop="period" label="Prediction Period" min-width="140" />
+              <el-table-column prop="predictedEmission" :label="t('emissionData.predictedEmission')" min-width="180">
+                <template #default="{ row }">{{ row.predictedEmission }} tCO2e</template>
               </el-table-column>
-              <el-table-column prop="ratingLevel" min-width="100">
-                <template #header><span>{{ t('emissionData.colRating') }}<TermTip term="emissionRating" /></span></template>
-                <template #default="{ row }">
-                  <el-tag :type="getRatingTag(row.ratingLevel)">{{ row.ratingLevel }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="totalEmission" :label="t('emissionData.colTotalEmission')" min-width="140" />
-              <el-table-column prop="emissionIntensity" :label="t('emissionData.colIndustryAvg')" min-width="140">
-                <template #default="{ row }">{{ row.emissionIntensity ?? '-' }}</template>
-              </el-table-column>
-              <el-table-column prop="ratingScore" :label="t('emissionData.colScore')" min-width="100" />
-              <el-table-column prop="ratingYear" :label="t('emissionData.colRatingTime')" min-width="170" />
             </el-table>
-          </el-tab-pane>
-
-          <el-tab-pane :label="t('emissionData.tabRanking')" name="rankings">
-            <div class="toolbar-row">
-              <span>{{ t('emissionData.yearPicker') }}:</span>
-              <el-date-picker
-                v-model="rankingsYear"
-                type="year"
-                value-format="YYYY"
-                :placeholder="t('emissionData.selectYear')"
-                @change="loadRankings"
-              />
-            </div>
-            <el-table :data="rankings" border v-loading="rankingsLoading">
-              <el-table-column :label="t('emissionData.colRank')" width="80">
-                <template #default="scope">{{ scope.$index + 1 }}</template>
-              </el-table-column>
-              <el-table-column prop="enterpriseId" :label="t('emissionData.colEnterpriseName')" min-width="200">
-                <template #default="{ row }">{{ getRankingEnterpriseLabel(row) }}</template>
-              </el-table-column>
-              <el-table-column prop="totalEmission" :label="t('emissionData.colTotalEmission')" min-width="140" />
-              <el-table-column prop="ratingLevel" min-width="80">
-                <template #header><span>{{ t('emissionData.colRating') }}<TermTip term="emissionRating" /></span></template>
-                <template #default="{ row }">
-                  <el-tag :type="getRatingTag(row.ratingLevel)">{{ row.ratingLevel }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="ratingScore" :label="t('emissionData.colScore')" min-width="100" />
-            </el-table>
-          </el-tab-pane>
-
-          <el-tab-pane :label="t('emissionData.tabPrediction')" name="predict">
-            <div class="predict-panel">
-              <el-form label-width="140px">
-                <el-form-item :label="t('emissionData.enterpriseIdLabel')">
-                  <el-input v-model="predictForm.enterpriseId" :placeholder="t('emissionData.enterpriseIdPlaceholder')" />
-                </el-form-item>
-                <el-form-item :label="t('emissionData.predictionMonths')">
-                  <el-input-number v-model="predictForm.predictMonths" :min="1" :max="24" />
-                </el-form-item>
-                <el-form-item>
-                  <el-button type="primary" :loading="predictLoading" @click="onPredict">{{ t('emissionData.tabPrediction') }}</el-button>
-                </el-form-item>
-              </el-form>
-
-              <el-alert
-                :title="predictionHint"
-                type="info"
-                :closable="false"
-                show-icon
-                class="prediction-alert"
-              />
-
-              <el-descriptions
-                v-if="predictResult"
-                :title="t('emissionData.predictionResult')"
-                :column="2"
-                border
-                class="prediction-result"
-              >
-                <el-descriptions-item label="Enterprise ID">{{ predictResult.enterpriseId }}</el-descriptions-item>
-                <el-descriptions-item :label="t('emissionData.confidence')">{{ predictResult.confidence }}%</el-descriptions-item>
-                <el-descriptions-item label="Prediction Summary" :span="2">
-                  {{ predictResult.message || '-' }}
-                </el-descriptions-item>
-                <el-descriptions-item :label="t('emissionData.predictedEmission')">
-                  {{ latestPrediction ? `${latestPrediction.predictedEmission} tCO2e` : '-' }}
-                </el-descriptions-item>
-                <el-descriptions-item label="Generated At">
-                  {{ predictResult.generatedAt || '-' }}
-                </el-descriptions-item>
-              </el-descriptions>
-
-              <el-table
-                v-if="predictResult?.predictions?.length"
-                :data="predictResult.predictions"
-                border
-                class="prediction-table"
-              >
-                <el-table-column prop="period" label="Prediction Period" min-width="140" />
-                <el-table-column prop="predictedEmission" :label="t('emissionData.predictedEmission')" min-width="180">
-                  <template #default="{ row }">{{ row.predictedEmission }} tCO2e</template>
-                </el-table-column>
-              </el-table>
-            </div>
-          </el-tab-pane>
-        </el-tabs>
-      </el-card>
-    </section>
-  </PageContainer>
+          </div>
+        </DataPanel>
+      </el-tab-pane>
+    </el-tabs>
+  </section>
 </template>
 
 <style scoped>
 .emission-page {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-5);
 }
 
-.section-card {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-}
-
-.toolbar-row {
-  margin-bottom: 14px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.emission-tabs :deep(.el-tabs__header) {
+  margin-bottom: var(--space-4);
 }
 
 .predict-panel {
-  padding: 20px 0;
   max-width: 720px;
+  padding: var(--space-5) var(--space-4);
 }
 
 .prediction-alert {
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 
 .prediction-result {
-  margin-top: 20px;
+  margin-top: var(--space-5);
 }
 
 .prediction-table {
-  margin-top: 16px;
+  margin-top: var(--space-4);
 }
 </style>

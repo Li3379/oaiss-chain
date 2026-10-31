@@ -16,7 +16,11 @@ export interface TradeSummary {
   tradeNo: string
   tradeType: number
   sellerId: number
+  /** 卖方名称：企业/审核员看到脱敏别名，管理员/第三方监管看到真实名称 */
+  sellerName?: string
   buyerId: number
+  /** 买方名称：脱敏别名、真实名称或「待定」 */
+  buyerName?: string
   quantity: number
   unitPrice: number
   totalAmount: number

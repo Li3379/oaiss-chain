@@ -161,14 +161,30 @@ const fuelSections = [
   { key: 'otherCoal' as const, labelKey: 'carbonFormula.otherCoal' },
 ]
 
+/**
+ * 电网表单（国标净电量式，D4）。
+ *
+ * 公式：E = (上网 + 输入 − 输出 − 售电) × EF + SF6
+ *
+ * 旧线损模型（输配电量 × 线损率）在新口径下不参与计算，字段保留仅为兼容历史草稿，
+ * 界面上不再让用户填写。
+ */
 const gridForm = ref({
-  transmissionVolume: null as number | null,
-  lineLossRate: null as number | null,
-  gridEmissionFactor: null as number | null,
+  /** EL上网（MWh）—— 原「发电量」字段，语义已对齐国标 */
   generationVolume: null as number | null,
+  /** EL输入（MWh） */
   importedElectricity: null as number | null,
+  /** EL输出（MWh） */
   exportedElectricity: null as number | null,
-  importEmissionFactor: null as number | null,
+  /** EL售电（MWh）—— 国标式第四项，v1 缺失 */
+  soldElectricity: null as number | null,
+  /** EF电网（tCO2/MWh） */
+  gridEmissionFactor: null as number | null,
+  /** SF6 四项 */
+  recCapacity: null as number | null,
+  recRecovery: null as number | null,
+  repCapacity: null as number | null,
+  repRecovery: null as number | null,
   reportingYear: new Date().getFullYear(),
   enterpriseName: '',
 })
@@ -189,13 +205,15 @@ function hasPowerGenerationInputs() {
 function hasPowerGridInputs() {
   const f = gridForm.value
   return [
-    f.transmissionVolume,
-    f.lineLossRate,
-    f.gridEmissionFactor,
     f.generationVolume,
     f.importedElectricity,
     f.exportedElectricity,
-    f.importEmissionFactor,
+    f.soldElectricity,
+    f.gridEmissionFactor,
+    f.recCapacity,
+    f.recRecovery,
+    f.repCapacity,
+    f.repRecovery,
   ].some((value) => value !== null)
 }
 
@@ -295,8 +313,6 @@ const onCalculatePowerGrid = async () => {
     gridLoading.value = true
     const payload = {
       ...gridForm.value,
-      transmissionVolume: gridForm.value.transmissionVolume ?? 0,
-      lineLossRate: gridForm.value.lineLossRate ?? 0,
       gridEmissionFactor: gridForm.value.gridEmissionFactor ?? 0,
       reportingYear: typeof gridForm.value.reportingYear === 'string'
         ? parseInt(gridForm.value.reportingYear, 10)
@@ -429,14 +445,22 @@ function getEstimatedFuelEmission(key: typeof fuelSections[number]['key']) {
   return null
 }
 
+/**
+ * 载入电网典型样本（国标净电量式）。
+ *
+ * 净电量 = 上网 42000 + 输入 8000 − 输出 3000 − 售电 2000 = 45000 MWh
+ * 排放 = 45000 × 0.5810 = 26145 tCO2e（另加 SF6）
+ */
 function loadPowerGridTemplate() {
-  gridForm.value.transmissionVolume = 50000
-  gridForm.value.lineLossRate = 0.052
+  gridForm.value.generationVolume = 42000
+  gridForm.value.importedElectricity = 8000
+  gridForm.value.exportedElectricity = 3000
+  gridForm.value.soldElectricity = 2000
   gridForm.value.gridEmissionFactor = 0.5810
-  gridForm.value.generationVolume = 52000
-  gridForm.value.importedElectricity = 10000
-  gridForm.value.exportedElectricity = 5000
-  gridForm.value.importEmissionFactor = 0.5810
+  gridForm.value.recCapacity = 20
+  gridForm.value.recRecovery = 15
+  gridForm.value.repCapacity = 10
+  gridForm.value.repRecovery = 8
   ElMessage.success(t('carbonFormula.loadedPowerGridTemplate'))
 }
 
@@ -851,20 +875,9 @@ onMounted(() => {
             </el-col>
           </el-row>
 
-          <el-row :gutter="20">
-            <el-col :span="12">
-              <el-form-item>
-                  <template #label><span>{{ t('carbonFormula.transmissionVolume') }}<TermTip term="transmissionVolume" :text="hintWithSource('transmissionVolume')" /></span></template>
-                <el-input-number v-model="gridForm.transmissionVolume" :min="0" :precision="4" :controls="false" :placeholder="t('carbonFormula.transmissionVolumeUnit')" style="width: 100%" />
-              </el-form-item>
-            </el-col>
-            <el-col :span="12">
-              <el-form-item>
-                  <template #label><span>{{ t('carbonFormula.lineLossRate') }}<TermTip term="lineLossRate" :text="hintWithSource('lineLossRate')" /></span></template>
-                <el-input-number v-model="gridForm.lineLossRate" :min="0" :max="1" :precision="4" :step="0.01" :controls="false" :placeholder="t('carbonFormula.lineLossRateUnit')" style="width: 100%" />
-              </el-form-item>
-            </el-col>
-          </el-row>
+          <!-- 国标净电量式：E = (上网 + 输入 − 输出 − 售电) × EF + SF6 -->
+          <p class="section-tip">{{ t('carbonFormula.gridNetFormulaTip') }}</p>
+
           <el-row :gutter="20">
             <el-col :span="12">
               <el-form-item>
@@ -896,11 +909,41 @@ onMounted(() => {
           <el-row :gutter="20">
             <el-col :span="12">
               <el-form-item>
-                  <template #label><span>{{ t('carbonFormula.importEmissionFactor') }}<TermTip term="importEmissionFactor" :text="hintWithSource('importEmissionFactor')" /></span></template>
-                <el-input-number v-model="gridForm.importEmissionFactor" :min="0" :precision="6" :controls="false" :placeholder="t('carbonFormula.importEmissionFactorUnit')" style="width: 100%" />
+                  <template #label><span>{{ t('carbonFormula.soldElectricity') }}<TermTip term="soldElectricity" :text="hintWithSource('soldElectricity')" /></span></template>
+                <el-input-number v-model="gridForm.soldElectricity" :min="0" :precision="4" :controls="false" :placeholder="t('carbonFormula.soldElectricityUnit')" style="width: 100%" />
               </el-form-item>
             </el-col>
           </el-row>
+
+          <!-- SF6 绝缘设备泄漏：国标式独立项 -->
+          <div class="fuel-section" data-testid="grid-sf6">
+            <div class="fuel-section__title">{{ t('carbonFormula.sf6Title') }}</div>
+            <el-row :gutter="20">
+              <el-col :span="12">
+                <el-form-item :label="t('carbonFormula.recCapacity')">
+                  <el-input-number v-model="gridForm.recCapacity" :min="0" :precision="2" :controls="false" :placeholder="t('carbonFormula.sf6CapacityUnit')" style="width: 100%" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item :label="t('carbonFormula.recRecovery')">
+                  <el-input-number v-model="gridForm.recRecovery" :min="0" :precision="2" :controls="false" :placeholder="t('carbonFormula.sf6CapacityUnit')" style="width: 100%" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+            <el-row :gutter="20">
+              <el-col :span="12">
+                <el-form-item :label="t('carbonFormula.repCapacity')">
+                  <el-input-number v-model="gridForm.repCapacity" :min="0" :precision="2" :controls="false" :placeholder="t('carbonFormula.sf6CapacityUnit')" style="width: 100%" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item :label="t('carbonFormula.repRecovery')">
+                  <el-input-number v-model="gridForm.repRecovery" :min="0" :precision="2" :controls="false" :placeholder="t('carbonFormula.sf6CapacityUnit')" style="width: 100%" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+            <p class="fuel-section__hint">{{ t('carbonFormula.sf6Hint') }}</p>
+          </div>
 
           <el-form-item class="calc-action">
             <el-button class="btn-calc-grid" type="primary" :loading="gridLoading" @click="onCalculatePowerGrid">
@@ -1021,8 +1064,10 @@ onMounted(() => {
             </el-button>
           </div>
           <div class="audit-card__body">
-            输配电线损产生碳排放 <strong>{{ formatNumber(gridResult.transmissionLossEmission) }} tCO₂e</strong>，占本期总间接排放负荷的 <strong>{{ (Number(gridResult.transmissionLossEmission) / Math.max(0.001, Number(gridResult.totalEmission)) * 100).toFixed(1) }}%</strong>。
-            当前综合线损率控制在 <strong>{{ (Number(gridForm.lineLossRate) * 100).toFixed(2) }}%</strong>，整体能效与网损表现处于合规受控区间。
+            按国标净电量式计算，本期输配环节排放 <strong>{{ formatNumber(gridResult.transmissionLossEmission) }} tCO₂e</strong>，
+            净电量 <strong>{{ formatNumber(gridResult.transmissionLoss) }} MWh</strong>，占本期总排放的 <strong>{{ (Number(gridResult.transmissionLossEmission) / Math.max(0.001, Number(gridResult.totalEmission)) * 100).toFixed(1) }}%</strong>。
+            <span v-if="gridResult.netElectricityNegative">注意：净电量为负（售电大于供电），已按 0 计，请核对电量口径。</span>
+            <span v-else>口径为 (上网 + 输入 − 输出 − 售电) × 电网排放因子。</span>
           </div>
           <div class="audit-card__points">
             <span>• 建议将电网测算数据一键同步带入当期核算申报草稿</span>

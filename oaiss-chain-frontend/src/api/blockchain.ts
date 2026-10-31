@@ -5,7 +5,7 @@
  * 【主要服务页面】：
  *   - 区块链浏览器: views/enterprise/Blockchain.vue (/enterprise/blockchain/browser)
  *   - 官网首页链状态: views/OfficialHome.vue (/official-home)
- *   - 管理员终审上链: views/admin/VerifyList.vue (/admin/verify/list)
+ *   - 审核员上链补救: views/admin/VerifyList.vue (/auditor/verify/list)
  * ==============================================================================
  */
 import request from './request'

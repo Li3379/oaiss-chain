@@ -13,12 +13,16 @@
  *     * GET /api/v1/reviewer/history -> getReviewHistory() 分页查询审核历史归档
  * ==============================================================================
  */
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { CircleCheck, CircleClose, DataAnalysis, List } from '@element-plus/icons-vue'
 import { useI18n } from 'vue-i18n'
 import { getReviewHistory } from '../../api/reviewer'
 import type { CarbonReportResponse } from '../../types'
 import { formatDateTime } from '../../utils/format'
+import PageHeader from '../../components/pen/PageHeader.vue'
+import StatStrip from '../../components/pen/StatStrip.vue'
+import DataPanel from '../../components/pen/DataPanel.vue'
 import PageHint from '../../components/PageHint.vue'
 import StatusTag from '../../components/StatusTag.vue'
 
@@ -72,22 +76,69 @@ const onCurrentChange = (page: number) => {
   fetchData()
 }
 
+/** 首屏统计条：全部由已加载的历史归档数据推导，不新增接口请求 */
+const overviewStats = computed(() => {
+  const rows = tableData.value
+  const approvedCount = rows.filter((row) => row.reviewResult === 3).length
+  const rejectedCount = rows.filter((row) => row.reviewResult === 4).length
+  const decidedCount = approvedCount + rejectedCount
+  const passRate = decidedCount > 0 ? `${((approvedCount / decidedCount) * 100).toFixed(1)}%` : '0%'
+
+  return [
+    {
+      label: t('reviewHistory.statArchived'),
+      value: total.value,
+      unit: t('reviewHistory.statUnitReports'),
+      delta: t('reviewHistory.statArchivedHint', { count: rows.length }),
+      tone: 'neu' as const,
+      icon: DataAnalysis,
+    },
+    {
+      label: t('reviewHistory.statApproved'),
+      value: approvedCount,
+      unit: t('reviewHistory.statUnitReports'),
+      delta: t('reviewHistory.statApprovedHint'),
+      tone: approvedCount > 0 ? ('pos' as const) : ('neu' as const),
+      icon: CircleCheck,
+    },
+    {
+      label: t('reviewHistory.statRejected'),
+      value: rejectedCount,
+      unit: t('reviewHistory.statUnitReports'),
+      delta: t('reviewHistory.statRejectedHint'),
+      tone: rejectedCount > 0 ? ('neg' as const) : ('neu' as const),
+      icon: CircleClose,
+    },
+    {
+      label: t('reviewHistory.statPassRate'),
+      value: passRate,
+      delta: t('reviewHistory.statPassRateHint', { count: decidedCount }),
+      tone: decidedCount > 0 ? ('pos' as const) : ('neu' as const),
+      icon: List,
+    },
+  ]
+})
+
 onMounted(() => fetchData())
 </script>
 
 <template>
-  <section class="history-page">
-    <el-card class="section-card" shadow="never">
-      <el-breadcrumb separator="/">
-        <el-breadcrumb-item>{{ t('reviewHistory.breadcrumbAudit') }}</el-breadcrumb-item>
-        <el-breadcrumb-item>{{ t('reviewHistory.breadcrumbHistory') }}</el-breadcrumb-item>
-      </el-breadcrumb>
-    </el-card>
+  <section class="history-page pen-enter">
+    <PageHeader
+      :title="t('menu.reviewHistory')"
+      :description="t('reviewHistory.pageDescription')"
+      :crumbs="[t('reviewHistory.breadcrumbAudit'), t('reviewHistory.breadcrumbHistory')]"
+    />
 
     <PageHint :text="t('pageHints.reviewHistory')" />
 
-    <el-card class="section-card" shadow="never">
-      <el-table :data="tableData" border v-loading="loading">
+    <StatStrip :items="overviewStats" :loading="loading" />
+
+    <DataPanel
+      :title="t('reviewHistory.panelTitle')"
+      :meta="t('reviewHistory.panelMeta', { total })"
+    >
+      <el-table :data="tableData" v-loading="loading">
         <el-table-column prop="reportNo" :label="t('reviewHistory.colReportNo')" min-width="180" show-overflow-tooltip />
         <el-table-column prop="enterpriseName" :label="t('reviewHistory.colEnterpriseName')" min-width="180" />
         <el-table-column prop="title" :label="t('reviewHistory.colReportTitle')" min-width="200" show-overflow-tooltip />
@@ -106,7 +157,7 @@ onMounted(() => fetchData())
         </el-table-column>
       </el-table>
 
-      <div class="pagination-row">
+      <template #footer>
         <el-pagination
           v-model:current-page="currentPage"
           v-model:page-size="pageSize"
@@ -117,8 +168,8 @@ onMounted(() => fetchData())
           @size-change="onSizeChange"
           @current-change="onCurrentChange"
         />
-      </div>
-    </el-card>
+      </template>
+    </DataPanel>
   </section>
 </template>
 
@@ -126,17 +177,6 @@ onMounted(() => fetchData())
 .history-page {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-}
-
-.section-card {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-}
-
-.pagination-row {
-  margin-top: 14px;
-  display: flex;
-  justify-content: flex-end;
+  gap: var(--space-4);
 }
 </style>

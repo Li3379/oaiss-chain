@@ -16,13 +16,16 @@
  *     * GET /api/v1/credit/ranking  -> getScoreRanking() 获取全行业企业信誉排行榜
  * ==============================================================================
  */
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
+import { Histogram, Odometer, Trophy, TrendCharts } from '@element-plus/icons-vue'
 import { getMyScore, getScoreHistory, getScoreRanking } from '../../api/credit'
 import type { CreditScoreResponse, CreditEventResponse } from '../../types'
 import { formatDateTime } from '../../utils/format'
-import PageContainer from '../../components/PageContainer.vue'
+import PageHeader from '../../components/pen/PageHeader.vue'
+import StatStrip from '../../components/pen/StatStrip.vue'
+import DataPanel from '../../components/pen/DataPanel.vue'
 import TermTip from '../../components/TermTip.vue'
 import PageHint from '../../components/PageHint.vue'
 
@@ -141,6 +144,56 @@ const getEventTypeLabel = (row: { eventType?: number; eventTypeName?: string }) 
   return key ? t(key) : (row.eventTypeName || '-')
 }
 
+/** 首屏统计条：全部由已加载的信用分 / 事件流水 / 排行数据推导，不新增接口请求 */
+const overviewStats = computed(() => {
+  const history = historyData.value
+  const ranking = rankingData.value
+  const totalChange = history.reduce((sum, row) => sum + (Number(row.pointsChanged) || 0), 0)
+  const bonus = history.filter((row) => Number(row.pointsChanged) > 0).length
+  const topScore = ranking.length
+    ? Number(ranking[0].score) || 0
+    : Number(scoreData.value?.score) || 0
+  const restricted = ranking.filter((row) => row.tradeRestricted).length
+
+  return [
+    {
+      label: t('creditScore.statCurrentScore'),
+      value: Number(scoreData.value?.score) || 0,
+      unit: t('creditScore.statScoreUnit'),
+      delta: scoreData.value
+        ? t('creditScore.updateTime') + ': ' + (formatDateTime(scoreData.value.lastEvaluatedAt) || '-')
+        : t('creditScore.emptyText'),
+      tone: 'neu' as const,
+      icon: Odometer,
+    },
+    {
+      label: t('creditScore.statLevel'),
+      value: getScoreLevelText(scoreData.value?.level),
+      delta: scoreData.value?.accountFrozen
+        ? t('creditScore.statAccountFrozen')
+        : t('creditScore.statLevelHint'),
+      tone: scoreData.value?.accountFrozen ? ('neg' as const) : ('neu' as const),
+      icon: Histogram,
+    },
+    {
+      label: t('creditScore.statHistoryChange'),
+      value: totalChange > 0 ? `+${totalChange}` : String(totalChange),
+      unit: t('creditScore.statScoreUnit'),
+      delta: t('creditScore.statHistoryHint', { total: total.value, bonus }),
+      tone: totalChange > 0 ? ('pos' as const) : totalChange < 0 ? ('neg' as const) : ('neu' as const),
+      icon: TrendCharts,
+    },
+    {
+      label: t('creditScore.statTopScore'),
+      value: topScore,
+      unit: t('creditScore.statScoreUnit'),
+      delta: t('creditScore.statRankingHint', { count: ranking.length, restricted }),
+      tone: 'neu' as const,
+      icon: Trophy,
+    },
+  ]
+})
+
 onMounted(() => {
   loadScore()
   loadHistory()
@@ -149,163 +202,162 @@ onMounted(() => {
 </script>
 
 <template>
-  <PageContainer :title="t('creditScore.title')" :description="t('creditScore.description')">
+  <section class="credit-score-page pen-enter">
+    <PageHeader
+      :title="t('creditScore.title')"
+      :description="t('creditScore.description')"
+      :crumbs="[t('creditScore.breadcrumbAsset'), t('creditScore.breadcrumbCredit')]"
+    />
+
     <PageHint :text="t('pageHints.creditScore')" />
-    <section class="credit-score-page">
-      <el-card class="section-card" shadow="never" v-loading="scoreLoading">
-        <template #header>
-          <span class="card-header">{{ t('creditScore.currentScore') }}<TermTip term="creditScore" /></span>
-        </template>
-        <div v-if="scoreData" class="score-display">
-          <div class="score-main">
-            <div class="score-value">{{ scoreData.score || 0 }}</div>
-            <el-tag :type="getScoreLevelType(scoreData.level)" size="large" class="score-level">
-              {{ getScoreLevelText(scoreData.level) }}
-            </el-tag>
-          </div>
-          <div class="score-meta">
-            <span>{{ t('creditScore.updateTime') }}: {{ formatDateTime(scoreData.lastEvaluatedAt) || '-' }}</span>
-          </div>
+
+    <StatStrip :items="overviewStats" :loading="scoreLoading || historyLoading" />
+
+    <DataPanel
+      :title="t('creditScore.currentScore')"
+      :meta="t('creditScore.panelScoreMeta')"
+    >
+      <div class="score-display" v-loading="scoreLoading">
+        <div v-if="scoreData" class="score-main">
+          <div class="score-value">{{ scoreData.score || 0 }}</div>
+          <el-tag :type="getScoreLevelType(scoreData.level)" size="large" class="score-level">
+            {{ getScoreLevelText(scoreData.level) }}
+          </el-tag>
+          <span class="score-term"><TermTip term="creditScore" /></span>
+        </div>
+        <div v-if="scoreData" class="score-meta">
+          <span>{{ t('creditScore.updateTime') }}: {{ formatDateTime(scoreData.lastEvaluatedAt) || '-' }}</span>
         </div>
         <el-empty v-else :description="t('creditScore.emptyText')" />
-      </el-card>
+      </div>
+    </DataPanel>
 
-      <el-card class="section-card" shadow="never">
-        <template #header>
-          <span class="card-header">{{ t('creditScore.scoreHistory') }}</span>
-        </template>
-        <el-table :data="historyData" border v-loading="historyLoading">
-          <el-table-column :label="t('common.colIndex')" width="80">
-            <template #default="scope">
-              {{ (currentPage - 1) * pageSize + scope.$index + 1 }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="eventType" :label="t('creditScore.colEventType')" min-width="140">
-            <template #default="{ row }">
-              <el-tag :type="getEventTypeTag(row.eventType)">
-                {{ getEventTypeLabel(row) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="pointsChanged" :label="t('creditScore.colChangeValue')" min-width="100">
-            <template #default="{ row }">
-              <span :class="row.pointsChanged >= 0 ? 'positive' : 'negative'">
-                {{ row.pointsChanged >= 0 ? '+' : '' }}{{ row.pointsChanged }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="eventDescription" :label="t('creditScore.colReason')" min-width="200" show-overflow-tooltip />
-          <el-table-column prop="triggeredAt" :label="t('creditScore.colTime')" min-width="170">
-            <template #default="{ row }">
-              {{ formatDateTime(row.triggeredAt) }}
-            </template>
-          </el-table-column>
-        </el-table>
+    <DataPanel
+      :title="t('creditScore.scoreHistory')"
+      :meta="t('creditScore.panelHistoryMeta', { total })"
+    >
+      <el-table :data="historyData" v-loading="historyLoading">
+        <el-table-column :label="t('common.colIndex')" width="80">
+          <template #default="scope">
+            {{ (currentPage - 1) * pageSize + scope.$index + 1 }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="eventType" :label="t('creditScore.colEventType')" min-width="140">
+          <template #default="{ row }">
+            <el-tag :type="getEventTypeTag(row.eventType)">
+              {{ getEventTypeLabel(row) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="pointsChanged" :label="t('creditScore.colChangeValue')" min-width="100">
+          <template #default="{ row }">
+            <span :class="row.pointsChanged >= 0 ? 'positive' : 'negative'">
+              {{ row.pointsChanged >= 0 ? '+' : '' }}{{ row.pointsChanged }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="eventDescription" :label="t('creditScore.colReason')" min-width="200" show-overflow-tooltip />
+        <el-table-column prop="triggeredAt" :label="t('creditScore.colTime')" min-width="170">
+          <template #default="{ row }">
+            {{ formatDateTime(row.triggeredAt) }}
+          </template>
+        </el-table-column>
+      </el-table>
 
-        <div class="pagination-row">
-          <el-pagination
-            v-model:current-page="currentPage"
-            v-model:page-size="pageSize"
-            background
-            :page-sizes="[10, 20, 50]"
-            layout="total, sizes, prev, pager, next, jumper"
-            :total="total"
-            @size-change="onSizeChange"
-            @current-change="onCurrentChange"
-          />
-        </div>
-      </el-card>
+      <template #footer>
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          background
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next, jumper"
+          :total="total"
+          @size-change="onSizeChange"
+          @current-change="onCurrentChange"
+        />
+      </template>
+    </DataPanel>
 
-      <el-card class="section-card" shadow="never">
-        <template #header>
-          <span class="card-header">{{ t('creditScore.scoreRanking') }}</span>
-        </template>
-        <el-table :data="rankingData" border v-loading="rankingLoading" data-testid="credit-ranking-table">
-          <el-table-column :label="t('common.colIndex')" width="80">
-            <template #default="scope">
-              {{ scope.$index + 1 }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="enterpriseName" :label="t('creditScore.colEnterpriseName')" min-width="180" show-overflow-tooltip />
-          <el-table-column prop="score" :label="t('creditScore.colRankingScore')" min-width="100" />
-          <el-table-column prop="level" :label="t('creditScore.colRankingLevel')" min-width="120">
-            <template #default="{ row }">
-              <el-tag :type="getScoreLevelType(row.level)">
-                {{ getScoreLevelText(row.level) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="tradeRestricted" :label="t('creditScore.colTradePermission')" min-width="120">
-            <template #default="{ row }">
-              <el-tag :type="row.tradeRestricted ? 'danger' : 'success'">
-                {{ row.tradeRestricted ? t('creditScore.tradeRestricted') : t('creditScore.tradeAllowed') }}
-              </el-tag>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-card>
-    </section>
-  </PageContainer>
+    <DataPanel
+      :title="t('creditScore.scoreRanking')"
+      :meta="t('creditScore.panelRankingMeta', { count: rankingData.length })"
+    >
+      <el-table :data="rankingData" v-loading="rankingLoading" data-testid="credit-ranking-table">
+        <el-table-column :label="t('common.colIndex')" width="80">
+          <template #default="scope">
+            {{ scope.$index + 1 }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="enterpriseName" :label="t('creditScore.colEnterpriseName')" min-width="180" show-overflow-tooltip />
+        <el-table-column prop="score" :label="t('creditScore.colRankingScore')" min-width="100" />
+        <el-table-column prop="level" :label="t('creditScore.colRankingLevel')" min-width="120">
+          <template #default="{ row }">
+            <el-tag :type="getScoreLevelType(row.level)">
+              {{ getScoreLevelText(row.level) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="tradeRestricted" :label="t('creditScore.colTradePermission')" min-width="120">
+          <template #default="{ row }">
+            <el-tag :type="row.tradeRestricted ? 'danger' : 'success'">
+              {{ row.tradeRestricted ? t('creditScore.tradeRestricted') : t('creditScore.tradeAllowed') }}
+            </el-tag>
+          </template>
+        </el-table-column>
+      </el-table>
+    </DataPanel>
+  </section>
 </template>
 
 <style scoped>
 .credit-score-page {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-}
-
-.section-card {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-}
-
-.card-header {
-  font-weight: 600;
-  font-size: var(--text-md);
+  gap: var(--space-5);
 }
 
 .score-display {
-  padding: 20px 0;
+  padding: var(--space-5) var(--space-4);
 }
 
 .score-main {
   display: flex;
   align-items: center;
-  gap: 20px;
-  margin-bottom: 16px;
+  gap: var(--space-5);
+  margin-bottom: var(--space-4);
 }
 
 .score-value {
-  font-size: 48px;
-  font-weight: 700;
-  color: var(--el-color-primary);
+  font-size: var(--fs-stat);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--pen-ink);
   line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .score-level {
-  font-size: var(--text-lg);
-  padding: 8px 16px;
+  font-size: var(--fs-body);
+  padding: var(--space-1) var(--space-3);
+}
+
+.score-term {
+  display: inline-flex;
+  align-items: center;
 }
 
 .score-meta {
-  color: var(--color-text-muted);
-  font-size: var(--text-base);
+  color: var(--pen-muted);
+  font-size: var(--fs-sub);
 }
 
 .positive {
-  color: var(--el-color-success);
+  color: var(--pen-success);
   font-weight: 600;
 }
 
 .negative {
-  color: var(--el-color-danger);
+  color: var(--pen-danger);
   font-weight: 600;
-}
-
-.pagination-row {
-  margin-top: 14px;
-  display: flex;
-  justify-content: flex-end;
 }
 </style>

@@ -25,6 +25,12 @@ export interface ThirdPartyStatistics {
   pendingReports: number
   approvedReports: number
   rejectedReports: number
+  /** 全市场交易总笔数（监管穿透统计） */
+  totalTrades?: number
+  /** 全市场累计成交总量（吨 CO2 当量） */
+  totalTradeQuantity?: number
+  /** 全市场累计成交总额（元） */
+  totalTradeAmount?: number
 }
 
 export interface ThirdPartyCarbonReportQuery {

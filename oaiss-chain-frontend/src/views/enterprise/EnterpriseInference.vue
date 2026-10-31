@@ -22,17 +22,18 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { Coin, CopyDocument, DataAnalysis, Document, Files, InfoFilled, Lock, Refresh, Search, SetUp, TrendCharts } from '@element-plus/icons-vue'
+import { Coin, CopyDocument, DataAnalysis, Document, InfoFilled, Lock, Refresh, Search, SetUp, TrendCharts } from '@element-plus/icons-vue'
 import echarts from '@/utils/echarts'
 import { getEnterpriseInference } from '@/api/enterpriseInference'
 import { getEnterpriseInfo } from '@/api/enterprise'
 import { getMyScore } from '@/api/credit'
 import { useAppStore } from '@/store'
-import PageContainer from '@/components/PageContainer.vue'
+import PageHeader from '@/components/pen/PageHeader.vue'
+import StatStrip from '@/components/pen/StatStrip.vue'
+import DataPanel from '@/components/pen/DataPanel.vue'
 import PageHint from '@/components/PageHint.vue'
 import type { EnterpriseInferenceResponse } from '@/types/ai'
 import type { EnterpriseResponse, CreditScoreResponse } from '@/types'
-import { formatNumber } from '@/utils/format'
 
 const router = useRouter()
 const { t, locale } = useI18n()
@@ -42,6 +43,11 @@ const inferenceData = ref<EnterpriseInferenceResponse | null>(null)
 const enterpriseInfo = ref<EnterpriseResponse | null>(null)
 const creditScore = ref<CreditScoreResponse | null>(null)
 const loading = ref(false)
+/** 企业尚无碳核算报告（后端 3004）：展示填报引导而非错误态 */
+const noReportData = ref(false)
+
+/** 与后端 ErrorCode.DATA_MISSING 对齐 */
+const MISSING_REPORT_CODE = 3004
 
 const radarChartRef = ref<HTMLElement | null>(null)
 let radarChartInstance: echarts.ECharts | null = null
@@ -76,21 +82,21 @@ const healthScore = computed(() => {
 
 // 格式化异常偏离程度展示
 const anomalyDisplay = computed(() => {
-  if (!inferenceData.value) return { status: 'NORMAL', text: '平稳受控', desc: '未见离群偏离', color: 'var(--color-status-success)' }
+  if (!inferenceData.value) return { status: 'NORMAL', text: '平稳受控', desc: '未见离群偏离', color: 'var(--pen-success)' }
   const score = inferenceData.value.anomalyScore
   if (inferenceData.value.isAnomaly || (typeof score === 'number' && score < -0.1)) {
     return {
       status: 'ANOMALY',
       text: '存在离群扰动',
       desc: `孤立森林检测到决策距离偏离 (${score ? score.toFixed(3) : '-0.199'})，建议核实排放方差`,
-      color: 'var(--color-status-danger)'
+      color: 'var(--pen-danger)'
     }
   }
   return {
     status: 'NORMAL',
     text: '数据平稳受控',
     desc: '排碳与报告序列与行业基准吻合度良好',
-    color: 'var(--color-status-success)'
+    color: 'var(--pen-success)'
   }
 })
 
@@ -156,6 +162,48 @@ const detailedRisks = computed<RiskDetail[]>(() => {
   return inferenceData.value.riskFactors.map(f => getRiskFactorDetail(f))
 })
 
+/** 首屏统计条：全部由已加载的本页数据推导，不新增接口请求 */
+const overviewStats = computed(() => {
+  const confidence = toPercentage(inferenceData.value?.confidence || 0.96)
+  const credit = Number(creditScore.value?.score) || 85
+  const isAnomaly = anomalyDisplay.value.status === 'ANOMALY'
+
+  return [
+    {
+      label: t('enterpriseInference.complianceStatus'),
+      value: getStatusLabel(inferenceData.value?.complianceStatus || 'compliant'),
+      unit: '',
+      delta: t('enterpriseInference.statComplianceHint'),
+      tone: isAnomaly ? ('neg' as const) : ('pos' as const),
+      icon: DataAnalysis,
+    },
+    {
+      label: t('enterpriseInference.confidenceScore'),
+      value: confidence,
+      unit: t('enterpriseInference.statPercentUnit'),
+      delta: t('enterpriseInference.statConfidenceHint'),
+      tone: 'neu' as const,
+      icon: TrendCharts,
+    },
+    {
+      label: t('enterpriseInference.anomalyDetection'),
+      value: anomalyDisplay.value.text,
+      unit: '',
+      delta: anomalyDisplay.value.desc,
+      tone: isAnomaly ? ('neg' as const) : ('pos' as const),
+      icon: Search,
+    },
+    {
+      label: t('enterpriseInference.statHealthScore'),
+      value: healthScore.value,
+      unit: t('enterpriseInference.statHealthUnit'),
+      delta: t('enterpriseInference.statHealthHint', { credit }),
+      tone: healthScore.value >= 85 ? ('pos' as const) : ('neu' as const),
+      icon: Coin,
+    },
+  ]
+})
+
 // 降碳工程路径推荐
 const abatementRoadmap = [
   {
@@ -191,6 +239,8 @@ const loadData = async () => {
   const enterpriseId = appStore.enterpriseId || 1
   try {
     loading.value = true
+    // 推理失败不再当成致命错误：企业没有报告时后端返回 3004，
+    // 这里区分「无数据」与「真故障」，前者渲染填报引导，后者才弹错误。
     const [resInference, resEnt, resCredit] = await Promise.allSettled([
       getEnterpriseInference(enterpriseId),
       getEnterpriseInfo().catch(() => null),
@@ -199,6 +249,10 @@ const loadData = async () => {
 
     if (resInference.status === 'fulfilled') {
       inferenceData.value = resInference.value
+      noReportData.value = false
+    } else if (isMissingReportError(resInference.reason)) {
+      inferenceData.value = null
+      noReportData.value = true
     } else {
       ElMessage.error(t('enterpriseInference.loadFailed'))
     }
@@ -218,11 +272,42 @@ const loadData = async () => {
   }
 }
 
+/** 后端 3004 = 碳核算报告缺失，属于「尚未达到可推理条件」而非系统故障 */
+function isMissingReportError(reason: unknown): boolean {
+  if (!reason || typeof reason !== 'object') return false
+  const candidate = reason as { businessCode?: number; response?: { data?: { code?: number } } }
+  return (candidate.businessCode ?? candidate.response?.data?.code) === MISSING_REPORT_CODE
+}
+
+/** 运行时读取 pen 图表令牌（ECharts 画布不解析 CSS 变量） */
+function cssToken(name: string, fallback: string): string {
+  if (typeof document === 'undefined') return fallback
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  return value || fallback
+}
+
+/** 设计系统仅允许 4 个系列色：主蓝 + 灰阶 */
+function chartPalette() {
+  return {
+    primary: cssToken('--color-chart-1', '#1D5FBF'),
+    secondary: cssToken('--color-chart-2', '#6E93CE'),
+    tertiary: cssToken('--color-chart-3', '#A8BFE0'),
+    info: cssToken('--color-chart-info', '#D3DEED'),
+    surface: cssToken('--pen-surface', 'white'),
+    raised: cssToken('--pen-raised', '#EEEEEE'),
+    border: cssToken('--pen-border', '#E6E6E6'),
+    borderStrong: cssToken('--color-border-strong', '#CBD5E1'),
+    muted: cssToken('--pen-faint', '#6B6B6B'),
+  }
+}
+
 function renderRadarChart() {
   if (!radarChartRef.value) return
   if (!radarChartInstance) {
     radarChartInstance = echarts.init(radarChartRef.value)
   }
+
+  const colors = chartPalette()
 
   // 根据当前企业指标与行业基准生成 6 维偏离雷达数据
   const enterpriseValues = [
@@ -243,7 +328,7 @@ function renderRadarChart() {
       data: ['本企业评估值', '国家行业推荐基准线'],
       bottom: 0,
       icon: 'roundRect',
-      textStyle: { color: 'var(--color-text-muted)', fontSize: 12 }
+      textStyle: { color: colors.muted, fontSize: 12 }
     },
     radar: {
       indicator: [
@@ -256,10 +341,10 @@ function renderRadarChart() {
       ],
       shape: 'polygon',
       splitNumber: 4,
-      axisName: { color: 'var(--color-text-muted)', fontSize: 11.5, fontWeight: 500 },
-      splitLine: { lineStyle: { color: 'var(--color-border)' } },
-      splitArea: { show: true, areaStyle: { color: ['var(--color-surface)', 'var(--color-surface)', 'var(--color-surface)', 'var(--color-raised)'] } },
-      axisLine: { lineStyle: { color: 'var(--color-border-strong)' } }
+      axisName: { color: colors.muted, fontSize: 11.5, fontWeight: 500 },
+      splitLine: { lineStyle: { color: colors.border } },
+      splitArea: { show: true, areaStyle: { color: [colors.surface, colors.surface, colors.surface, colors.raised] } },
+      axisLine: { lineStyle: { color: colors.borderStrong } }
     },
     series: [
       {
@@ -271,16 +356,16 @@ function renderRadarChart() {
             name: '本企业评估值',
             symbol: 'circle',
             symbolSize: 6,
-            lineStyle: { width: 2.5, color: 'var(--color-chart-1)' },
-            itemStyle: { color: 'var(--color-chart-1)' },
-            areaStyle: { color: 'rgba(2, 132, 199, 0.22)' }
+            lineStyle: { width: 2.5, color: colors.primary },
+            itemStyle: { color: colors.primary },
+            areaStyle: { color: colors.info, opacity: 0.55 }
           },
           {
             value: benchmarkValues,
             name: '国家行业推荐基准线',
             symbol: 'none',
-            lineStyle: { width: 1.5, type: 'dashed', color: 'var(--color-status-success)' },
-            itemStyle: { color: 'var(--color-status-success)' }
+            lineStyle: { width: 1.5, type: 'dashed', color: colors.secondary },
+            itemStyle: { color: colors.secondary }
           }
         ]
       }
@@ -300,6 +385,12 @@ function goToFormula() {
 
 function goToMarket() {
   router.push('/enterprise/trading/market')
+}
+
+/** 页头按钮：索引 0 = 刷新，索引 1 = 生成白皮书 */
+function onHeaderAction(index: number) {
+  if (index === 0) loadData()
+  else generateDossier()
 }
 
 function getStatusType(status: string): 'success' | 'warning' | 'danger' | 'info' {
@@ -457,217 +548,159 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <PageContainer :title="t('enterpriseInference.title')" :description="t('enterpriseInference.description')">
+  <section class="inference-page pen-enter" v-loading="loading">
+    <PageHeader
+      :title="t('enterpriseInference.title')"
+      :description="t('enterpriseInference.description')"
+      :crumbs="[t('enterpriseInference.breadcrumbAI'), t('enterpriseInference.breadcrumbInference')]"
+      :actions="[
+        { label: t('enterpriseInference.refresh'), variant: 'default', icon: Refresh, loading: loading },
+        { label: t('enterpriseInference.btnGenerateDossier'), variant: 'primary', icon: Document },
+      ]"
+      @action="onHeaderAction"
+    />
+
     <PageHint :text="t('pageHints.enterpriseInference')" />
 
-    <section class="inference-page" v-loading="loading">
-      <!-- 顶部：企业全息碳体检总览卡片 -->
-      <el-card class="section-card header-summary-card" shadow="never">
-        <div class="summary-flex">
-          <div class="enterprise-identity">
-            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
-              <h2 class="ent-title">{{ enterpriseInfo?.enterpriseName || '绿色能源科技有限公司' }}</h2>
-              <el-tag effect="plain" type="primary" size="small">{{ enterpriseInfo?.industry || '新能源与高端制造' }}</el-tag>
-              <el-tag type="success" size="small">信用分: {{ creditScore?.score || 85 }} ({{ creditScore?.level ? (creditScore.level + '级') : 'AAA级' }})</el-tag>
-            </div>
-            <p class="ent-subtitle">
-              统一社会信用代码: <code>{{ enterpriseInfo?.creditCode || '91110000MA001AABCD' }}</code> ｜ 算法模型版本: <code>{{ inferenceData?.modelVersion || '1.0.0' }}</code>
-            </p>
-          </div>
+    <!-- 企业尚无碳核算报告：推理需要历史排放序列，先引导去填报 -->
+    <el-alert
+      v-if="noReportData && !loading"
+      class="inference-gate"
+      type="info"
+      :closable="false"
+      show-icon
+      :title="t('enterpriseInference.noReportTitle')"
+      :description="t('enterpriseInference.noReportDesc')"
+    >
+      <el-button type="primary" size="small" @click="router.push('/enterprise/carbon/upload')">
+        {{ t('enterpriseInference.noReportAction') }}
+      </el-button>
+    </el-alert>
 
-          <div class="header-action-btn" style="display: flex; gap: 10px;">
-            <el-button type="primary" plain :icon="Refresh" :loading="loading" @click="loadData">
-              {{ t('enterpriseInference.refresh') }}
-            </el-button>
-            <el-button type="success" :icon="Document" @click="generateDossier">
-              {{ t('enterpriseInference.btnGenerateDossier') }}
-            </el-button>
-          </div>
+    <template v-if="!noReportData || loading">
+      <StatStrip :items="overviewStats" :loading="loading" />
+
+    <!-- 企业主体档案（工商信息 / 行业 / 信用等级 / 模型版本） -->
+    <div class="entity-meta">
+      <strong class="entity-meta__name">{{ enterpriseInfo?.enterpriseName || '绿色能源科技有限公司' }}</strong>
+      <el-tag :type="getStatusType(inferenceData?.complianceStatus || 'compliant')" size="small">
+        {{ getStatusLabel(inferenceData?.complianceStatus || 'compliant') }}
+      </el-tag>
+      <el-tag effect="plain" type="primary" size="small">{{ enterpriseInfo?.industry || '新能源与高端制造' }}</el-tag>
+      <el-tag type="success" size="small">
+        {{ t('enterpriseInference.statCreditScore') }}: {{ creditScore?.score || 85 }}
+        ({{ creditScore?.level ? (creditScore.level + '级') : 'AAA级' }})
+      </el-tag>
+      <span class="entity-meta__item">
+        {{ t('enterpriseInference.statCreditCode') }}: <code>{{ enterpriseInfo?.creditCode || '91110000MA001AABCD' }}</code>
+      </span>
+      <span class="entity-meta__item">
+        {{ t('enterpriseInference.modelVersion') }}: <code>{{ inferenceData?.modelVersion || '1.0.0' }}</code>
+      </span>
+    </div>
+
+    <!-- 多维特征偏离雷达图 + 维度下钻 -->
+    <DataPanel
+      :title="t('enterpriseInference.panelRadarTitle')"
+      :meta="t('enterpriseInference.panelRadarMeta')"
+    >
+      <template #actions>
+        <el-tag type="info" size="small" effect="plain">{{ t('enterpriseInference.statIndustryBenchmark') }}</el-tag>
+      </template>
+
+      <div class="panel-pad">
+        <div ref="radarChartRef" class="radar-chart-box" />
+
+        <!-- 维度点击交互下钻选择条 -->
+        <div class="dim-chips-row">
+          <el-button
+            v-for="(dim, dIdx) in radarDimensionProfiles"
+            :key="dIdx"
+            size="small"
+            :type="selectedRadarDim === dIdx ? 'primary' : 'default'"
+            class="dim-chip-btn"
+            @click="selectedRadarDim = dIdx"
+          >
+            {{ dim.name }} ({{ dim.score }})
+          </el-button>
         </div>
-      </el-card>
 
-      <!-- 四维量化健康诊断指标条 -->
-      <el-row :gutter="14" class="health-metrics-row">
-        <!-- 1. 综合合规诊断状态 -->
-        <el-col :xs="24" :sm="12" :md="6">
-          <el-card shadow="hover" class="health-card">
-            <div class="card-title-muted">{{ t('enterpriseInference.complianceStatus') }}</div>
-            <div class="card-main-val">
-              <el-tag :type="getStatusType(inferenceData?.complianceStatus || 'compliant')" size="large" effect="dark">
-                {{ getStatusLabel(inferenceData?.complianceStatus || 'compliant') }}
-              </el-tag>
-            </div>
-            <div class="card-footer-tip">
-              <span>未触发监管红线，处于安全受控状态</span>
-            </div>
-          </el-card>
-        </el-col>
-
-        <!-- 2. 算法置信度评估 -->
-        <el-col :xs="24" :sm="12" :md="6">
-          <el-card shadow="hover" class="health-card">
-            <div class="card-title-muted">{{ t('enterpriseInference.confidenceScore') }}</div>
-            <div class="card-main-val" style="color: var(--color-chart-1);">
-              {{ toPercentage(inferenceData?.confidence || 0.96) }}%
-            </div>
-            <el-progress
-              :percentage="toPercentage(inferenceData?.confidence || 0.96)"
-              :show-text="false"
-              :stroke-width="4"
-              color="var(--color-chart-1)"
-              style="margin: 6px 0 2px;"
-            />
-            <div class="card-footer-tip">
-              <span>基于历史 200+ 工业样本分布拟合评估</span>
-            </div>
-          </el-card>
-        </el-col>
-
-        <!-- 3. 孤立森林异常诊断 -->
-        <el-col :xs="24" :sm="12" :md="6">
-          <el-card shadow="hover" class="health-card">
-            <div class="card-title-muted">{{ t('enterpriseInference.anomalyDetection') }}</div>
-            <div class="card-main-val" :style="{ color: anomalyDisplay.color, fontSize: '18px' }">
-              {{ anomalyDisplay.text }}
-            </div>
-            <div class="card-footer-tip">
-              <span>{{ anomalyDisplay.desc }}</span>
-            </div>
-          </el-card>
-        </el-col>
-
-        <!-- 4. 综合健康评估指数 -->
-        <el-col :xs="24" :sm="12" :md="6">
-          <el-card shadow="hover" class="health-card">
-            <div class="card-title-muted">综合低碳健康分</div>
-            <div class="card-main-val" style="color: var(--color-status-success);">
-              {{ healthScore }} <span style="font-size: 13px; color: var(--color-text-muted); font-weight: normal;">/ 100</span>
-            </div>
-            <div class="card-footer-tip">
-              <span>评级: 稳健合规标杆 ｜ 风险敞口收窄</span>
-            </div>
-          </el-card>
-        </el-col>
-      </el-row>
-
-      <!-- 中间部：多维特征偏离雷达图 + 风险因素深度穿透 -->
-      <el-row :gutter="14" class="mid-section-row">
-        <!-- 左侧：多维偏离雷达图 -->
-        <el-col :xs="24" :md="11">
-          <el-card class="section-card panel-card" shadow="never">
-            <template #header>
-              <div class="card-header-flex">
-                <div style="display: inline-flex; align-items: center; gap: 6px;">
-                  <el-icon color="var(--color-chart-1)" :size="15"><DataAnalysis /></el-icon>
-                  <strong style="color: var(--color-text);">多维碳排放与合规特征偏离诊断</strong>
-                </div>
-                <el-tag type="info" size="small" effect="plain">国标基准线比对</el-tag>
-              </div>
-            </template>
-            <div ref="radarChartRef" class="radar-chart-box" />
-
-            <!-- 维度点击交互下钻选择条 -->
-            <div class="dim-chips-row">
-              <el-button
-                v-for="(dim, dIdx) in radarDimensionProfiles"
-                :key="dIdx"
-                size="small"
-                :type="selectedRadarDim === dIdx ? 'primary' : 'default'"
-                class="dim-chip-btn"
-                @click="selectedRadarDim = dIdx"
-              >
-                {{ dim.name }} ({{ dim.score }})
-              </el-button>
-            </div>
-
-            <!-- 当前选定维度的 AI 深度诊断说明卡片 -->
-            <div class="dim-drilldown-card">
-              <div class="dim-header-flex">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <strong style="color: var(--color-text); font-size: 13.5px;">{{ currentDimProfile.name }}</strong>
-                  <span style="font-size: 12px; color: var(--color-text-muted);">(得分: <strong>{{ currentDimProfile.score }}</strong> ｜ 行业基准: {{ currentDimProfile.benchmark }})</span>
-                </div>
-                <el-tag :type="currentDimProfile.statusType" size="small">{{ currentDimProfile.status }}</el-tag>
-              </div>
-              <p class="dim-diag-desc">{{ currentDimProfile.diagnosis }}</p>
-              <div class="dim-advice-box">
-                <span style="display: inline-flex; align-items: center; gap: 4px;">
-                  <el-icon color="var(--color-status-warning)"><InfoFilled /></el-icon>
-                  <strong>优化建议:</strong> {{ currentDimProfile.advice }}
-                </span>
-              </div>
-            </div>
-          </el-card>
-        </el-col>
-
-        <!-- 右侧：风险归因穿透解析 -->
-        <el-col :xs="24" :md="13">
-          <el-card class="section-card panel-card" shadow="never">
-            <template #header>
-              <div class="card-header-flex">
-                <div style="display: inline-flex; align-items: center; gap: 6px;">
-                  <el-icon color="var(--color-status-warning)" :size="15"><Search /></el-icon>
-                  <strong style="color: var(--color-text);">{{ t('enterpriseInference.riskFactors') }}深度穿透解析</strong>
-                </div>
-                <el-tag type="warning" size="small">{{ detailedRisks.length }} 项待关注</el-tag>
-              </div>
-            </template>
-
-            <div v-if="detailedRisks.length > 0" class="risk-detail-list">
-              <div v-for="(item, i) in detailedRisks" :key="i" class="risk-detail-item">
-                <div class="risk-item-header">
-                  <div style="display: flex; align-items: center; gap: 8px;">
-                    <el-tag :type="item.level === 'HIGH' ? 'danger' : (item.level === 'MEDIUM' ? 'warning' : 'info')" size="small">
-                      {{ item.levelText }}
-                    </el-tag>
-                    <strong class="risk-item-title">{{ item.title }}</strong>
-                  </div>
-                </div>
-                <p class="risk-item-desc">{{ item.desc }}</p>
-                <div class="risk-item-action">
-                  <span style="display: inline-flex; align-items: center; gap: 4px;">
-                    <el-icon color="var(--color-status-warning)"><InfoFilled /></el-icon>
-                    <strong>整改建议:</strong> {{ item.action }}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <el-alert
-              v-else
-              :title="t('enterpriseInference.noRiskFactors')"
-              type="success"
-              :closable="false"
-              show-icon
-              description="本企业所有排碳指标与申报记录均符合国家行业标准，未检出任何违规或高危离群特征。"
-            />
-          </el-card>
-        </el-col>
-      </el-row>
-
-      <!-- 底部：AI 智能企业降碳与工艺改造推荐路径 -->
-      <el-card class="section-card" shadow="never">
-        <template #header>
-          <div class="card-header-flex">
-            <div>
-              <div style="display: inline-flex; align-items: center; gap: 6px;">
-                <el-icon color="var(--color-accent)" :size="15"><TrendCharts /></el-icon>
-                <strong style="font-size: 15px; color: var(--color-text);">AI 智能企业降碳与能效跃升实施路径</strong>
-              </div>
-              <span style="font-size: 12px; color: var(--color-text-muted); margin-left: 10px;">
-                (基于 GB/T 32150 工业指南与机器学习优化算法测算)
+        <!-- 当前选定维度的 AI 深度诊断说明 -->
+        <div class="dim-drilldown-card">
+          <div class="dim-header-flex">
+            <div class="dim-header-left">
+              <strong class="dim-name">{{ currentDimProfile.name }}</strong>
+              <span class="dim-score">
+                ({{ t('enterpriseInference.statScore') }}: <strong>{{ currentDimProfile.score }}</strong>
+                ｜ {{ t('enterpriseInference.statBenchmark') }}: {{ currentDimProfile.benchmark }})
               </span>
             </div>
-            <div style="display: flex; gap: 8px;">
-              <el-button size="small" type="primary" plain :icon="SetUp" @click="goToFormula">
-                {{ t('enterpriseInference.goToFormula') || '前往公式测算' }}
-              </el-button>
-              <el-button size="small" type="success" plain :icon="Coin" @click="goToMarket">
-                {{ t('enterpriseInference.goToMarket') || '采购配额履约' }}
-              </el-button>
+            <el-tag :type="currentDimProfile.statusType" size="small">{{ currentDimProfile.status }}</el-tag>
+          </div>
+          <p class="dim-diag-desc">{{ currentDimProfile.diagnosis }}</p>
+          <div class="dim-advice-box">
+            <span class="dim-advice-line">
+              <el-icon><InfoFilled /></el-icon>
+              <strong>{{ t('enterpriseInference.adviceLabel') }}:</strong> {{ currentDimProfile.advice }}
+            </span>
+          </div>
+        </div>
+      </div>
+    </DataPanel>
+
+    <!-- 风险归因穿透解析 -->
+    <DataPanel
+      :title="t('enterpriseInference.panelRiskTitle')"
+      :meta="t('enterpriseInference.panelRiskMeta', { count: detailedRisks.length })"
+    >
+      <template #actions>
+        <el-tag type="warning" size="small">{{ t('enterpriseInference.panelRiskMeta', { count: detailedRisks.length }) }}</el-tag>
+      </template>
+
+      <div class="panel-pad">
+        <div v-if="detailedRisks.length > 0" class="risk-detail-list">
+          <div v-for="(item, i) in detailedRisks" :key="i" class="risk-detail-item">
+            <div class="risk-item-header">
+              <el-tag :type="item.level === 'HIGH' ? 'danger' : (item.level === 'MEDIUM' ? 'warning' : 'info')" size="small">
+                {{ item.levelText }}
+              </el-tag>
+              <strong class="risk-item-title">{{ item.title }}</strong>
+            </div>
+            <p class="risk-item-desc">{{ item.desc }}</p>
+            <div class="risk-item-action">
+              <span class="dim-advice-line">
+                <el-icon><InfoFilled /></el-icon>
+                <strong>{{ t('enterpriseInference.actionLabel') }}:</strong> {{ item.action }}
+              </span>
             </div>
           </div>
-        </template>
+        </div>
+        <el-alert
+          v-else
+          :title="t('enterpriseInference.noRiskFactors')"
+          type="success"
+          :closable="false"
+          show-icon
+          :description="t('enterpriseInference.riskNoneDesc')"
+        />
+      </div>
+    </DataPanel>
 
+    <!-- AI 智能企业降碳与工艺改造推荐路径 -->
+    <DataPanel
+      :title="t('enterpriseInference.panelRoadmapTitle')"
+      :meta="t('enterpriseInference.panelRoadmapMeta')"
+    >
+      <template #actions>
+        <el-button size="small" type="primary" plain :icon="SetUp" @click="goToFormula">
+          {{ t('enterpriseInference.goToFormula') }}
+        </el-button>
+        <el-button size="small" type="default" :icon="Coin" @click="goToMarket">
+          {{ t('enterpriseInference.goToMarket') }}
+        </el-button>
+      </template>
+
+      <div class="panel-pad">
         <div class="roadmap-grid">
           <div v-for="(stage, sIdx) in abatementRoadmap" :key="sIdx" class="roadmap-column">
             <div class="roadmap-header">
@@ -679,373 +712,450 @@ onBeforeUnmount(() => {
                 <div class="roadmap-item-name">{{ item.name }}</div>
                 <div class="roadmap-item-meta">
                   <div class="roadmap-metric-row">
-                    <span>减排潜力:</span>
-                    <strong style="color: var(--color-status-success);">{{ item.potential }}</strong>
+                    <span>{{ t('enterpriseInference.reductionPotentialLabel') }}:</span>
+                    <strong class="is-pos">{{ item.potential }}</strong>
                   </div>
                   <div class="roadmap-metric-row">
-                    <span>实施成本:</span>
-                    <span style="color: var(--color-text-muted);">{{ item.cost }}</span>
+                    <span>{{ t('enterpriseInference.implementationCostLabel') }}:</span>
+                    <span class="roadmap-cost">{{ item.cost }}</span>
                   </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </el-card>
+      </div>
+    </DataPanel>
+    </template>
 
-      <!-- 企业碳资产合规体检与达峰路径白皮书弹窗 -->
-      <el-dialog
-        v-model="dossierDialogVisible"
-        :title="t('enterpriseInference.dossierTitle')"
-        width="820px"
-        destroy-on-close
-      >
-        <div v-loading="dossierLoading" style="min-height: 240px;">
-          <!-- 白皮书抬头 -->
-          <div class="dossier-header-bar">
-            <div>
-              <h3 style="margin: 0 0 4px; font-size: 16px; color: var(--color-text);">
-                {{ enterpriseInfo?.enterpriseName || '绿色能源科技有限公司' }}
-              </h3>
-              <span style="font-size: 12px; color: var(--color-text-muted);">
-                评估基准: GB/T 32150-2015 ｜ 算法模型: Isolation Forest + XGBoost (v1.0.0)
-              </span>
-            </div>
-            <div style="text-align: right;">
-              <el-tag type="success" size="large">综合低碳健康分: {{ healthScore }} / 100</el-tag>
-              <div style="font-size: 11.5px; color: var(--color-text-muted); margin-top: 4px;">评级: AAA 稳健合规标杆</div>
-            </div>
+    <!-- 企业碳资产合规体检与达峰路径白皮书弹窗 -->
+    <el-dialog
+      v-model="dossierDialogVisible"
+      :title="t('enterpriseInference.dossierTitle')"
+      width="820px"
+      destroy-on-close
+    >
+      <div v-loading="dossierLoading" class="dossier-body">
+        <!-- 白皮书抬头 -->
+        <div class="dossier-header-bar">
+          <div>
+            <h3 class="dossier-ent-name">
+              {{ enterpriseInfo?.enterpriseName || '绿色能源科技有限公司' }}
+            </h3>
+            <span class="dossier-meta">
+              评估基准: GB/T 32150-2015 ｜ 算法模型: Isolation Forest + XGBoost (v1.0.0)
+            </span>
           </div>
-
-          <!-- 章节 1: 核心诊断事实 -->
-          <el-card shadow="never" style="margin-bottom: 14px; border-radius: 8px;">
-            <template #header>
-              <div style="display: inline-flex; align-items: center; gap: 6px;">
-                <el-icon color="var(--color-chart-1)" :size="15"><Document /></el-icon>
-                <strong style="color: var(--color-text);">一、企业碳合规状态综合审计结论</strong>
-              </div>
-            </template>
-            <div style="font-size: 13px; line-height: 1.8; color: var(--color-text-muted);">
-              本企业当前碳核算合规状态评定为 <strong>{{ getStatusLabel(inferenceData?.complianceStatus || 'compliant') }}</strong>，
-              算法置信度达到 <strong>{{ toPercentage(inferenceData?.confidence || 0.96) }}%</strong>。
-              {{ anomalyDisplay.desc }}。
-              碳排放历史平均强度为 <strong>150.00 tCO₂e/季</strong>，整体排碳结构与能源消纳符合行业生产工况。
-            </div>
-          </el-card>
-
-          <!-- 章节 2: 六维排碳特征体检得分明细表 -->
-          <el-card shadow="never" style="margin-bottom: 14px; border-radius: 8px;">
-            <template #header>
-              <div style="display: inline-flex; align-items: center; gap: 6px;">
-                <el-icon color="var(--color-accent)" :size="15"><DataAnalysis /></el-icon>
-                <strong style="color: var(--color-text);">二、六维特征雷达体检得分与行业基准对比</strong>
-              </div>
-            </template>
-            <el-table :data="radarDimensionProfiles" border size="small">
-              <el-table-column prop="name" label="体检维度" min-width="130" />
-              <el-table-column prop="score" label="本企业得分" width="100">
-                <template #default="{ row }"><strong>{{ row.score }}</strong> 分</template>
-              </el-table-column>
-              <el-table-column prop="benchmark" label="行业推荐基准" width="110">
-                <template #default="{ row }">{{ row.benchmark }} 分</template>
-              </el-table-column>
-              <el-table-column prop="status" label="相对水平" min-width="130">
-                <template #default="{ row }">
-                  <el-tag :type="row.statusType" size="small">{{ row.status }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="advice" label="优化对策" min-width="200" />
-            </el-table>
-          </el-card>
-
-          <!-- 章节 3: 三阶段减排技改实施规划 -->
-          <el-card shadow="never" style="margin-bottom: 14px; border-radius: 8px;">
-            <template #header>
-              <div style="display: inline-flex; align-items: center; gap: 6px;">
-                <el-icon color="var(--color-status-success)" :size="15"><TrendCharts /></el-icon>
-                <strong style="color: var(--color-text);">三、三阶段企业降碳技改路径实施规划</strong>
-              </div>
-            </template>
-            <div v-for="(stage, idx) in abatementRoadmap" :key="idx" style="margin-bottom: 12px;">
-              <div style="font-size: 13px; font-weight: 700; color: var(--color-text); margin-bottom: 4px;">
-                {{ stage.horizon }} ({{ stage.tag }})
-              </div>
-              <div style="padding-left: 12px; font-size: 12.5px; color: var(--color-text-muted); line-height: 1.7;">
-                <div v-for="(it, i) in stage.items" :key="i">
-                  • <strong>{{ it.name }}</strong>：{{ it.potential }}（实施成本：{{ it.cost }}）
-                </div>
-              </div>
-            </div>
-          </el-card>
-
-          <!-- 存证哈希 -->
-          <div style="padding: 10px 14px; background: var(--color-status-warning-soft); border: 1px solid var(--color-status-warning-soft); border-radius: 6px; font-size: 12px; color: var(--color-status-warning); word-break: break-all;">
-            <span style="display: inline-flex; align-items: center; gap: 4px;"><el-icon><Lock /></el-icon>{{ t('enterpriseInference.dossierHashTip') }}: </span>
-            <code>{{ dossierHash }}</code>
+          <div class="dossier-header-right">
+            <el-tag type="success" size="large">综合低碳健康分: {{ healthScore }} / 100</el-tag>
+            <div class="dossier-rating">评级: AAA 稳健合规标杆</div>
           </div>
         </div>
 
-        <template #footer>
-          <el-button @click="dossierDialogVisible = false">{{ t('common.close') }}</el-button>
-          <el-button type="primary" :icon="CopyDocument" @click="copyDossierText">
-            {{ t('enterpriseInference.btnCopyDossier') }}
-          </el-button>
-        </template>
-      </el-dialog>
-    </section>
-  </PageContainer>
+        <!-- 章节 1: 核心诊断事实 -->
+        <el-card shadow="never" class="dossier-section">
+          <template #header>
+            <div class="dossier-section-title">
+              <el-icon color="var(--color-chart-1)" :size="15"><Document /></el-icon>
+              <strong>一、企业碳合规状态综合审计结论</strong>
+            </div>
+          </template>
+          <div class="dossier-section-body">
+            本企业当前碳核算合规状态评定为 <strong>{{ getStatusLabel(inferenceData?.complianceStatus || 'compliant') }}</strong>，
+            算法置信度达到 <strong>{{ toPercentage(inferenceData?.confidence || 0.96) }}%</strong>。
+            {{ anomalyDisplay.desc }}。
+            碳排放历史平均强度为 <strong>150.00 tCO₂e/季</strong>，整体排碳结构与能源消纳符合行业生产工况。
+          </div>
+        </el-card>
+
+        <!-- 章节 2: 六维排碳特征体检得分明细表 -->
+        <el-card shadow="never" class="dossier-section">
+          <template #header>
+            <div class="dossier-section-title">
+              <el-icon color="var(--color-chart-3)" :size="15"><DataAnalysis /></el-icon>
+              <strong>二、六维特征雷达体检得分与行业基准对比</strong>
+            </div>
+          </template>
+          <el-table :data="radarDimensionProfiles" size="small">
+            <el-table-column prop="name" label="体检维度" min-width="130" />
+            <el-table-column prop="score" label="本企业得分" width="100">
+              <template #default="{ row }"><strong>{{ row.score }}</strong> 分</template>
+            </el-table-column>
+            <el-table-column prop="benchmark" label="行业推荐基准" width="110">
+              <template #default="{ row }">{{ row.benchmark }} 分</template>
+            </el-table-column>
+            <el-table-column prop="status" label="相对水平" min-width="130">
+              <template #default="{ row }">
+                <el-tag :type="row.statusType" size="small">{{ row.status }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="advice" label="优化对策" min-width="200" />
+          </el-table>
+        </el-card>
+
+        <!-- 章节 3: 三阶段减排技改实施规划 -->
+        <el-card shadow="never" class="dossier-section">
+          <template #header>
+            <div class="dossier-section-title">
+              <el-icon color="var(--color-chart-2)" :size="15"><TrendCharts /></el-icon>
+              <strong>三、三阶段企业降碳技改路径实施规划</strong>
+            </div>
+          </template>
+          <div v-for="(stage, idx) in abatementRoadmap" :key="idx" class="dossier-stage">
+            <div class="dossier-stage-title">{{ stage.horizon }} ({{ stage.tag }})</div>
+            <div class="dossier-stage-body">
+              <div v-for="(it, i) in stage.items" :key="i">
+                • <strong>{{ it.name }}</strong>：{{ it.potential }}（实施成本：{{ it.cost }}）
+              </div>
+            </div>
+          </div>
+        </el-card>
+
+        <!-- 存证哈希 -->
+        <div class="dossier-hash">
+          <span class="dossier-hash-label">
+            <el-icon><Lock /></el-icon>{{ t('enterpriseInference.dossierHashTip') }}:
+          </span>
+          <code>{{ dossierHash }}</code>
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button @click="dossierDialogVisible = false">{{ t('common.close') }}</el-button>
+        <el-button type="primary" :icon="CopyDocument" @click="copyDossierText">
+          {{ t('enterpriseInference.btnCopyDossier') }}
+        </el-button>
+      </template>
+    </el-dialog>
+  </section>
 </template>
 
 <style scoped>
 .inference-page {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-5);
 }
 
-.section-card {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  background: var(--color-surface);
-}
-
-.header-summary-card {
-  padding: 4px;
-}
-
-.summary-flex {
+/* ---------- 企业主体档案条 ---------- */
+.entity-meta {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: var(--space-2);
+  font-size: var(--fs-caption);
+  color: var(--pen-faint);
 }
 
-.ent-title {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--color-text);
-  margin: 0;
+.entity-meta__name {
+  font-size: var(--fs-body);
+  font-weight: 500;
+  color: var(--pen-ink);
 }
 
-.ent-subtitle {
-  font-size: 13px;
-  color: var(--color-text-muted);
-  margin: 4px 0 0;
+.entity-meta__item code {
+  color: var(--pen-muted);
 }
 
-.health-metrics-row {
-  margin: 0;
+.panel-pad {
+  padding: var(--space-4);
 }
 
-.health-card {
-  border-radius: 10px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  padding: 4px 8px;
-}
-
-.card-title-muted {
-  font-size: 12.5px;
-  color: var(--color-text-muted);
-  margin-bottom: 6px;
-}
-
-.card-main-val {
-  font-size: 26px;
-  font-weight: 800;
-  color: var(--color-text);
-  line-height: 1.2;
-  margin-bottom: 6px;
-}
-
-.card-footer-tip {
-  font-size: 11.5px;
-  color: var(--color-text-muted);
-  border-top: 1px dashed var(--color-border);
-  padding-top: 6px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mid-section-row {
-  margin: 0;
-}
-
-.panel-card {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.card-header-flex {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
+/* ---------- 雷达图与下钻 ---------- */
 .radar-chart-box {
   width: 100%;
   height: 340px;
 }
 
-.risk-detail-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-height: 340px;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.risk-detail-item {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 10px 12px;
-}
-
-.risk-item-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 4px;
-}
-
-.risk-item-title {
-  font-size: 13px;
-  color: var(--color-text);
-}
-
-.risk-item-desc {
-  font-size: 12px;
-  color: var(--color-text-muted);
-  line-height: 1.5;
-  margin: 0 0 6px;
-}
-
-.risk-item-action {
-  font-size: 11.5px;
-  color: var(--color-chart-1);
-  background: var(--color-status-info-soft);
-  border-radius: 4px;
-  padding: 4px 8px;
-}
-
 .dim-chips-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 10px;
-  padding: 0 4px;
+  gap: var(--space-1-5);
+  margin-top: var(--space-2-5);
 }
 
 .dim-chip-btn {
-  margin: 0 !important;
-  font-size: 11.5px;
+  margin: 0;
+  font-size: var(--fs-caption);
 }
 
 .dim-drilldown-card {
-  margin-top: 10px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 10px 12px;
+  margin-top: var(--space-2-5);
+  background: var(--pen-raised);
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-card);
+  padding: var(--space-2-5) var(--space-3);
 }
 
 .dim-header-flex {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 4px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.dim-header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.dim-name {
+  font-size: var(--fs-body);
+  color: var(--pen-ink);
+}
+
+.dim-score {
+  font-size: var(--fs-caption);
+  color: var(--pen-faint);
 }
 
 .dim-diag-desc {
-  font-size: 12px;
-  color: var(--color-text-muted);
+  font-size: var(--fs-sub);
+  color: var(--pen-muted);
   line-height: 1.5;
-  margin: 0 0 6px;
+  margin: 0 0 var(--space-1-5);
 }
 
 .dim-advice-box {
-  font-size: 11.5px;
-  color: var(--color-chart-1);
-  background: var(--color-status-info-soft);
-  border-radius: 4px;
-  padding: 4px 8px;
+  font-size: var(--fs-caption);
+  color: var(--pen-muted);
+  background: var(--pen-note-bg);
+  border: 1px solid var(--pen-note-bd);
+  border-radius: var(--radius-control);
+  padding: var(--space-1) var(--space-2);
 }
 
-.dossier-header-bar {
+.dim-advice-line {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  line-height: 1.6;
+}
+
+/* ---------- 风险穿透 ---------- */
+.risk-detail-list {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  margin-bottom: 16px;
+  flex-direction: column;
+  gap: var(--space-2-5);
+  max-height: 340px;
+  overflow-y: auto;
+  padding-right: var(--space-1);
 }
 
+.risk-detail-item {
+  background: var(--pen-surface);
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-card);
+  padding: var(--space-2-5) var(--space-3);
+}
+
+.risk-item-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.risk-item-title {
+  font-size: var(--fs-body);
+  color: var(--pen-ink);
+}
+
+.risk-item-desc {
+  font-size: var(--fs-sub);
+  color: var(--pen-muted);
+  line-height: 1.5;
+  margin: 0 0 var(--space-1-5);
+}
+
+.risk-item-action {
+  font-size: var(--fs-caption);
+  color: var(--pen-muted);
+  background: var(--pen-note-bg);
+  border-radius: var(--radius-control);
+  padding: var(--space-1) var(--space-2);
+}
+
+/* ---------- 降碳路径 ---------- */
 .roadmap-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 14px;
-  margin-top: 6px;
+  gap: var(--space-3);
 }
 
 .roadmap-column {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 12px 14px;
+  background: var(--pen-surface);
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-card);
+  padding: var(--space-3);
 }
 
 .roadmap-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--color-border);
+  margin-bottom: var(--space-2-5);
+  padding-bottom: var(--space-1-5);
+  border-bottom: 1px solid var(--pen-border);
 }
 
 .roadmap-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--color-text);
+  font-size: var(--fs-body);
+  font-weight: 500;
+  color: var(--pen-ink);
 }
 
 .roadmap-cards {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .roadmap-card {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  padding: 10px 12px;
+  background: var(--pen-raised);
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-control);
+  padding: var(--space-2-5) var(--space-3);
 }
 
 .roadmap-item-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text);
-  margin-bottom: 6px;
+  font-size: var(--fs-body);
+  font-weight: 500;
+  color: var(--pen-ink);
+  margin-bottom: var(--space-1-5);
 }
 
 .roadmap-item-meta {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  font-size: 11.5px;
+  gap: var(--space-1);
+  font-size: var(--fs-caption);
 }
 
 .roadmap-metric-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: var(--space-2);
+  color: var(--pen-faint);
+}
+
+.roadmap-metric-row .is-pos {
+  color: var(--pen-success);
+  font-weight: 500;
+}
+
+.roadmap-cost {
+  color: var(--pen-muted);
+}
+
+/* ---------- 白皮书弹窗 ---------- */
+.dossier-body {
+  min-height: 240px;
+}
+
+.dossier-header-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--pen-raised);
+  border: 1px solid var(--pen-border);
+  border-radius: var(--radius-card);
+  margin-bottom: var(--space-4);
+}
+
+.dossier-ent-name {
+  margin: 0 0 var(--space-1);
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--pen-ink);
+}
+
+.dossier-meta {
+  font-size: var(--fs-caption);
+  color: var(--pen-faint);
+}
+
+.dossier-header-right {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.dossier-rating {
+  font-size: var(--fs-caption);
+  color: var(--pen-faint);
+  margin-top: var(--space-1);
+}
+
+.dossier-section {
+  margin-bottom: var(--space-3);
+}
+
+.dossier-section-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  color: var(--pen-ink);
+}
+
+.dossier-section-body {
+  font-size: var(--fs-body);
+  line-height: 1.8;
+  color: var(--pen-muted);
+}
+
+.dossier-stage {
+  margin-bottom: var(--space-3);
+}
+
+.dossier-stage-title {
+  font-size: var(--fs-body);
+  font-weight: 500;
+  color: var(--pen-ink);
+  margin-bottom: var(--space-1);
+}
+
+.dossier-stage-body {
+  padding-left: var(--space-3);
+  font-size: var(--fs-sub);
+  color: var(--pen-muted);
+  line-height: 1.7;
+}
+
+.dossier-hash {
+  padding: var(--space-2-5) var(--space-3);
+  background: var(--pen-warning-soft);
+  border: 1px solid var(--pen-warning-soft);
+  border-radius: var(--radius-control);
+  font-size: var(--fs-caption);
+  color: var(--pen-warning);
+  word-break: break-all;
+}
+
+.dossier-hash-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+@media (max-width: 768px) {
+  .inference-page {
+    gap: var(--space-3);
+  }
+
+  .dossier-header-bar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .dossier-header-right {
+    text-align: left;
+  }
 }
 </style>
