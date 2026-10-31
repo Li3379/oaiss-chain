@@ -133,4 +133,19 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      */
     @Query("SELECT COALESCE(SUM(t.totalAmount), 0) FROM Transaction t WHERE t.deleted = false")
     java.math.BigDecimal sumTotalAmount();
+
+    /**
+     * 近 N 日成交均价（按成交数量加权）。
+     *
+     * <p>供成交审核的价格偏离检查使用。只统计**已完成**（status=2）的交易：
+     * 待审成交的价格尚未经人工确认，若计入参考价会形成自我强化——
+     * 异常价把参考价拉偏，反过来让后续异常价显得正常。
+     *
+     * @return 无历史成交时返回 null（分流器据此跳过价格检查，避免冷启动全量转人工）
+     */
+    @Query("SELECT SUM(t.totalAmount) / SUM(t.quantity) FROM Transaction t "
+            + "WHERE t.deleted = false AND t.status = 2 AND t.quantity > 0 "
+            + "AND t.completedAt >= :since")
+    java.math.BigDecimal findAverageUnitPriceSince(
+            @Param("since") java.time.LocalDateTime since);
 }

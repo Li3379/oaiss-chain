@@ -127,6 +127,46 @@ public class QuotaLedgerService {
     }
 
     /**
+     * 卖方结算（解冻 + 扣减，原子完成）。
+     *
+     * <p>为什么需要它而不是「解冻 + 扣减」两次调用：卖方的额度在挂单时就被冻结，
+     * 成交离开挂单态后这笔冻结已经没有对应的挂单约束了。分两步调用会在中间态留下
+     * 「已解冻但未扣减」的可用额度，若此时有并发挂单请求进来，同一批额度会被
+     * 二次冻结——这正是两段式审核期间最容易出现的重复占用漏洞。
+     *
+     * <p>语义：frozen - amount，carbonUsed + amount，tradable 不变
+     * （额度从未进入可交易池，直接从冻结转已用）。
+     *
+     * @param enterpriseId 卖方企业ID
+     * @param amount       成交量
+     * @param operatorId   操作人（审核通过时为审核员，自动放行时为撮合引擎）
+     * @param relatedTradeId 交易ID
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public QuotaTransaction settleSell(Long enterpriseId, BigDecimal amount, String remark,
+                                       Long operatorId, Long relatedTradeId) {
+        requirePositive(amount, "卖方结算");
+        Enterprise enterprise = loadEnterprise(enterpriseId);
+
+        BigDecimal tradableBefore = nz(enterprise.getCarbonTradable());
+        BigDecimal frozenBefore = nz(enterprise.getCarbonFrozen());
+
+        if (frozenBefore.compareTo(amount) < 0) {
+            throw new BusinessException(ErrorCode.INSUFFICIENT_QUOTA,
+                    "冻结配额不足，无法结算：当前冻结 " + frozenBefore.toPlainString()
+                            + " 吨，本次结算 " + amount.toPlainString() + " 吨");
+        }
+
+        BigDecimal frozenAfter = frozenBefore.subtract(amount);
+        enterprise.setCarbonFrozen(frozenAfter);
+        enterprise.setCarbonUsed(nz(enterprise.getCarbonUsed()).add(amount));
+        enterpriseRepository.save(enterprise);
+
+        return writeLedger(enterprise, "SETTLE_SELL", amount, tradableBefore, tradableBefore,
+                frozenBefore, frozenAfter, "AUCTION", relatedTradeId, operatorId, remark);
+    }
+
+    /**
      * 成交扣减（卖方侧）：可交易下降、已用上升。
      *
      * <p>注：卖方成交时其额度此前已在挂单期冻结，因此真实调用方应先用

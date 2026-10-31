@@ -112,13 +112,26 @@ class TradeAuditServiceTest {
     }
 
     @Test
-    @DisplayName("审核通过：状态置已完成、审核态置通过、审核记录落库、并发上链事件")
-    void approve_completesTrade_andRecordsAudit() {
+    @DisplayName("审核通过：此时才真正结算——额度转移 + 碳币划转 + 上链事件")
+    void approve_settlesAssets_andPublishesOnChainEvent() {
         auditService.approve(100L, 7L, "核对无误");
 
         assertEquals(TradeStatusEnum.COMPLETED.getCode(), trade.getStatus(), "交易应置已完成");
         assertEquals(TradeAudit.AUDIT_APPROVED, trade.getAuditStatus(), "审核态应置通过");
         assertEquals("核对无误", trade.getAuditRemark());
+
+        // 待审期资产一直冻结，结算发生在审核通过这一刻：
+        // 卖方解冻后扣减（额度走账本）、买方增加额度
+        verify(quotaLedgerService).settleSell(eq(10L), eq(new BigDecimal("200")),
+                anyString(), eq(7L), eq(100L));
+        verify(quotaLedgerService).increase(eq(20L), eq(new BigDecimal("200")),
+                anyString(), eq(7L), anyString(), eq(100L));
+
+        // 碳币：买方冻结款划转、卖方入账
+        verify(carbonCoinService).deductFrozenBalance(eq(2L), eq(new BigDecimal("12000")),
+                eq(new BigDecimal("200")), eq(100L));
+        verify(carbonCoinService).sellQuota(eq(1L), eq(new BigDecimal("12000")),
+                eq(new BigDecimal("200")), eq(100L));
 
         ArgumentCaptor<TradeAudit> auditCaptor = ArgumentCaptor.forClass(TradeAudit.class);
         verify(tradeAuditRepository).save(auditCaptor.capture());
@@ -133,19 +146,27 @@ class TradeAuditServiceTest {
     }
 
     @Test
-    @DisplayName("审核驳回：额度与碳币全额回滚、扣信誉分并归因到该笔交易")
-    void reject_rollsBack_andDeductsCreditAttributedToTrade() {
+    @DisplayName("审核驳回：待审期资产本就冻结，故只需解冻——不做已发生的转移，避免无中生有")
+    void reject_unfreezesFrozenAssets_andDeductsCreditAttributedToTrade() {
         auditService.reject(100L, 7L, "成交价异常，疑似对敲", TradeAudit.REASON_PRICE_DEVIATION);
 
         assertEquals(TradeStatusEnum.CANCELLED.getCode(), trade.getStatus(), "驳回后交易应置已取消");
         assertEquals(TradeAudit.AUDIT_REJECTED, trade.getAuditStatus());
 
-        // 额度原路退回：卖方被扣减的额度回滚、买方买入的额度回滚
-        verify(quotaLedgerService).rollback(eq(10L), eq(new BigDecimal("200")), anyString(), eq(7L), anyString(), eq(100L));
-        verify(quotaLedgerService).rollback(eq(20L), eq(new BigDecimal("200")), anyString(), eq(7L), anyString(), eq(100L));
+        // 方案 A：待审期额度保持挂单时的冻结态，驳回是解冻而非回滚。
+        // 关键点：绝不能调用 settleSell/increase/rollback——那些都假定转移已经发生，
+        // 在冻结语义下调它们会造成"无中生有"（卖方可交易凭空增加、买方凭空多一份额度）。
+        verify(quotaLedgerService, never()).settleSell(anyLong(), any(), anyString(), anyLong(), anyLong());
+        verify(quotaLedgerService, never()).increase(anyLong(), any(), anyString(), anyLong(), anyString(), anyLong());
+        verify(quotaLedgerService, never()).rollback(anyLong(), any(), anyString(), anyLong(), anyString(), anyLong());
 
-        // 碳币双向退回
-        verify(carbonCoinService).refundRejectedTrade(eq(100L), eq(2L), eq(1L), eq(new BigDecimal("12000")));
+        // 卖方额度解冻退回可交易
+        verify(quotaLedgerService).unfreeze(eq(10L), eq(new BigDecimal("200")),
+                anyString(), eq(7L), anyString(), eq(100L));
+
+        // 碳币：买方冻结款解冻退回（同样不是冲正，因为从未划走）
+        verify(carbonCoinService).unfreezeBalance(eq(2L), eq(new BigDecimal("12000")));
+        verify(carbonCoinService, never()).refundRejectedTrade(anyLong(), anyLong(), anyLong(), any());
 
         // 信誉扣分必须能指回这笔交易，且买卖双方各扣一次
         // （异常成交中双方都参与价格形成，只罚一方会留下靠对手方低信誉规避的口子）

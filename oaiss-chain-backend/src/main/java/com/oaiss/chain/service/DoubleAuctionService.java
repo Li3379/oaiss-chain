@@ -78,6 +78,9 @@ public class DoubleAuctionService {
     private final CreditScoreService creditScoreService;
     private final AuditLogWriter auditLogWriter;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
+    private final QuotaLedgerService quotaLedgerService;
+    private final TradeRiskAssessor tradeRiskAssessor;
+    private final TradeAuditService tradeAuditService;
 
     private static final List<Integer> ACTIVE_ORDER_STATUSES = Arrays.asList(
             AuctionOrderStatusEnum.PENDING.getCode(),
@@ -289,7 +292,10 @@ public class DoubleAuctionService {
 
                 match = matchingResultRepository.save(match);
 
-                Transaction trade = Transaction.builder()
+                // ---- 成交风险分流（S4）：决定这笔成交是当场结算还是转人工审核 ----
+                // 待审期间资产始终保持挂单时的冻结态，绝不在此处结算——
+                // 否则「待审」就成了账面谎言：看起来在审，钱和额度已经走了。
+                Transaction pendingTrade = Transaction.builder()
                         .tradeNo(CommonUtils.generateTradeId())
                         .tradeType(TradeTypeEnum.AUCTION.getCode())
                         .sellerId(sellOrder.getUserId())
@@ -297,10 +303,44 @@ public class DoubleAuctionService {
                         .quantity(matchQty)
                         .unitPrice(settlementPrice)
                         .totalAmount(totalAmount)
-                        .status(TradeStatusEnum.COMPLETED.getCode())
-                        .completedAt(LocalDateTime.now())
+                        .status(TradeStatusEnum.PROCESSING.getCode())
+                        .auditStatus(com.oaiss.chain.entity.TradeAudit.AUDIT_PENDING)
                         .build();
-                trade = transactionRepository.save(trade);
+
+                BigDecimal referencePrice = null;
+                Integer buyerCredit = null;
+                Integer sellerCredit = null;
+                try {
+                    referencePrice = transactionRepository.findAverageUnitPriceSince(
+                            LocalDateTime.now().minusDays(30));
+                    java.util.Map<Long, Integer> scores =
+                            creditScoreService.getScoresByUserIds(
+                                    java.util.Set.of(buyOrder.getUserId(), sellOrder.getUserId()));
+                    if (scores != null) {
+                        buyerCredit = scores.get(buyOrder.getUserId());
+                        sellerCredit = scores.get(sellOrder.getUserId());
+                    }
+                } catch (Exception e) {
+                    // 分流数据取数失败不应阻断撮合：降级为「无参考价/无信誉」，
+                    // 由分流器的缺失值规则决定（无均价跳过价格检查、无信誉按最低分处理）
+                    log.warn("[AUDIT] 风险分流取数失败，降级评估: {}", e.getMessage());
+                }
+
+                TradeRiskAssessor.Decision riskDecision = tradeRiskAssessor.assess(
+                        pendingTrade, referencePrice, buyerCredit, sellerCredit, false);
+
+                Transaction trade;
+                if (riskDecision.requiresAudit()) {
+                    // 待审分支：建交易（处理中/待审）、建工单、更新挂单匹配量，然后 continue——
+                    // 不转额度、不结算碳币、不发上链事件。结算整体推迟到审核通过。
+                    trade = transactionRepository.save(pendingTrade);
+                } else {
+                    trade = pendingTrade;
+                    trade.setStatus(TradeStatusEnum.COMPLETED.getCode());
+                    trade.setAuditStatus(com.oaiss.chain.entity.TradeAudit.AUDIT_NOT_REQUIRED);
+                    trade.setCompletedAt(LocalDateTime.now());
+                    trade = transactionRepository.save(trade);
+                }
 
                 match.setTransactionId(trade.getId());
                 match.setStatus(MatchingStatusEnum.SETTLED.getCode());
@@ -315,6 +355,25 @@ public class DoubleAuctionService {
                 sellOrder.setSettlementPrice(settlementPrice);
                 updateOrderStatus(sellOrder);
                 modifiedSellOrders.add(sellOrder);
+
+                if (riskDecision.requiresAudit()) {
+                    tradeAuditService.createPendingAudit(trade.getId(), riskDecision.reasons());
+
+                    notificationService.sendBatchNotificationsAsync(
+                            java.util.List.of(buyOrder.getUserId(), sellOrder.getUserId()),
+                            "拍卖撮合成交待审核",
+                            "您的拍卖订单已撮合 " + matchQty + " 吨，成交价 " + settlementPrice
+                                    + " 元/吨，正在审核中。审核通过后资金与配额才会结算。",
+                            "TRADE");
+
+                    buyRemaining = buyRemaining.subtract(matchQty);
+                    results.add(toMatchResponse(match));
+
+                    log.info("Matched (pending audit): buy={}, sell={}, qty={}, price={}, reasons={}",
+                            buyOrder.getOrderNo(), sellOrder.getOrderNo(), matchQty,
+                            settlementPrice, riskDecision.reasons());
+                    continue;
+                }
 
                 updateEnterpriseQuota(buyOrder.getUserId(), sellOrder.getUserId(), matchQty);
 

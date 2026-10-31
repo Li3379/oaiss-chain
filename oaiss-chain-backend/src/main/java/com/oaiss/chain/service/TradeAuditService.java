@@ -75,7 +75,11 @@ public class TradeAuditService {
     }
 
     /**
-     * 审核通过：完成结算并上链。
+     * 审核通过：**此时才真正结算**，然后上链。
+     *
+     * <p>与方案 B（先结算再冲正）的关键差别：待审期间卖方的额度一直保持挂单冻结态、
+     * 买方的碳币一直保持挂单冻结态，所以通过时才发生第一次资产移动。这样
+     * 「待审」才真正意味着「资产被锁定」，而驳回路径退化为纯解冻（更简单、更难出错）。
      */
     @Transactional
     public void approve(Long tradeId, Long auditorId, String remark) {
@@ -83,6 +87,23 @@ public class TradeAuditService {
         requirePending(trade, "通过");
         requireRemark(remark);
 
+        BigDecimal quantity = trade.getQuantity();
+        BigDecimal amount = trade.getTotalAmount();
+
+        Long sellerEnterpriseId = resolveEnterpriseId(trade.getSellerId());
+        Long buyerEnterpriseId = resolveEnterpriseId(trade.getBuyerId());
+
+        // 1) 额度结算：卖方从冻结直接转已用（原子，避免"已解冻未扣减"的中间态），买方额度增加
+        quotaLedgerService.settleSell(sellerEnterpriseId, quantity,
+                "成交审核通过，卖方额度结算", auditorId, tradeId);
+        quotaLedgerService.increase(buyerEnterpriseId, quantity,
+                "成交审核通过，买方额度入账", auditorId, "AUDIT", tradeId);
+
+        // 2) 碳币结算：买方冻结款划转、卖方入账
+        carbonCoinService.deductFrozenBalance(trade.getBuyerId(), amount, quantity, tradeId);
+        carbonCoinService.sellQuota(trade.getSellerId(), amount, quantity, tradeId);
+
+        // 3) 状态落定
         trade.setAuditStatus(TradeAudit.AUDIT_APPROVED);
         trade.setStatus(TradeStatusEnum.COMPLETED.getCode());
         trade.setCompletedAt(LocalDateTime.now());
@@ -91,7 +112,7 @@ public class TradeAuditService {
 
         writeAuditRecord(tradeId, TradeAudit.AUDIT_APPROVED, auditorId, remark, null);
 
-        // 审核通过后才允许上链：链上存证不可修改，未审先上链会让链上数据成为半成品
+        // 4) 结算完成后才上链：链上存证不可修改，未审先上链会让链上数据成为半成品
         String tradeDataJson = buildTradeDataJson(trade, auditorId);
         eventPublisher.publishEvent(
                 new com.oaiss.chain.event.TradeCompletedEvent(this, trade.getId(), tradeDataJson));
@@ -99,13 +120,15 @@ public class TradeAuditService {
         notifyBothParties(trade, "成交审核通过",
                 "您的成交已通过审核，额度与资金已结算完成。");
 
-        log.info("成交审核通过: tradeId={}, auditorId={}", tradeId, auditorId);
+        log.info("成交审核通过并结算: tradeId={}, auditorId={}", tradeId, auditorId);
     }
 
     /**
-     * 审核驳回：全额回滚额度与碳币，并对买卖双方扣信誉分。
+     * 审核驳回：**纯解冻**，不做冲正。
      *
-     * @param reason 驳回的主理由（取 {@code TradeAudit.REASON_*} 常量）
+     * <p>为什么不是 rollback：待审期间资产从未转移（卖方额度一直在冻结里、买方碳币
+     * 一直在冻结里），所以"回滚"没有对象。若此处调用 rollback/settleSell 等
+     * 假定转移已发生的操作，会造成无中生有——卖方可交易凭空增加、买方凭空多一份额度。
      */
     @Transactional
     public void reject(Long tradeId, Long auditorId, String remark, String reason) {
@@ -116,18 +139,16 @@ public class TradeAuditService {
         BigDecimal quantity = trade.getQuantity();
         BigDecimal amount = trade.getTotalAmount();
 
-        // 1) 额度回滚：卖方被扣减的额度、买方买入的额度都原路退回
         Long sellerEnterpriseId = resolveEnterpriseId(trade.getSellerId());
         Long buyerEnterpriseId = resolveEnterpriseId(trade.getBuyerId());
 
-        quotaLedgerService.rollback(sellerEnterpriseId, quantity,
-                "成交审核驳回，卖方额度退回", auditorId, "AUDIT", tradeId);
-        quotaLedgerService.rollback(buyerEnterpriseId, quantity,
-                "成交审核驳回，买方额度退回", auditorId, "AUDIT", tradeId);
+        // 1) 额度解冻：卖方挂单冻结的额度退回可交易
+        quotaLedgerService.unfreeze(sellerEnterpriseId, quantity,
+                "成交审核驳回，卖方额度解冻", auditorId, "AUDIT", tradeId);
+        // 买方在待审期没有额度变动（increase 尚未执行），故无需额度回滚
 
-        // 2) 碳币回滚：买方货款退回、卖方货款扣回
-        carbonCoinService.refundRejectedTrade(tradeId, trade.getBuyerId(),
-                trade.getSellerId(), amount);
+        // 2) 碳币解冻：买方挂单冻结的资金退回可用余额；卖方待审期未入账，无需扣回
+        carbonCoinService.unfreezeBalance(trade.getBuyerId(), amount);
 
         // 3) 信誉扣分并归因到该笔交易（双方都参与价格形成，只罚一方会留下规避口子）
         creditScoreService.deductPointsForTrade(sellerEnterpriseId,

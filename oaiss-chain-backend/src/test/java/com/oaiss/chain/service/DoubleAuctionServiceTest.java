@@ -41,6 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -85,6 +86,18 @@ class DoubleAuctionServiceTest {
     @Mock
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
+    // S4 新增依赖：撮合链路现在会先做风险分流，再决定当场结算还是转人工审核。
+    // 本类既有 50 个用例验证的是「无需审核时的结算行为」，故默认让分流器一律放行，
+    // 使原断言口径不变；审核分支由 DoubleAuctionAuditIntegrationTest 单独覆盖。
+    @Mock
+    private QuotaLedgerService quotaLedgerService;
+
+    @Mock
+    private TradeRiskAssessor tradeRiskAssessor;
+
+    @Mock
+    private TradeAuditService tradeAuditService;
+
     @InjectMocks
     private DoubleAuctionService doubleAuctionService;
 
@@ -114,6 +127,11 @@ class DoubleAuctionServiceTest {
         // 默认信誉分正常放行、无信誉记录按中性分排序；限制态与同价排序由各用例单独覆写
         lenient().when(creditScoreService.checkTradePermission(anyLong())).thenReturn(true);
         lenient().when(creditScoreService.getScoresByUserIds(any())).thenReturn(Collections.emptyMap());
+
+        // 默认风险分流放行：本类验证的是「无需审核时」的既有结算行为，
+        // 保持原断言口径不变（审核分支由 DoubleAuctionAuditIntegrationTest 覆盖）
+        lenient().when(tradeRiskAssessor.assess(any(Transaction.class), any(), any(), any(), anyBoolean()))
+                .thenReturn(new TradeRiskAssessor.Decision(false, java.util.List.of()));
     }
 
     @Test
