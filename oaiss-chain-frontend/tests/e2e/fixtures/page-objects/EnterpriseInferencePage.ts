@@ -31,7 +31,7 @@ export class EnterpriseInferencePage {
    * Shows one of: compliant, warning, non-compliant (via el-tag with type).
    */
   async expectComplianceStatus(): Promise<void> {
-    const statCards = this.page.locator('.stat-card')
+    const statCards = this.page.locator('.pen-stat')
     await expect(statCards.first()).toBeVisible()
   }
 
@@ -40,7 +40,7 @@ export class EnterpriseInferencePage {
    * Cards: compliance status, confidence score, anomaly score, anomaly detection.
    */
   async expectStatCards(): Promise<void> {
-    const statCards = this.page.locator('.stat-row .stat-card')
+    const statCards = this.page.locator('.pen-stat')
     const count = await statCards.count()
     expect(count).toBeGreaterThanOrEqual(1)
   }
@@ -70,7 +70,7 @@ export class EnterpriseInferencePage {
    * Get the compliance status tag text.
    */
   async getComplianceStatus(): Promise<string | null> {
-    const tag = this.page.locator('.stat-row .stat-card').first().locator('.el-tag')
+    const tag = this.page.locator('.pen-stat').first().locator('.el-tag')
     if (await tag.isVisible().catch(() => false)) {
       return tag.textContent()
     }

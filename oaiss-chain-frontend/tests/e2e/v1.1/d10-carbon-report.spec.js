@@ -68,7 +68,8 @@ test.describe('D10: Carbon Report Lifecycle', () => {
 
     test('carbon upload page renders with breadcrumb', async ({ page }) => {
       await expect(page).toHaveURL(/\/enterprise\/carbon\/upload/)
-      const breadcrumb = page.locator('.el-breadcrumb')
+      // pen 迁移后面包屑由 PageHeader 渲染，类名是 .pen-crumbs
+      const breadcrumb = page.locator('.pen-crumbs')
       await expect(breadcrumb).toBeVisible()
     })
 
@@ -109,7 +110,8 @@ test.describe('D10: Carbon Report Lifecycle', () => {
     })
 
     test('search form has title and period inputs', async ({ page }) => {
-      const form = page.locator('.search-form')
+      // 筛选区已换成 pen 的 FilterBar（.pen-filter-bar），旧的 .search-form 不存在
+      const form = page.locator('.pen-filter-bar')
       await expect(form).toBeVisible()
       await expect(form.getByPlaceholder(/标题|title/i).first()).toBeVisible()
     })

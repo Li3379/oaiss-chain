@@ -29,17 +29,22 @@ export class MarketPredictionPage {
    * Verify the stats row cards are visible (trend direction, model version, data points).
    */
   async expectStatsRow(): Promise<void> {
-    const statCards = this.page.locator('.stat-card')
+    // pen 壳层用 StatStrip 组件，每个指标是 .pen-stat（旧的 .stat-card 已不存在）
+    const statCards = this.page.locator('.pen-stat')
     await expect(statCards.first()).toBeVisible()
   }
 
   /**
-   * Verify the ECharts chart container is rendered.
-   * MarketPrediction uses a single chart in div.chart-box.
+   * 断言图表区域已呈现。
+   *
+   * `.chart-box` 用 v-show 控制：只有 dataPoints.length > 0 才显示，
+   * 否则渲染 `.chart-empty` 空态。ML 在样本不足时返回 insufficient-data
+   * （这是业务态，不是故障——空态引导才是正确 UI），此时断言图表可见
+   * 会永远失败。因此这里接受「图表 或 空态」二者其一。
    */
   async expectChartVisible(): Promise<void> {
-    const chartBox = this.page.locator('.chart-box')
-    await expect(chartBox).toBeVisible()
+    const chartOrEmpty = this.page.locator('.chart-box, .chart-empty')
+    await expect(chartOrEmpty.first()).toBeVisible()
   }
 
   /**
@@ -85,14 +90,15 @@ export class MarketPredictionPage {
    * Get the number of stat cards visible in the stats row.
    */
   async getStatCardCount(): Promise<number> {
-    return this.page.locator('.stats-row .stat-card').count()
+    // pen 壳层：StatStrip 的每一项是 .pen-stat（旧的 .stats-row .stat-card 已不存在）
+    return this.page.locator('.pen-stat').count()
   }
 
   /**
    * Get the trend direction text from the first stat card.
    */
   async getTrendDirection(): Promise<string | null> {
-    const tag = this.page.locator('.stats-row .stat-card').first().locator('.el-tag')
+    const tag = this.page.locator('.pen-stat').first().locator('.el-tag')
     if (await tag.isVisible().catch(() => false)) {
       return tag.textContent()
     }

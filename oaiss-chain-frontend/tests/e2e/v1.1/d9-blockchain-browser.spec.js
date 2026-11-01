@@ -28,19 +28,19 @@ const MOCK_TRANSACTIONS = {
     {
       txHash: '0xtx001abc',
       blockNumber: 100,
-      fromAddress: '0xfrom001',
-      toAddress: '0xto001',
-      amount: 150.5,
-      status: 'CONFIRMED',
+      // 表格现在展示链上真实可得的字段：发起组织 MSP 与调用的链码函数。
+      // fromAddress/toAddress/amount 是后端从不产出的占位列，已移除。
+      senderMsp: 'Org1MSP',
+      function: 'CreateCarbonReportV2',
+      status: 'VALID',
       timestamp: '2026-05-16T10:05:00Z',
     },
     {
       txHash: '0xtx002def',
       blockNumber: 100,
-      fromAddress: '0xfrom002',
-      toAddress: '0xto002',
-      amount: 200.0,
-      status: 'PENDING',
+      senderMsp: 'Org2MSP',
+      function: 'CreateTradeRecord',
+      status: 'VALID',
       timestamp: '2026-05-16T10:10:00Z',
     },
   ],
@@ -83,7 +83,9 @@ test.describe('D9: Blockchain Browser', () => {
 
     test('blockchain page renders with correct URL', async ({ page }) => {
       await expect(page).toHaveURL(/\/enterprise\/blockchain\/browser/)
-      await expect(page.locator('header')).toBeVisible()
+      // 页面里有多个 <header>（壳层顶栏 + 各 DataPanel 内部），
+      // 不加限定会触发 strict mode violation。壳层顶栏是第一个。
+      await expect(page.locator('header').first()).toBeVisible()
     })
 
     test('blocks table displays mock data', async ({ page }) => {
@@ -129,22 +131,28 @@ test.describe('D9: Blockchain Browser', () => {
     test('transactions table displays after tab switch', async ({ page }) => {
       const tabs = page.locator('.el-tabs__item')
       await tabs.nth(1).click()
-      const tableBody = page.locator('.el-tab-pane:not([style*="display: none"]) .el-table__body-wrapper').first()
+      const tableBody = // 旧的 :not([style*=display:none]) 依赖 el-tabs 的内联样式实现，
+      // 换版本即失效。直接取「当前可见的第一个表格体」更稳。
+      page.locator('.el-table__body-wrapper:visible').first()
       await expect(tableBody).toBeVisible()
     })
 
-    test('transaction data shows tx hash and amount', async ({ page }) => {
+    test('transaction data shows tx hash and chaincode function', async ({ page }) => {
       const tabs = page.locator('.el-tabs__item')
       await tabs.nth(1).click()
-      const tableBody = page.locator('.el-tab-pane:not([style*="display: none"]) .el-table__body-wrapper').first()
+      const tableBody = // 旧的 :not([style*=display:none]) 依赖 el-tabs 的内联样式实现，
+      // 换版本即失效。直接取「当前可见的第一个表格体」更稳。
+      page.locator('.el-table__body-wrapper:visible').first()
       await expect(tableBody).toContainText('0xtx001abc')
-      await expect(tableBody).toContainText('150.5')
+      await expect(tableBody).toContainText('CreateCarbonReportV2')
     })
 
     test('transaction status renders as tag', async ({ page }) => {
       const tabs = page.locator('.el-tabs__item')
       await tabs.nth(1).click()
-      const tableBody = page.locator('.el-tab-pane:not([style*="display: none"]) .el-table__body-wrapper').first()
+      const tableBody = // 旧的 :not([style*=display:none]) 依赖 el-tabs 的内联样式实现，
+      // 换版本即失效。直接取「当前可见的第一个表格体」更稳。
+      page.locator('.el-table__body-wrapper:visible').first()
       await expect(tableBody.locator('.el-tag').first()).toBeVisible()
     })
   })
