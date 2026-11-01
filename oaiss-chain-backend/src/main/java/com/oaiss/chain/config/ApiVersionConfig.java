@@ -4,6 +4,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.PathMatchConfigurer;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+import java.util.List;
+
 /**
  * API版本管理配置
  * API Version Management Configuration
@@ -26,8 +28,13 @@ public class ApiVersionConfig implements WebMvcConfigurer {
     
     /**
      * 支持的API版本列表
+     *
+     * 用不可变 List 而非 public static final String[]：
+     * 数组的 final 只保证引用不变，内容仍可被任何调用方改写
+     * （ApiVersionConfig.SUPPORTED_VERSIONS[0] = "v9" 合法且无异常），
+     * 一旦被改，版本协商会静默接受未实现的版本。List.of 创建的是不可变实例。
      */
-    public static final String[] SUPPORTED_VERSIONS = {"v1"};
+    public static final List<String> SUPPORTED_VERSIONS = List.of("v1");
     
     /**
      * API版本前缀

@@ -747,8 +747,12 @@ public class DoubleAuctionService {
             throw new TradeException(ErrorCode.PERMISSION_DENIED, "无权撤销他人的挂单");
         }
 
-        if (order.getStatus() != AuctionOrderStatusEnum.PENDING.getCode()
-                && order.getStatus() != AuctionOrderStatusEnum.PARTIALLY_MATCHED.getCode()) {
+        // 注意：getStatus() 返回 Integer，必须用 equals 比较。
+        // 用 == 比的是引用；Integer 只在 -128..127 有缓存，本枚举当前取值落在此区间
+        // 所以现状碰巧正确——但只要将来新增一个大于 127 的状态码，
+        // 这里会静默变成「永远不相等」，撤单闸门失效。
+        if (!AuctionOrderStatusEnum.PENDING.getCode().equals(order.getStatus())
+                && !AuctionOrderStatusEnum.PARTIALLY_MATCHED.getCode().equals(order.getStatus())) {
             throw TradeException.orderCancelled(orderId);
         }
 
