@@ -155,13 +155,13 @@ bash ./scripts/stability-baseline.sh
 | 事实 | 值 | 说明 |
 |------|-----|------|
 | Controllers | 25 | `controller/*.java` 数（2026-10-31 新增 RegulatoryFindingController、TradeAuditController） |
-| REST 端点 | 163 | `@Mapping` 注解总数（2026-11-01 新增 `/admin/blockchain/mark-historical-mock`、`/enterprise/search`，以及管理员端 2 个端点） |
+| REST 端点 | 163 | `@Mapping` 注解总数（2026-11-01 新增 `/admin/blockchain/mark-historical-mock`、`/enterprise/search`，以及管理员端 2 个端点；+2 下市处罚端点（delist/repeal）） |
 | Services | 48 | 45 主包 + 3 ml/（2026-11-01 并行批次：企业检索服务） |
 | Entities | 28 | 27 @Entity + BaseEntity |
 | Tables | 27 | 现存 27 张（曾创建 28 张，authenticator 在 V8 DROP 退场） |
 | Repositories | 27 | `repository/*.java` 数 |
 | Flyway 迁移 | V1-V23 | V3 跳过（共 22 个版本；V18=监管线索，V19=证书吊销留痕，V20=链上存证标记，V21=软删列名修复，V22=信誉下市标记，V23=单价口径注释） |
-| i18n 词条 | 2263 | zh-CN 与 en-US 严格镜像（`scripts/gates/i18n-verify.mjs` 实测；2026-11-01 新增成交审核与监管线索文案） |
+| i18n 词条 | 2292 | zh-CN 与 en-US 严格镜像（`scripts/i18n-verify.mjs` 实测） | zh-CN 与 en-US 严格镜像（`scripts/gates/i18n-verify.mjs` 实测；2026-11-01 新增成交审核与监管线索文案） |
 | 前端 API 模块 | 24 | `src/api/*.ts`（不含 request.ts 与 index.ts；2026-11-01 新增 tradeAudit / regulatoryFinding） |
 | 枚举 | 9 | `enums/*.java`（UserTypeEnum 等 9 个核心枚举） |
 | 角色 | 4 | ENTERPRISE/REVIEWER/THIRD_PARTY/ADMIN |
