@@ -63,18 +63,30 @@ jobs:
           --health-timeout=5s
           --health-retries=5
 
-      minio:
-        image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+      # 对象存储：改用 LocalStack 的 S3 实现。
+      #
+      # 原先用 minio/minio，但该镜像已被上游从 Docker Hub 彻底移除
+      # （仓库 API 返回 object not found，任何 tag 都拉不到），
+      # 导致本工作流在 Runner 上 100% 失败，报错还伪装成「权限不足」。
+      #
+      # 后端走的是标准 S3 API（io.minio SDK），实测以下 10 项在该镜像上全部可用：
+      # bucketExists / makeBucket / putObject / getObject / statObject /
+      # listObjects / copyObject / removeObject / removeObjects / getPresignedObjectUrl
+      #
+      # 桶由后端启动时自动创建（MinioService.initBucket @EventListener），无需额外初始化容器。
+      s3:
+        image: localstack/localstack:3
         env:
-          MINIO_ROOT_USER: minio-test-access
-          MINIO_ROOT_PASSWORD: minio-test-secret-key
+          SERVICES: s3
+          DEBUG: 0
+          DEFAULT_REGION: us-east-1
         ports:
-          - 9000:9000
+          - 9000:4566
         options: >-
-          --health-cmd="wget -q -O /dev/null http://localhost:9000/minio/health/live || exit 1"
+          --health-cmd="curl -fsS http://localhost:4566/_localstack/health || exit 1"
           --health-interval=10s
           --health-timeout=5s
-          --health-retries=5
+          --health-retries=10
 
     env:
       DB_HOST: 127.0.0.1

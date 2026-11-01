@@ -37,23 +37,28 @@ services:
     networks:
       - oaiss-network
 
-  minio:
-    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
-    container_name: oaiss-minio
-    command: server /data --console-address ":9001"
+  # 对象存储：LocalStack 的 S3 实现。
+  #
+  # 原为 minio/minio，该镜像已被上游从 Docker Hub 彻底移除
+  # （仓库 API 返回 object not found，任何 tag 都拉不到），
+  # 保留引用会让 `docker compose up` 永久失败。
+  # 后端走标准 S3 API，10 项 MinIO SDK 调用已逐项实测通过。
+  s3:
+    image: localstack/localstack:3
+    container_name: oaiss-s3
     environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+      SERVICES: s3
+      DEBUG: 0
+      DEFAULT_REGION: us-east-1
     ports:
-      - "127.0.0.1:9004:9000"
-      - "127.0.0.1:9003:9001"
+      - "127.0.0.1:9004:4566"
     volumes:
-      - minio-data:/data
+      - s3-data:/var/lib/localstack
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/live"]
-      interval: 30s
+      test: ["CMD", "curl", "-fsS", "http://localhost:4566/_localstack/health"]
+      interval: 15s
       timeout: 10s
-      retries: 3
+      retries: 10
     networks:
       - oaiss-network
 
@@ -81,7 +86,7 @@ services:
 volumes:
   mysql-data:
   redis-data:
-  minio-data:
+  s3-data:
 
 networks:
   oaiss-network:
