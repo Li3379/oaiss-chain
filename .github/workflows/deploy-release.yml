@@ -123,10 +123,18 @@ jobs:
 
       - name: Render environment file
         shell: bash
+        # 刻意不用 heredoc：YAML 的块标量会把内容行整体缩进，
+        # 而 bash 的 <<'EOF' 要求结束符顶格——两者天然冲突，
+        # 缩进后的 EOF 永远匹配不上，heredoc 会一路吞到脚本末尾。
+        # 改用 env 注入 + printf 写文件：既无缩进冲突，
+        # 也避免 secret 出现在命令行参数里。
+        env:
+          DEPLOY_ENV_FILE: ${{ secrets.DEPLOY_ENV_FILE }}
+          BACKEND_IMAGE_INPUT: ${{ inputs.backend_image }}
+          FRONTEND_IMAGE_INPUT: ${{ inputs.frontend_image }}
+          ML_SERVICE_IMAGE_INPUT: ${{ inputs.ml_service_image }}
         run: |
-          cat > .deploy-bundle/oaiss-chain.env <<'EOF'
-${{ secrets.DEPLOY_ENV_FILE }}
-EOF
+          printf '%s\n' "$DEPLOY_ENV_FILE" > .deploy-bundle/oaiss-chain.env
           if [[ -n "${{ inputs.backend_image }}" ]]; then
             printf '\nBACKEND_IMAGE=%s\n' "${{ inputs.backend_image }}" >> .deploy-bundle/oaiss-chain.env
           fi
