@@ -29,7 +29,7 @@ test.describe('D3: 双向拍卖', () => {
   })
 
   test('表格列头正确', async ({ page }) => {
-    const headers = ['序号', '买卖方向', '数量（吨）', '价格（元/吨）', '状态', '创建时间']
+    const headers = ['序号', '买卖方向', '数量（吨）', '价格（碳币/吨）', '状态', '创建时间']
     for (const h of headers) {
       await expect(page.getByRole('columnheader', { name: h })).toBeVisible()
     }
