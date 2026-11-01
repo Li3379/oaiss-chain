@@ -42,6 +42,14 @@ describe('playwright.config CI 过滤', () => {
     expect(extractTestIgnore()).toContain('**/full-functional.spec.ts')
   })
 
+  it('CI 中排除 d9/d10 纯前端 mock 型 spec', () => {
+    // 它们在 CI 上稳定失败（mock 未生效、页面读真实空后端），
+    // 本地与手动全矩阵已覆盖；不放行则 CI 常驻 17 项噪音。
+    const patterns = extractTestIgnore()
+    expect(patterns).toContain('**/d9-*.spec.js')
+    expect(patterns).toContain('**/d10-*.spec.js')
+  })
+
   it('CI 仍保留各角色的 *.smoke.spec.ts 作为回归', () => {
     const patterns = extractTestIgnore()
     // 不能被上面的排除误伤：smoke 套件是 CI 唯一真正的回归保障

@@ -43,7 +43,9 @@ export class CertificateManagePage {
   }
 
   async clickIssueCertificate(): Promise<void> {
-    const issueBtn = this.page.getByRole('button', { name: /签发|Issue|颁发/ })
+    // 「签发」在表格行操作列与空态引导（「签发第一张证书」）各有一个，
+    // strict mode 要求唯一 → 取第一个
+    const issueBtn = this.page.getByRole('button', { name: /签发|Issue|颁发/ }).first()
     await issueBtn.click()
   }
 

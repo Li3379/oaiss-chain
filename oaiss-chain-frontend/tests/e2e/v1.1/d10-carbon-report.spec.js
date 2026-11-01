@@ -119,7 +119,9 @@ test.describe('D10: Carbon Report Lifecycle', () => {
     })
 
     test('create report button exists', async ({ page }) => {
-      await expect(page.getByRole('button', { name: /新建|新增|创建|create/i })).toBeVisible()
+      // 页面上可能有两个「创建」：筛选区主按钮与空态引导按钮。
+      // strict mode 要求唯一定位，这里断言「存在任一可见实例」即可。
+      await expect(page.getByRole('button', { name: /新建|新增|创建|create/i }).first()).toBeVisible()
     })
   })
 
@@ -134,21 +136,21 @@ test.describe('D10: Carbon Report Lifecycle', () => {
     })
 
     test('opens create dialog on button click', async ({ page }) => {
-      const createBtn = page.getByRole('button', { name: /新建|新增|创建|create/i })
+      const createBtn = page.getByRole('button', { name: /新建|新增|创建|create/i }).first()
       await createBtn.click()
       const dialog = page.locator('.el-dialog:visible')
       await expect(dialog).toBeVisible()
     })
 
     test('create dialog has form fields', async ({ page }) => {
-      await page.getByRole('button', { name: /新建|新增|创建|create/i }).click()
+      await page.getByRole('button', { name: /新建|新增|创建|create/i }).first().click()
       const dialog = page.locator('.el-dialog:visible')
       await expect(dialog.locator('input').first()).toBeVisible()
       await expect(dialog.locator('textarea').first()).toBeVisible()
     })
 
     test('create dialog has submit and cancel buttons', async ({ page }) => {
-      await page.getByRole('button', { name: /新建|新增|创建|create/i }).click()
+      await page.getByRole('button', { name: /新建|新增|创建|create/i }).first().click()
       const dialog = page.locator('.el-dialog:visible')
       await expect(dialog.getByRole('button', { name: /确定|创建|create|提交|submit/i })).toBeVisible()
       await expect(dialog.getByRole('button', { name: /取消|cancel/i })).toBeVisible()

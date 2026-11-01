@@ -144,6 +144,7 @@ jobs:
           npx playwright test full-functional.spec.ts
         env:
           E2E_INCLUDE_LONG: "1"
+          E2E_INCLUDE_MOCK_SPECS: "1"
 
       # 可选：人工探针（假设库里有特定数据，失败不代表产品缺陷）
       - name: Run probe scripts (optional)
@@ -154,6 +155,7 @@ jobs:
           npx playwright test tests/e2e/smoke 2>&1 | tail -50
         env:
           E2E_INCLUDE_PROBES: "1"
+          E2E_INCLUDE_MOCK_SPECS: "1"
 
       - name: Upload report
         if: always()
