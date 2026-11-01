@@ -69,6 +69,10 @@ class TradeServiceTest {
     @Mock
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
+    // Batch 2：TradeService 新增限价依赖。不加此 mock 会让所有走到 validate 的用例 NPE。
+    @Mock
+    private PriceLimitService priceLimitService;
+
     @InjectMocks
     private TradeService tradeService;
 

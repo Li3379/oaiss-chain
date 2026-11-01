@@ -50,6 +50,7 @@ public class TradeService {
     private final NotificationService notificationService;
     private final CarbonCoinService carbonCoinService;
     private final CreditScoreService creditScoreService;
+    private final PriceLimitService priceLimitService;
     /** 准入证书门禁：未签发 / 已吊销 / 已过期都不得参与交易 */
     private final CertificateGateService certificateGateService;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
@@ -86,6 +87,9 @@ public class TradeService {
 
         // 信誉分风控闸门：被限制交易或账户冻结的发起方不得创建 P2P 交易
         assertTradeAllowed(sellerEnterprise.getId());
+
+        // 平台限价：必须在任何资源冻结之前——否则注定失败的请求会先冻结配额再被拒
+        priceLimitService.validate(request.getUnitPrice(), LocalDateTime.now());
 
         if (sellerEnterprise.getCarbonTradable().compareTo(request.getQuantity()) < 0) {
             throw TradeException.insufficientQuota(sellerEnterprise.getCarbonTradable(), request.getQuantity());
@@ -130,6 +134,9 @@ public class TradeService {
 
         // 信誉分风控闸门：被限制交易或账户冻结的发起方不得创建拍卖挂单
         assertTradeAllowed(enterprise.getId());
+
+        // 平台限价：与 createP2PTrade 保持一致的报错优先级（价格先于配额）
+        priceLimitService.validate(request.getUnitPrice(), LocalDateTime.now());
 
         if (enterprise.getCarbonTradable().compareTo(request.getQuantity()) < 0) {
             throw TradeException.insufficientQuota(enterprise.getCarbonTradable(), request.getQuantity());

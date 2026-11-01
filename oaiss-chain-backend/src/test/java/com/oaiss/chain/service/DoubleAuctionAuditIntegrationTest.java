@@ -60,6 +60,7 @@ class DoubleAuctionAuditIntegrationTest {
     @Mock private QuotaLedgerService quotaLedgerService;
     @Mock private TradeRiskAssessor tradeRiskAssessor;
     @Mock private TradeAuditService tradeAuditService;
+    @Mock private PriceLimitService priceLimitService;
     @Mock private CertificateGateService certificateGateService;
 
     private DoubleAuctionService service;
@@ -72,7 +73,7 @@ class DoubleAuctionAuditIntegrationTest {
         service = new DoubleAuctionService(auctionOrderRepository, matchingResultRepository,
                 transactionRepository, enterpriseRepository, userRepository, notificationService,
                 carbonCoinService, creditScoreService, auditLogWriter, eventPublisher,
-                quotaLedgerService, tradeRiskAssessor, tradeAuditService, certificateGateService);
+                quotaLedgerService, tradeRiskAssessor, tradeAuditService, priceLimitService, certificateGateService);
 
         // 证书门禁：本测试聚焦审核分流，双方默认持有效证书
         org.mockito.Mockito.lenient().when(certificateGateService.isEnterpriseAdmitted(org.mockito.ArgumentMatchers.anyLong()))

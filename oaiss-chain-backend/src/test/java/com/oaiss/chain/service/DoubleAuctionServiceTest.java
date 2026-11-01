@@ -103,6 +103,10 @@ class DoubleAuctionServiceTest {
     @Mock
     private CertificateGateService certificateGateService;
 
+    // Batch 2：新增限价依赖。不加此 mock 会让所有挂单用例 NPE。
+    @Mock
+    private PriceLimitService priceLimitService;
+
     @InjectMocks
     private DoubleAuctionService doubleAuctionService;
 

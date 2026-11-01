@@ -81,6 +81,7 @@ public class DoubleAuctionService {
     private final QuotaLedgerService quotaLedgerService;
     private final TradeRiskAssessor tradeRiskAssessor;
     private final TradeAuditService tradeAuditService;
+    private final PriceLimitService priceLimitService;
     /** 准入证书门禁：未签发 / 已吊销 / 已过期都不得挂单与结算 */
     private final CertificateGateService certificateGateService;
 
@@ -208,6 +209,16 @@ public class DoubleAuctionService {
      *
      * @return 撮合结果列表
      */
+    /**
+     * 挂单参数校验——买/卖两个入口的公共前置。
+     *
+     * <p>平台限价放在这里而不是两个入口各写一遍：4 个交易写入口收敛为 2 处
+     * （TradeService 两处 + 此处一处覆盖双向），减少遗漏新入口的风险。
+     *
+     * <p>顺序也重要：限价必须在任何资源冻结之前——{@code placeBuyOrder} 会
+     * freezeBalance、{@code placeSellOrder} 会冻结配额，若先冻结再因价格被拒，
+     * 用户会看到一次无意义的资产锁定。
+     */
     private void validateOrderRequest(AuctionOrderRequest request) {
         if (request == null) {
             throw new TradeException(ErrorCode.PARAM_ERROR, "拍卖挂单请求不能为空");
@@ -218,6 +229,8 @@ public class DoubleAuctionService {
         if (request.getPrice() == null || request.getPrice().compareTo(BigDecimal.ZERO) <= 0) {
             throw new TradeException(ErrorCode.PARAM_ERROR, "挂单价格必须为正数");
         }
+        // 平台限价（与 TradeService 同源校验）
+        priceLimitService.validate(request.getPrice(), LocalDateTime.now());
     }
 
     @DistributedLock(key = "'auction:matching'", expireTime = 30, waitTime = 0)
@@ -300,6 +313,22 @@ public class DoubleAuctionService {
                         .totalAmount(totalAmount)
                         .status(MatchingStatusEnum.PENDING_SETTLEMENT.getCode())
                         .build();
+
+                // ---- 结算价复核（限价）----
+                // 必须早于 MatchingResult 落库：否则会先产生一条孤儿撮合记录再拒绝配对。
+                // 注：绝对区间那半实际恒真（两侧挂单在挂单时都已校验，平均价必在区间内），
+                // 真正有判别力的是偏离带——成交价可能因买卖报价跨度大而显著偏离均价。
+                try {
+                    priceLimitService.validate(settlementPrice, LocalDateTime.now());
+                } catch (com.oaiss.chain.exception.BusinessException ex) {
+                    log.warn("[PRICE-LIMIT] 撮合结算价复核不通过，跳过该配对: buy={}, sell={}, "
+                                    + "settlePrice={}, reason={}",
+                            buyOrder.getOrderNo(), sellOrder.getOrderNo(), settlementPrice,
+                            ex.getMessage());
+                    // 记录一条审计，便于事后区分「撮合未成交」与「成交但被限价拦下」
+                    recordPriceLimitBlockedAudit(buyOrder, sellOrder, settlementPrice, ex.getMessage());
+                    continue;
+                }
 
                 match = matchingResultRepository.save(match);
 
@@ -564,6 +593,40 @@ public class DoubleAuctionService {
             auditLogWriter.saveAsync(opLog);
         } catch (Exception e) {
             log.warn("Failed to record wash trading audit log: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 记录「撮合出清被限价拦下」的审计。
+     *
+     * <p>与自成交拦截不同：那笔配对根本没成立，这一笔是**价格算出来了但被规则拒绝**。
+     * 若不记审计，事后无法区分「市场没撮合到」与「撮合到了但被限价挡回」，
+     * 前者是常态，后者是风控事件。
+     */
+    private void recordPriceLimitBlockedAudit(AuctionOrder buyOrder, AuctionOrder sellOrder,
+                                              BigDecimal settlementPrice, String reason) {
+        if (auditLogWriter == null) {
+            return;
+        }
+        try {
+            OperationLog opLog = OperationLog.builder()
+                    .userId(buyOrder.getUserId())
+                    .username("SYSTEM-MATCH-ENGINE")
+                    .userType(1)
+                    .module("双向拍卖撮合")
+                    .action("PRICE_LIMIT_BLOCKED")
+                    .description(String.format("撮合结算价超出平台限价被拦下: 买单 %s / 卖单 %s，结算价 %s",
+                            buyOrder.getOrderNo(), sellOrder.getOrderNo(), settlementPrice.toPlainString()))
+                    .httpMethod("INTERNAL")
+                    .requestUrl("/api/v1/auction/match")
+                    .requestParams(String.format("{\"buyOrder\":\"%s\",\"sellOrder\":\"%s\",\"settlementPrice\":%s}",
+                            buyOrder.getOrderNo(), sellOrder.getOrderNo(), settlementPrice.toPlainString()))
+                    .status(2)
+                    .errorMsg(reason)
+                    .build();
+            auditLogWriter.saveAsync(opLog);
+        } catch (Exception e) {
+            log.warn("Failed to record price limit audit log: {}", e.getMessage());
         }
     }
 
