@@ -41,6 +41,9 @@ class AdminControllerAdmissionTest {
     private EnterpriseAdmissionService enterpriseAdmissionService;
 
     @MockBean
+    private com.oaiss.chain.service.CreditScoreService creditScoreService;
+
+    @MockBean
     private UserRepository userRepository;
 
     @MockBean

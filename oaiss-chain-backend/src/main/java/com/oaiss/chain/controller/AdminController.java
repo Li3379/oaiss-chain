@@ -12,6 +12,8 @@ import com.oaiss.chain.repository.AccountPermissionListRepository;
 import com.oaiss.chain.repository.UserRepository;
 import com.oaiss.chain.security.JwtUserDetails;
 import com.oaiss.chain.service.AdminUserService;
+import com.oaiss.chain.dto.CreditScoreResponse;
+import com.oaiss.chain.service.CreditScoreService;
 import com.oaiss.chain.service.ChainReconciliationService;
 import com.oaiss.chain.service.EnterpriseAdmissionService;
 import com.oaiss.chain.service.ReviewerQualificationService;
@@ -54,6 +56,7 @@ public class AdminController {
     private final EnterpriseAdmissionService enterpriseAdmissionService;
     private final ReviewerQualificationService reviewerQualificationService;
     private final AdminUserService adminUserService;
+    private final CreditScoreService creditScoreService;
     private final ChainReconciliationService chainReconciliationService;
 
     /**
@@ -480,13 +483,42 @@ public class AdminController {
         return ApiResponse.success();
     }
 
+    // ==================== 下市处罚 (R-03) ====================
+
     /**
-     * 【业务功能】：链上对账 — 逐条比对「本地已标记上链的报告」与链上真实快照
-     * 【对应前端页面】：views/admin/ChainReconciliation.vue (/admin/blockchain)
-     * 【对应前端API】：api/admin.ts -> getChainReconciliation()
-     * 【可见UI操作】：打开链上管理页，查看四类结果（一致 / 链上缺失 / 内容不一致 / 无法判定）
-     *
-     * <p>系统原本只有「DB → 链」单向写入，本地是否真的上链只能靠自填的 txHash 相信。
+     * 下市处罚：暂停企业碳交易资格直至恢复上市（区别于禁登录）。
+     * raw 03 L1098 + 01 L609；权限仅 ADMIN；delisted 独立字段不被阈值自动启停覆盖。
+     */
+    @AuditLog(module = "系统管理", action = "下市处罚", description = "系统管理 下市处罚")
+    @PostMapping("/users/{userId}/delist")
+    @Operation(
+        summary = "下市处罚",
+        description = "delisted=true + ADMIN_DELIST 留痕。重复下市返回 400/2017。",
+        security = @SecurityRequirement(name = "Bearer Authentication"))
+    public ApiResponse<CreditScoreResponse> delistUser(
+            @Parameter(description = "目标用户ID（须为企业用户）", required = true, example = "7")
+            @PathVariable Long userId,
+            @AuthenticationPrincipal JwtUserDetails currentUser) {
+        Long operatorId = currentUser != null ? currentUser.getUserId() : null;
+        return ApiResponse.success(creditScoreService.delistEnterpriseByUser(userId, operatorId));
+    }
+
+    /** 恢复上市：解除下市处罚，delisted 复位并留痕 ADMIN_REPEAL 事件。 */
+    @AuditLog(module = "系统管理", action = "恢复上市", description = "系统管理 恢复上市")
+    @DeleteMapping("/users/{userId}/delist")
+    @Operation(
+        summary = "恢复上市",
+        description = "delisted=false + ADMIN_REPEAL 留痕。未下市时返回 400/2017。",
+        security = @SecurityRequirement(name = "Bearer Authentication"))
+    public ApiResponse<CreditScoreResponse> restoreUser(
+            @Parameter(description = "目标用户ID", required = true, example = "7")
+            @PathVariable Long userId,
+            @AuthenticationPrincipal JwtUserDetails currentUser) {
+        Long operatorId = currentUser != null ? currentUser.getUserId() : null;
+        return ApiResponse.success(creditScoreService.restoreEnterpriseByUser(userId, operatorId));
+    }
+
+    /**
      * 这个端点把链上事实读回来比对，是「还原」唯一可行的前置。</p>
      */
     @AuditLog(module = "系统管理", action = "链上对账", description = "系统管理 链上对账")

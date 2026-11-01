@@ -1,6 +1,9 @@
 package com.oaiss.chain.service;
 
 import com.oaiss.chain.dto.CreditEventResponse;
+import com.oaiss.chain.constant.ErrorCode;
+import com.oaiss.chain.constant.ErrorMessage;
+import com.oaiss.chain.exception.BusinessException;
 import com.oaiss.chain.dto.CreditScoreResponse;
 import com.oaiss.chain.entity.CreditEvent;
 import com.oaiss.chain.entity.CreditScore;
@@ -330,7 +333,7 @@ public class CreditScoreService {
      */
     @Transactional(readOnly = true)
     public List<CreditScoreResponse> getRestrictedEnterprises() {
-        return creditScoreRepository.findByTradeRestrictedAndDeletedFalse(true).stream()
+        return creditScoreRepository.findByAnyRestrictionAndDeletedFalse().stream()
                 .map(this::toScoreResponse)
                 .collect(Collectors.toList());
     }
@@ -358,7 +361,75 @@ public class CreditScoreService {
         if (creditScore == null) {
             return true; // 没有记录默认允许
         }
-        return !creditScore.getTradeRestricted() && !creditScore.getAccountFrozen();
+        return !creditScore.getTradeRestricted() && !creditScore.getAccountFrozen()
+                && !Boolean.TRUE.equals(creditScore.getDelisted());
+    }
+
+    /**
+     * 管理员下市处罚（R-03）：delisted 置位 + ADMIN_DELIST 留痕。
+     * 语义=禁止碳交易直至恢复上市（raw 03 L1098），非禁登录；与信誉阈值自动启停解耦。
+     *
+     * @param userId     目标用户的 userId（经企业档案解析到 enterpriseId）
+     * @param operatorId 操作管理员 userId（留痕）
+     */
+    @Transactional
+    public CreditScoreResponse delistEnterpriseByUser(Long userId, Long operatorId) {
+        Enterprise enterprise = enterpriseRepository.findByUserIdAndDeletedFalse(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "目标用户无企业档案"));
+        CreditScore creditScore = creditScoreRepository.findByEnterpriseIdAndDeletedFalse(enterprise.getId())
+                .orElseGet(() -> CreditScore.builder()
+                        .enterpriseId(enterprise.getId())
+                        .score(100)
+                        .level(CreditLevelEnum.EXCELLENT.getCode())
+                        .tradeRestricted(false)
+                        .accountFrozen(false)
+                        .build());
+        if (Boolean.TRUE.equals(creditScore.getDelisted())) {
+            throw new BusinessException(ErrorCode.DELIST_STATE_INVALID, ErrorMessage.DELIST_STATE_INVALID);
+        }
+        creditScore.setDelisted(true);
+        creditScoreRepository.save(creditScore);
+        recordCreditEvent(creditScore.getEnterpriseId(), CreditEventTypeEnum.ADMIN_DELIST,
+                "管理员下市处罚：暂停碳交易资格", operatorId, null);
+        return toScoreResponse(creditScore);
+    }
+
+    /**
+     * 恢复上市（下市解除）：delisted 复位 + ADMIN_REPEAL 留痕。
+     */
+    @Transactional
+    public CreditScoreResponse restoreEnterpriseByUser(Long userId, Long operatorId) {
+        Enterprise enterprise = enterpriseRepository.findByUserIdAndDeletedFalse(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "目标用户无企业档案"));
+        CreditScore creditScore = creditScoreRepository.findByEnterpriseIdAndDeletedFalse(enterprise.getId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "该企业无信誉分记录"));
+        if (!Boolean.TRUE.equals(creditScore.getDelisted())) {
+            throw new BusinessException(ErrorCode.DELIST_STATE_INVALID, ErrorMessage.DELIST_STATE_INVALID);
+        }
+        creditScore.setDelisted(false);
+        creditScoreRepository.save(creditScore);
+        recordCreditEvent(creditScore.getEnterpriseId(), CreditEventTypeEnum.ADMIN_REPEAL,
+                "恢复上市：解除下市处罚", operatorId, null);
+        return toScoreResponse(creditScore);
+    }
+
+    /** 统一留痕：状态事件（0 分）不改分数，仅落 credit_event。 */
+    private void recordCreditEvent(Long enterpriseId, CreditEventTypeEnum type,
+                                   String description, Long triggeredBy, Long relatedReportId) {
+        CreditEvent event = CreditEvent.builder()
+                .enterpriseId(enterpriseId)
+                .eventType(type.getCode())
+                .eventDescription(description)
+                .pointsChanged(0)
+                .scoreBefore(creditScoreRepository.findByEnterpriseIdAndDeletedFalse(enterpriseId)
+                        .map(CreditScore::getScore).orElse(100))
+                .scoreAfter(creditScoreRepository.findByEnterpriseIdAndDeletedFalse(enterpriseId)
+                        .map(CreditScore::getScore).orElse(100))
+                .relatedReportId(relatedReportId)
+                .triggeredBy(triggeredBy)
+                .triggeredAt(LocalDateTime.now())
+                .build();
+        creditEventRepository.save(event);
     }
 
     /**
@@ -483,8 +554,8 @@ public class CreditScoreService {
      * CreditScore → CreditScoreResponse
      */
     private CreditScoreResponse toScoreResponse(CreditScore cs) {
-        String enterpriseName = enterpriseRepository.findById(cs.getEnterpriseId())
-                .map(Enterprise::getEnterpriseName).orElse("未知企业");
+        Enterprise ent = enterpriseRepository.findById(cs.getEnterpriseId()).orElse(null);
+        String enterpriseName = ent != null ? ent.getEnterpriseName() : "未知企业";
 
         return CreditScoreResponse.builder()
                 .id(cs.getId())
@@ -494,6 +565,8 @@ public class CreditScoreService {
                 .level(cs.getLevel())
                 .tradeRestricted(cs.getTradeRestricted())
                 .accountFrozen(cs.getAccountFrozen())
+                .delisted(cs.getDelisted())
+                .userId(ent != null ? ent.getUserId() : null)
                 .lastEvaluatedAt(cs.getLastEvaluatedAt())
                 .createdAt(cs.getCreatedAt())
                 .build();

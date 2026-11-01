@@ -6,6 +6,10 @@ export interface CreditScoreResponse {
   score: number
   level: string
   tradeRestricted: boolean
+  /** 管理员下市处罚状态（R-03） */
+  delisted?: boolean
+  /** 目标用户 userId（受限名单操作定位用） */
+  userId?: number
   accountFrozen: boolean
   lastEvaluatedAt: string
   createdAt: string

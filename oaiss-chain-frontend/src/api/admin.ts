@@ -275,3 +275,20 @@ export function markHistoricalMockData(): Promise<{ marked: number }> {
 export function replayDeadLetter(id: number): Promise<void> {
   return request.post(`/admin/outbox/${id}/replay`)
 }
+
+/**
+ * 【业务功能】：管理员下市处罚——暂停企业碳交易资格（区别于禁登录，raw 03 L1098）
+ * 【对应前端页面】：SystemUsers.vue 企业行操作 / CertificateManage.vue 受限名单 Tab
+ * 【后端对应端点】：AdminController -> POST /admin/users/{userId}/delist
+ */
+export function delistUser(userId: number): Promise<{ enterpriseId: number; delisted: boolean }> {
+  return request.post(`/admin/users/${userId}/delist`)
+}
+
+/**
+ * 【业务功能】：恢复上市——解除下市处罚
+ * 【后端对应端点】：AdminController -> DELETE /admin/users/{userId}/delist
+ */
+export function restoreUser(userId: number): Promise<{ enterpriseId: number; delisted: boolean }> {
+  return request.delete(`/admin/users/${userId}/delist`)
+}

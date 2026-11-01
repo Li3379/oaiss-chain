@@ -1,4 +1,4 @@
-import { test, expect, request as playwrightRequest } from '@playwright/test'
+import { test, expect, request as playwrightRequest, type APIRequestContext } from '@playwright/test'
 import { TEST_USERS, loginViaApi } from '../fixtures/auth'
 import { isMlServiceAvailable } from '../fixtures/test-env'
 import {

@@ -225,4 +225,69 @@ class EmissionRatingServiceTest {
                 .ratingLevel("B").ratingScore(75)
                 .ratedBy(1L).build();
     }
+
+    // ==================== percentileRank 回写 (TDD RED) ====================
+
+    @Test
+    @DisplayName("评级保存后回写同年度全体百分位：排放越低百分位越小(越小越好)")
+    void rateEnterprise_writesBackPercentileForCohort() {
+        EmissionRating low = EmissionRating.builder().enterpriseId(1L).ratingYear("2025")
+                .totalEmission(new BigDecimal("500")).build();
+        low.setId(1L);
+        EmissionRating high = EmissionRating.builder().enterpriseId(2L).ratingYear("2025")
+                .totalEmission(new BigDecimal("1500")).build();
+        high.setId(2L);
+        when(ratingRepository.findByEnterpriseIdAndRatingYearAndDeletedFalse(1L, "2025")).thenReturn(Optional.empty());
+        when(ratingRepository.save(any(EmissionRating.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(ratingRepository.findByRatingYearAndDeletedFalseOrderByTotalEmissionAsc("2025"))
+                .thenReturn(List.of(low, high));
+
+        EmissionRating result = emissionRatingService.rateEnterprise(1L, "2025",
+                new BigDecimal("500"), null, 99L);
+
+        assertEquals(0, result.getPercentileRank());
+        assertEquals(100, high.getPercentileRank());
+        verify(ratingRepository, times(3)).save(any(EmissionRating.class));
+    }
+
+    @Test
+    @DisplayName("并列排放量共享同一百分位")
+    void rateEnterprise_tiesSharePercentile() {
+        EmissionRating a = EmissionRating.builder().enterpriseId(1L).ratingYear("2025")
+                .totalEmission(new BigDecimal("800")).build();
+        a.setId(1L);
+        EmissionRating b = EmissionRating.builder().enterpriseId(2L).ratingYear("2025")
+                .totalEmission(new BigDecimal("800")).build();
+        b.setId(2L);
+        EmissionRating c = EmissionRating.builder().enterpriseId(3L).ratingYear("2025")
+                .totalEmission(new BigDecimal("2000")).build();
+        c.setId(3L);
+        when(ratingRepository.findByEnterpriseIdAndRatingYearAndDeletedFalse(1L, "2025")).thenReturn(Optional.empty());
+        when(ratingRepository.save(any(EmissionRating.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(ratingRepository.findByRatingYearAndDeletedFalseOrderByTotalEmissionAsc("2025"))
+                .thenReturn(List.of(a, b, c));
+
+        emissionRatingService.rateEnterprise(1L, "2025", new BigDecimal("800"), null, 99L);
+
+        assertEquals(0, a.getPercentileRank());
+        assertEquals(0, b.getPercentileRank());
+        assertEquals(100, c.getPercentileRank());
+    }
+
+    @Test
+    @DisplayName("单人 cohort 百分位为 0")
+    void rateEnterprise_singleEnterprisePercentileZero() {
+        EmissionRating solo = EmissionRating.builder().enterpriseId(1L).ratingYear("2025")
+                .totalEmission(new BigDecimal("500")).build();
+        solo.setId(1L);
+        when(ratingRepository.findByEnterpriseIdAndRatingYearAndDeletedFalse(1L, "2025")).thenReturn(Optional.empty());
+        when(ratingRepository.save(any(EmissionRating.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(ratingRepository.findByRatingYearAndDeletedFalseOrderByTotalEmissionAsc("2025"))
+                .thenReturn(List.of(solo));
+
+        EmissionRating result = emissionRatingService.rateEnterprise(1L, "2025",
+                new BigDecimal("500"), null, 99L);
+
+        assertEquals(0, result.getPercentileRank());
+    }
 }

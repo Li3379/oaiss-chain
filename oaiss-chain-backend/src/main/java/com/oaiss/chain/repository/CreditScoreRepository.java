@@ -2,6 +2,7 @@ package com.oaiss.chain.repository;
 
 import com.oaiss.chain.entity.CreditScore;
 import org.springframework.data.domain.Page;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -45,4 +46,10 @@ public interface CreditScoreRepository extends JpaRepository<CreditScore, Long> 
      * 分页查询所有未删除的信誉分
      */
     Page<CreditScore> findByDeletedFalse(Pageable pageable);
-}
+
+    /**
+     * 交易受限名单（R-03 公示载体）：tradeRestricted 或 accountFrozen 或 delisted 任一为真。
+     */
+    @org.springframework.data.jpa.repository.Query("SELECT c FROM CreditScore c WHERE c.deleted = false " +
+            "AND (c.tradeRestricted = true OR c.accountFrozen = true OR c.delisted = true)")
+    List<CreditScore> findByAnyRestrictionAndDeletedFalse();}

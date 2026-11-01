@@ -145,7 +145,39 @@ public class EmissionRatingService {
                         .sourceReportCount(sourceReportCount)
                         .build());
 
-        return ratingRepository.save(rating);
+        EmissionRating saved = ratingRepository.save(rating);
+        recalculatePercentiles(year, saved);
+        return saved;
+    }
+
+    /**
+     * 回写同年度全体企业的排放百分位（0-100，越小越好；并列共享同一值）。
+     * 在每次评级保存后重算整组 cohort，保证任一企业重评时其余企业百分位同步刷新。
+     */
+    private void recalculatePercentiles(String year, EmissionRating current) {
+        List<EmissionRating> cohort = ratingRepository
+                .findByRatingYearAndDeletedFalseOrderByTotalEmissionAsc(year);
+        if (cohort.isEmpty()) {
+            return;
+        }
+        for (EmissionRating r : cohort) {
+            long less = cohort.stream()
+                    .filter(o -> o.getTotalEmission().compareTo(r.getTotalEmission()) < 0)
+                    .count();
+            long greater = cohort.stream()
+                    .filter(o -> o.getTotalEmission().compareTo(r.getTotalEmission()) > 0)
+                    .count();
+            int percentile = (less + greater == 0) ? 0
+                    : (int) Math.round(100.0 * less / (less + greater));
+            if (!Integer.valueOf(percentile).equals(r.getPercentileRank())) {
+                r.setPercentileRank(percentile);
+                ratingRepository.save(r);
+            }
+        }
+        cohort.stream()
+                .filter(r -> r.getEnterpriseId().equals(current.getEnterpriseId()))
+                .findFirst()
+                .ifPresent(match -> current.setPercentileRank(match.getPercentileRank()));
     }
 
     /**

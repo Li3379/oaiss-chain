@@ -55,6 +55,14 @@ public class CreditScore extends BaseEntity {
     private Boolean accountFrozen = false;
 
     /**
+     * 管理员下市处罚（R-03）：true=禁止碳交易直至恢复上市。
+     * 与信誉阈值自动启停解耦——checkThresholds 不触碰本字段，手动下市不会被覆盖。
+     */
+    @Column(name = "delisted", nullable = false)
+    @Builder.Default
+    private Boolean delisted = false;
+
+    /**
      * 最近评估时间
      */
     @Column(name = "last_evaluated_at")

@@ -21,6 +21,12 @@ public class CreditScoreResponse {
     private String level;
     private Boolean tradeRestricted;
     private Boolean accountFrozen;
+
+    /** 管理员下市处罚状态（true=禁止碳交易） */
+    private Boolean delisted;
+
+    /** 目标用户 userId（受限名单操作定位用） */
+    private Long userId;
     private LocalDateTime lastEvaluatedAt;
     private LocalDateTime createdAt;
 }

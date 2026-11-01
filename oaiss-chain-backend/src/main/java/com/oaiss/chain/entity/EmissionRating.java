@@ -60,7 +60,7 @@ public class EmissionRating extends BaseEntity {
     private Integer ratingScore;
 
     /**
-     * 同行业排名百分位（0-100，越小越好）
+     * 同年度全体参评企业排放分位（0-100，越小越好，并列共享）
      */
     @Column(name = "percentile_rank")
     private Integer percentileRank;

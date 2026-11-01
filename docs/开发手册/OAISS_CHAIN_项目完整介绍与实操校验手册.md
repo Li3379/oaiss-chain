@@ -981,7 +981,7 @@ ENTERPRISE（`POST /emission/ratings`、`GET /emission/my-rating` 等）。
 #### 术语解释
 
 - **排放评级**：把排放表现分档（A/B/C…），便于横向比较。
-- **百分位（percentile）**：在全体企业中的相对位置。
+- **百分位（percentile）**：在同年度参评企业中的相对位置（越小越好，评级保存后自动回写）。
 - **预测月数（horizon）**：向后预测多少个月，换算成天数传给 ML 的 Prophet 模型。
 
 #### 实操校验步骤
