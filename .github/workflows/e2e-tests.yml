@@ -367,12 +367,27 @@ jobs:
       - name: Run backend
         run: |
           cd oaiss-chain-backend
-          java -jar target/*.jar &
+          # 输出同时写文件，便于等待失败时回溯启动过程
+          java -jar target/*.jar > ../backend.log 2>&1 &
           echo "BACKEND_PID=$!" >> "$GITHUB_ENV"
 
       - name: Wait for backend
         run: |
-          timeout 120 bash -c 'until curl -sf http://localhost:8080/api/v1/actuator/health > /dev/null 2>&1; do sleep 3; done'
+          # 180s：首次启动要跑完 19 个 Flyway 迁移并初始化缓存预热，
+          # 原生健康检查还要连 MySQL/Redis/S3 三个服务。本地约 18s，
+          # 但 Runner 冷启动 + 服务容器就绪延迟会显著拉长。
+          set +e
+          timeout 180 bash -c 'until curl -sf http://localhost:8080/api/v1/actuator/health > /dev/null 2>&1; do sleep 3; done'
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::backend did not become healthy within 180s"
+            echo "--- last 120 lines of backend log ---"
+            tail -120 backend.log 2>/dev/null || echo "(no backend.log captured)"
+            echo "--- health endpoint raw response ---"
+            curl -sv http://localhost:8080/api/v1/actuator/health 2>&1 | tail -20 || true
+            exit 1
+          fi
           echo "Backend is healthy"
 
       - name: Run E2E tests (smoke)
