@@ -18,6 +18,16 @@ export default defineConfig({
     : isFlowMode
       ? './tests/e2e/flows'
       : './tests/e2e/smoke',
+  // CI 中排除人工排查用的探针与调试脚本。
+  //
+  // `*-probe.spec.ts` 与 `*debug*.spec.ts` 是开发期用来「对着真实后端数据
+  // 逐项核对」的脚本：它们假设库里有特定数据、会打印大量诊断输出、
+  // 个别还会等待长超时（focus-debug 单条就要跑 10 分钟，直接吃掉整个
+  // 30 分钟 job 预算，导致运行被 cancelled）。
+  //
+  // 它们在本地手工跑有价值，但放进自动回归只会带来噪音与超时。
+  // 正式回归由 *.smoke.spec.ts 与 full-functional.spec.ts 覆盖。
+  testIgnore: process.env.CI ? ['**/*-probe.spec.ts', '**/*debug*.spec.ts'] : [],
   timeout: isV11Mode ? 45000 : isFlowMode ? 30000 : 15000,
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
