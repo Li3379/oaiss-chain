@@ -111,6 +111,11 @@ jobs:
       MINIO_ACCESS_KEY: minio-test-access
       MINIO_SECRET_KEY: minio-test-secret-key
       API_BASE_URL: http://localhost:8080/api/v1
+      # 私钥加密密钥。AesGcmEncryptor 在构造时强制要求该变量，缺失即抛
+      # IllegalStateException 让应用启动失败——这是有意的 Fail-Closed 设计，
+      # 防止私钥在无加密情况下落库。CI 只跑 Flyway 种子数据，不涉及真实密钥，
+      # 因此用固定测试值：32 字节 base64（openssl rand -base64 32 的格式）。
+      RSA_KEK: KP/oKs7nQn3oWivvwFZMEEFgD6fVBGzS72DBTzJwH0g=
 
     steps:
       - name: Checkout
