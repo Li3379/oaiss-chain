@@ -479,4 +479,61 @@ class EnterpriseRepositoryTest {
                 }
         );
     }
+
+    // ==================== Batch 1: 交易对手搜索 ====================
+
+    @Test
+    @DisplayName("searchForCounterparty 按企业名称模糊匹配（忽略大小写）")
+    void searchForCounterparty_byName() {
+        Page<Enterprise> page = enterpriseRepository.searchForCounterparty(
+                "绿色", null, PageRequest.of(0, 10));
+
+        assertThat(page.getContent())
+                .extracting(Enterprise::getUserId)
+                .contains(1001L)
+                .doesNotContain(1002L);
+    }
+
+    @Test
+    @DisplayName("searchForCounterparty 按统一社会信用代码模糊匹配")
+    void searchForCounterparty_byCreditCode() {
+        // 取实体真实信用码的前 6 位作为关键词，避免硬编码（夹具值可能被脱敏占位符替换）
+        String prefix = enterprise1.getCreditCode().substring(0, 6);
+        Page<Enterprise> page = enterpriseRepository.searchForCounterparty(
+                prefix, null, PageRequest.of(0, 10));
+
+        assertThat(page.getContent())
+                .extracting(Enterprise::getUserId)
+                .contains(1001L);
+    }
+
+    @Test
+    @DisplayName("searchForCounterparty 排除指定企业自身")
+    void searchForCounterparty_excludesSelf() {
+        Page<Enterprise> page = enterpriseRepository.searchForCounterparty(
+                "科技", enterprise1.getId(), PageRequest.of(0, 10));
+
+        assertThat(page.getContent())
+                .extracting(Enterprise::getId)
+                .doesNotContain(enterprise1.getId());
+    }
+
+    @Test
+    @DisplayName("searchForCounterparty selfId 为 null 时不过滤（ADMIN 无关联企业场景）")
+    void searchForCounterparty_nullSelfId() {
+        Page<Enterprise> page = enterpriseRepository.searchForCounterparty(
+                "科技", null, PageRequest.of(0, 10));
+
+        // NULL 场景必须能返回结果；若 JPQL 写成 e.id <> :selfId 则会因 id <> NULL 恒 UNKNOWN 而返回 0 行
+        assertThat(page.getContent()).isNotEmpty();
+    }
+
+    @Test
+    @DisplayName("searchForCounterparty 不返回已软删除企业")
+    void searchForCounterparty_excludesDeleted() {
+        Page<Enterprise> page = enterpriseRepository.searchForCounterparty(
+                "已删除", null, PageRequest.of(0, 10));
+
+        assertThat(page.getContent()).isEmpty();
+    }
 }

@@ -8,7 +8,11 @@ import com.oaiss.chain.exception.BusinessException;
 import com.oaiss.chain.constant.ErrorCode;
 import com.oaiss.chain.security.JwtUserDetails;
 import com.oaiss.chain.service.EnterpriseAdmissionService;
+import com.oaiss.chain.dto.EnterpriseSearchResponse;
+import com.oaiss.chain.security.JwtUserDetails;
 import com.oaiss.chain.service.EnterpriseService;
+import org.springframework.data.domain.Page;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -156,5 +160,41 @@ public class EnterpriseController {
             @Parameter(description = "企业ID", required = true, example = "1") @PathVariable Long enterpriseId) {
         Enterprise enterprise = enterpriseService.getEnterpriseById(enterpriseId);
         return ApiResponse.success(enterprise);
+    }
+
+    /**
+     * 【业务功能】：按企业名称或统一社会信用代码搜索交易对手
+     * 【对应前端页面】：views/enterprise/TradingP2P.vue（P2P 建单的对手方选择器）
+     * 【对应前端API】：api/enterprise.ts -> searchEnterprises()
+     * 【可见UI操作】：在「创建P2P交易」弹窗的对手方下拉框输入关键词，远程搜索匹配企业
+     *
+     * 【为什么需要它】：原实现取信誉榜前 50 名再逐个查详情（N+1，最多 51 次请求），
+     * 企业超过 50 家时静默截断，且把内部 userId 拼进了下拉文案。本端点取代该做法。
+     *
+     * 【授权】：企业需要选对手方；管理员签发证书时也需要选企业（原实现同样用 50 截断）。
+     * 审核员与监管不需要该通道（他们有各自的企业数据来源）。
+     *
+     * 【返回】：最小字段 DTO，不含联系方式、经营数据与配额；详见 EnterpriseSearchResponse。
+     */
+    @AuditLog(module = "企业管理", action = "SEARCHCOUNTERPARTY", description = "企业管理 搜索交易对手")
+    @GetMapping("/search")
+    @PreAuthorize("hasAnyRole('ENTERPRISE', 'ADMIN')")
+    @Operation(summary = "搜索交易对手", description = "按企业名称或统一社会信用代码模糊搜索，返回最小字段集")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "查询成功"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "无权限")
+    })
+    @SecurityRequirement(name = "Bearer Authentication")
+    public ApiResponse<Page<EnterpriseSearchResponse>> searchCounterparties(
+            @Parameter(description = "关键词：企业名称或统一社会信用代码")
+            @RequestParam(required = false) String keyword,
+            @Parameter(description = "页码（从1开始）", example = "1") @RequestParam(defaultValue = "1") Integer page,
+            @Parameter(description = "每页大小", example = "20") @RequestParam(defaultValue = "20") Integer size,
+            @Parameter(hidden = true) @AuthenticationPrincipal JwtUserDetails currentUser) {
+
+        // 管理员没有关联企业，enterpriseId 为 null —— Repository 侧已做 NULL-safe 处理
+        Long selfEnterpriseId = currentUser != null ? currentUser.getEnterpriseId() : null;
+        return ApiResponse.success(
+                enterpriseService.searchForCounterparty(keyword, selfEnterpriseId, page, size));
     }
 }

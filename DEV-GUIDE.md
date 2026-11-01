@@ -155,7 +155,7 @@ bash ./scripts/stability-baseline.sh
 | 事实 | 值 | 说明 |
 |------|-----|------|
 | Controllers | 25 | `controller/*.java` 数（2026-10-31 新增 RegulatoryFindingController、TradeAuditController） |
-| REST 端点 | 160 | `@Mapping` 注解总数（2026-11-01 新增 `/admin/blockchain/mark-historical-mock`） |
+| REST 端点 | 161 | `@Mapping` 注解总数（2026-11-01 新增 `/admin/blockchain/mark-historical-mock`、`/enterprise/search`） |
 | Services | 47 | 44 主包 + 3 ml/（2026-10-31 新增 CertificateGateService、ChainReconciliationService） |
 | Entities | 28 | 27 @Entity + BaseEntity |
 | Tables | 27 | 现存 27 张（曾创建 28 张，authenticator 在 V8 DROP 退场） |
