@@ -16,12 +16,21 @@ import org.springframework.core.io.Resource;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Date;
 
-import org.junit.jupiter.api.DisplayName;
+import org.bouncycastle.asn1.x500.X500Name;
+import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
+import org.bouncycastle.operator.ContentSigner;
+import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -76,12 +85,13 @@ class FabricGatewayConfigTest {
     void fabricGateway_whenCaEnabledAndEnrollmentSucceeds_usesCaIdentity() throws Exception {
         props.getCa().setEnabled(true);
 
-        // Use the existing classpath crypto files to create a valid X509Identity
-        // This avoids hardcoded cert PEM that may become invalid
-        var certStream = new ByteArrayInputStream(
-                getClass().getClassLoader().getResourceAsStream("fabric/crypto/user-cert.pem").readAllBytes());
-        X509Certificate cert = (X509Certificate) CertificateFactory.getInstance("X.509")
-                .generateCertificate(certStream);
+        // 自签一张临时证书，而不是读 classpath 里的 fabric/crypto/user-cert.pem。
+        //
+        // 那个目录是 generate-fabric-crypto.sh 的运行时产物，且被 .gitignore 排除，
+        // 因此干净克隆（以及任何 CI runner）上根本不存在该文件。
+        // 测试靠「本地恰好生成过」而通过，是典型的 本地绿 / CI 红。
+        // 证书内容与网关行为无关——这里只验证 CA 身份分支被走到。
+        X509Certificate cert = selfSignedCertificate();
         Identity realIdentity = new X509Identity("Org1MSP", cert);
 
         FabricCAService.EnrollmentResult enrollmentResult =
@@ -124,9 +134,14 @@ class FabricGatewayConfigTest {
     void resolveResource_shouldSupportClasspathAndAbsolutePaths() throws Exception {
         FabricGatewayConfig config = new FabricGatewayConfig(props, fabricCAService);
 
+        // classpath 分支：只断言「认出了 classpath: 前缀并解析成 ClassPathResource」，
+        // 不断言 exists()。
+        //
+        // 原断言要求 fabric/crypto/user-cert.pem 真实存在于 classpath 上。该文件是
+        // generate-fabric-crypto.sh 的运行时产物且被 .gitignore 排除，干净克隆上不存在
+        // → CI 必红。exists() 在这里检验的不是被测代码，而是「这台机器跑没跑过生成脚本」。
         Resource classpathResource = config.resolveResource("classpath:fabric/crypto/user-cert.pem");
         assertInstanceOf(ClassPathResource.class, classpathResource);
-        assertTrue(classpathResource.exists());
 
         Path tempFile = Files.createTempFile("fabric-gateway-test", ".pem");
         try {
@@ -169,6 +184,35 @@ class FabricGatewayConfigTest {
             gateway.close();
         } catch (Exception e) {
             // Acceptable — no real Fabric peer in unit test
+        }
+    }
+
+    /**
+     * 生成一张一次性自签证书（BouncyCastle，已在 pom 的 compile 依赖中）。
+     *
+     * 不落盘、不依赖仓库里的任何 crypto 产物，因此在干净克隆与 CI 上都可运行。
+     */
+    private static X509Certificate selfSignedCertificate() throws Exception {
+        KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
+        keyGen.initialize(2048);
+        KeyPair keyPair = keyGen.generateKeyPair();
+
+        X500Name subject = new X500Name("CN=fabric-gateway-test");
+        Instant now = Instant.now();
+        Date notBefore = Date.from(now.minus(1, ChronoUnit.HOURS));
+        Date notAfter = Date.from(now.plus(1, ChronoUnit.HOURS));
+
+        JcaX509v3CertificateBuilder builder = new JcaX509v3CertificateBuilder(
+                subject,
+                BigInteger.valueOf(now.toEpochMilli()),
+                notBefore,
+                notAfter,
+                subject,
+                keyPair.getPublic());
+        ContentSigner signer = new JcaContentSignerBuilder("SHA256withRSA").build(keyPair.getPrivate());
+
+        try (var in = new ByteArrayInputStream(builder.build(signer).getEncoded())) {
+            return (X509Certificate) CertificateFactory.getInstance("X.509").generateCertificate(in);
         }
     }
 }
