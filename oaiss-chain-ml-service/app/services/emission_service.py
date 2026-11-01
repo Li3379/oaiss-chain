@@ -97,8 +97,7 @@ class EmissionService:
             raise HTTPException(
                 status_code=422,
                 detail=(
-                    f"Input length mismatch: dates={n_dates}, "
-                    f"emissions={n_emissions}"
+                    f"Input length mismatch: dates={n_dates}, emissions={n_emissions}"
                 ),
             )
 
@@ -106,7 +105,7 @@ class EmissionService:
             raise HTTPException(
                 status_code=422,
                 detail="Insufficient data for emission forecasting: "
-                       "need at least 2 data points",
+                "need at least 2 data points",
             )
 
     def _prophet_forecast(
@@ -138,9 +137,7 @@ class EmissionService:
 
             # Add explicit yearly seasonality when sufficient data exists
             if len(dates) > 24:
-                model.add_seasonality(
-                    name="yearly", period=365.25, fourier_order=10
-                )
+                model.add_seasonality(name="yearly", period=365.25, fourier_order=10)
 
             model.fit(df)
 
@@ -188,7 +185,9 @@ class EmissionService:
                 forecast_dates = future_dates.strftime("%Y-%m-%d").tolist()
 
                 forecast_emissions = np.clip(pred_y, 0, None).round(2).tolist()
-                lower_bound = np.clip(pred_y - 1.28 * residual_std, 0, None).round(2).tolist()
+                lower_bound = (
+                    np.clip(pred_y - 1.28 * residual_std, 0, None).round(2).tolist()
+                )
                 upper_bound = (pred_y + 1.28 * residual_std).round(2).tolist()
 
                 return forecast_emissions, lower_bound, upper_bound, forecast_dates

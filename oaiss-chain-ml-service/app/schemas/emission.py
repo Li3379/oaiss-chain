@@ -9,7 +9,9 @@ class EmissionForecastRequest(BaseModel):
     """Request schema for carbon emission forecasting."""
 
     enterprise_id: int = Field(..., description="Enterprise ID")
-    dates: list[str] = Field(..., min_length=1, max_length=1000, description="ISO 8601 date strings")
+    dates: list[str] = Field(
+        ..., min_length=1, max_length=1000, description="ISO 8601 date strings"
+    )
     emissions: list[float] = Field(
         ..., min_length=1, max_length=1000, description="Historical emission values"
     )

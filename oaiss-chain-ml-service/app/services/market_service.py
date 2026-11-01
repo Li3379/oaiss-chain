@@ -58,8 +58,13 @@ class MarketService:
             self._prophet_forecast(dates, prices, horizon)
         )
 
-        # XGBoost volume forecast (supplementary signal)
-        forecast_volumes = self._xgboost_forecast(volumes, horizon)
+        # XGBoost volume forecast.
+        #
+        # 注意：该结果当前**没有出现在响应里**——MarketForecastResponse 只有
+        # forecast_prices / lower_bound / upper_bound / trend，没有成交量字段。
+        # 保留计算是为了后续真正把成交量信号接入响应；用下划线前缀标明
+        # 「有意暂存、尚未对外」，避免被误读成遗漏。
+        _forecast_volumes = self._xgboost_forecast(volumes, horizon)
 
         # Determine trend direction
         trend = self._classify_trend(forecast_prices)
@@ -127,16 +132,18 @@ class MarketService:
             # Extract only the forecast period (last horizon rows)
             forecast_tail = forecast.iloc[-horizon:]
 
-            forecast_dates: list[str] = forecast_tail["ds"].dt.strftime(
-                "%Y-%m-%d"
-            ).tolist()
+            forecast_dates: list[str] = (
+                forecast_tail["ds"].dt.strftime("%Y-%m-%d").tolist()
+            )
             # Prices/volumes are physically non-negative; Prophet can
             # extrapolate negative yhat with flat/short input series.
             forecast_prices: list[float] = (
                 np.clip(forecast_tail["yhat"].to_numpy(), 0, None).round(2).tolist()
             )
             lower_bound: list[float] = (
-                np.clip(forecast_tail["yhat_lower"].to_numpy(), 0, None).round(2).tolist()
+                np.clip(forecast_tail["yhat_lower"].to_numpy(), 0, None)
+                .round(2)
+                .tolist()
             )
             upper_bound: list[float] = forecast_tail["yhat_upper"].round(2).tolist()
 
@@ -167,7 +174,9 @@ class MarketService:
                 forecast_dates = future_dates.strftime("%Y-%m-%d").tolist()
 
                 forecast_prices = np.clip(pred_y, 0, None).round(2).tolist()
-                lower_bound = np.clip(pred_y - 1.28 * residual_std, 0, None).round(2).tolist()
+                lower_bound = (
+                    np.clip(pred_y - 1.28 * residual_std, 0, None).round(2).tolist()
+                )
                 upper_bound = (pred_y + 1.28 * residual_std).round(2).tolist()
 
                 return forecast_prices, lower_bound, upper_bound, forecast_dates
@@ -178,9 +187,7 @@ class MarketService:
                     detail=f"Price forecasting failed: {exc}",
                 ) from exc
 
-    def _xgboost_forecast(
-        self, volumes: np.ndarray, horizon: int
-    ) -> list[float]:
+    def _xgboost_forecast(self, volumes: np.ndarray, horizon: int) -> list[float]:
         """Run XGBoost regression for supply/demand volume trend.
 
         Features: day-of-week, day-of-month, month, lag-7 volume, lag-30 volume.
@@ -214,20 +221,28 @@ class MarketService:
 
             for i in range(horizon):
                 day_idx = n + i
-                lag_7 = recent_volumes[-7] if len(recent_volumes) >= 7 else float(
-                    np.mean(recent_volumes)
+                lag_7 = (
+                    recent_volumes[-7]
+                    if len(recent_volumes) >= 7
+                    else float(np.mean(recent_volumes))
                 )
-                lag_30 = recent_volumes[-30] if len(recent_volumes) >= 30 else float(
-                    np.mean(recent_volumes)
+                lag_30 = (
+                    recent_volumes[-30]
+                    if len(recent_volumes) >= 30
+                    else float(np.mean(recent_volumes))
                 )
 
-                feat = np.array([[
-                    day_idx % 7,       # day-of-week
-                    day_idx % 30,      # day-of-month
-                    day_idx % 12,      # month
-                    lag_7,
-                    lag_30,
-                ]])
+                feat = np.array(
+                    [
+                        [
+                            day_idx % 7,  # day-of-week
+                            day_idx % 30,  # day-of-month
+                            day_idx % 12,  # month
+                            lag_7,
+                            lag_30,
+                        ]
+                    ]
+                )
 
                 pred = float(model.predict(feat)[0])
                 pred = max(0.0, round(pred, 2))
@@ -263,10 +278,10 @@ class MarketService:
         for i in range(min_lag, n - 1):
             day_idx = i + 1
             feat = [
-                day_idx % 7,       # day-of-week
-                day_idx % 30,      # day-of-month
-                day_idx % 12,      # month
-                float(volumes[i - 7]),   # lag-7
+                day_idx % 7,  # day-of-week
+                day_idx % 30,  # day-of-month
+                day_idx % 12,  # month
+                float(volumes[i - 7]),  # lag-7
                 float(volumes[i - 30]),  # lag-30
             ]
             features.append(feat)

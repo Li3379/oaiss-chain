@@ -2,7 +2,6 @@
 Tests for AI Dual-Carbon Copilot service and endpoints.
 """
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.config import settings

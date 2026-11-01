@@ -19,4 +19,3 @@ def require_ml_service_secret(
 
 # Alias for compatibility with security audit naming
 verify_ml_service_secret = require_ml_service_secret
-

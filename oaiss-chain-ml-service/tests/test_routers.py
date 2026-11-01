@@ -214,9 +214,11 @@ class TestAuthentication:
 class TestDoSProtection:
     """Test that requests exceeding array size limits are rejected (422) to prevent DoS."""
 
-    def test_market_trend_excessive_data_points_rejected_422(self, client, auth_headers):
+    def test_market_trend_excessive_data_points_rejected_422(
+        self, client, auth_headers
+    ):
         oversized_payload = {
-            "dates": [f"2025-01-01" for _ in range(1001)],
+            "dates": ["2025-01-01" for _ in range(1001)],
             "prices": [50.0] * 1001,
             "volumes": [1000.0] * 1001,
             "horizon_days": 7,
@@ -228,10 +230,12 @@ class TestDoSProtection:
         )
         assert response.status_code == 422
 
-    def test_emission_forecast_excessive_data_points_rejected_422(self, client, auth_headers):
+    def test_emission_forecast_excessive_data_points_rejected_422(
+        self, client, auth_headers
+    ):
         oversized_payload = {
             "enterprise_id": 1,
-            "dates": [f"2025-01-01" for _ in range(1001)],
+            "dates": ["2025-01-01" for _ in range(1001)],
             "emissions": [100.0] * 1001,
             "sector": "power_generation",
             "horizon_days": 7,
@@ -242,4 +246,3 @@ class TestDoSProtection:
             headers=auth_headers,
         )
         assert response.status_code == 422
-

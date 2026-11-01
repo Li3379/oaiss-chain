@@ -114,7 +114,9 @@ class TestTrendClassification:
         response = service.predict(request)
         assert response.trend == "up"
 
-    def test_trend_classification_down(self, service, sample_dates, decreasing_emissions):
+    def test_trend_classification_down(
+        self, service, sample_dates, decreasing_emissions
+    ):
         request = EmissionForecastRequest(
             enterprise_id=1,
             dates=sample_dates,

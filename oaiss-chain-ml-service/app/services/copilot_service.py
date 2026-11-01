@@ -47,16 +47,23 @@ class CopilotService:
             targets.append((self.ollama_base, "ollama", self.ollama_model))
         return targets
 
-    def _call_llm_if_available(self, system_prompt: str, user_prompt: str) -> tuple[str | None, str]:
+    def _call_llm_if_available(
+        self, system_prompt: str, user_prompt: str
+    ) -> tuple[str | None, str]:
         """Call external or local LLM if configured and accessible; return (content, model_used)."""
         targets = self._llm_targets()
         if not targets:
-            logger.debug("No LLM configured (LLM_API_KEY / OLLAMA_BASE_URL empty), using built-in rule engine")
+            logger.debug(
+                "No LLM configured (LLM_API_KEY / OLLAMA_BASE_URL empty), using built-in rule engine"
+            )
 
         for base_url, key, model in targets:
             try:
                 url = f"{base_url.rstrip('/')}/chat/completions"
-                headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+                headers = {
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": "application/json",
+                }
                 payload = {
                     "model": model,
                     "messages": [
@@ -71,14 +78,24 @@ class CopilotService:
                     if resp.status_code == 200:
                         data = resp.json()
                         content = data["choices"][0]["message"]["content"]
-                        logger.info("Successfully received LLM response from %s with model %s", base_url, model)
+                        logger.info(
+                            "Successfully received LLM response from %s with model %s",
+                            base_url,
+                            model,
+                        )
                         return content, model
             except Exception as e:
-                logger.debug("LLM endpoint %s not available (%s), continuing fallback", base_url, e)
+                logger.debug(
+                    "LLM endpoint %s not available (%s), continuing fallback",
+                    base_url,
+                    e,
+                )
 
         return None, self.RULE_ENGINE_NAME
 
-    def _insufficient_data_response(self, req: ReportAnalysisRequest) -> ReportAnalysisResponse:
+    def _insufficient_data_response(
+        self, req: ReportAnalysisRequest
+    ) -> ReportAnalysisResponse:
         """排放量为空/为零时如实返回「无法诊断」，不生成任何推算数值。"""
         message = (
             f"报告（{req.report_id if req.report_id is not None else '未提供编号'}）没有可用的排放量数据："
@@ -98,7 +115,9 @@ class CopilotService:
             insufficient_data_reason=message,
         )
 
-    def generate_report_analysis(self, req: ReportAnalysisRequest) -> ReportAnalysisResponse:
+    def generate_report_analysis(
+        self, req: ReportAnalysisRequest
+    ) -> ReportAnalysisResponse:
         """Generate structured carbon audit and emission diagnosis report."""
         total = req.total_emission
         s1 = req.scope1_emission
@@ -108,10 +127,22 @@ class CopilotService:
         # 如果传入为 0，尝试从 emission_details 解析真实数值
         if total <= 0 and req.emission_details:
             try:
-                ed = req.emission_details if isinstance(req.emission_details, dict) else json.loads(str(req.emission_details))
+                ed = (
+                    req.emission_details
+                    if isinstance(req.emission_details, dict)
+                    else json.loads(str(req.emission_details))
+                )
                 total = float(ed.get("totalEmission", ed.get("total_emission", 0)) or 0)
-                s1 = float(ed.get("scope1", 0) if isinstance(ed.get("scope1"), (int, float)) else 0)
-                s2 = float(ed.get("scope2", 0) if isinstance(ed.get("scope2"), (int, float)) else 0)
+                s1 = float(
+                    ed.get("scope1", 0)
+                    if isinstance(ed.get("scope1"), (int, float))
+                    else 0
+                )
+                s2 = float(
+                    ed.get("scope2", 0)
+                    if isinstance(ed.get("scope2"), (int, float))
+                    else 0
+                )
                 if desulf <= 0 and isinstance(ed.get("desulf"), (int, float)):
                     desulf = float(ed.get("desulf"))
             except Exception:
@@ -127,7 +158,11 @@ class CopilotService:
         s2_pct = round((s2 / total) * 100, 1)
         desulf_pct = round((desulf / total) * 100, 1)
 
-        primary_source = "化石燃料直接燃烧排放 (范围一)" if s1 >= s2 else "外购电力/热力间接排放 (范围二)"
+        primary_source = (
+            "化石燃料直接燃烧排放 (范围一)"
+            if s1 >= s2
+            else "外购电力/热力间接排放 (范围二)"
+        )
 
         system_prompt = (
             "你是一名具备国家注册碳核查员资格的权威双碳专家，精通 GB/T 32150-2015 工业企业温室气体排放标准。"
@@ -168,8 +203,13 @@ class CopilotService:
             full_text = (
                 f"【企业碳盘查与排放归因诊断报告】\n\n"
                 f"一、执行概要\n{summary}\n\n"
-                f"二、关键诊断发现\n" + "\n".join(f"{i+1}. {item}" for i, item in enumerate(key_findings)) + "\n\n"
-                f"三、工艺降碳与技术优化建议\n" + "\n".join(f"{i+1}. {item}" for i, item in enumerate(reduction_suggestions))
+                f"二、关键诊断发现\n"
+                + "\n".join(f"{i + 1}. {item}" for i, item in enumerate(key_findings))
+                + "\n\n"
+                "三、工艺降碳与技术优化建议\n"
+                + "\n".join(
+                    f"{i + 1}. {item}" for i, item in enumerate(reduction_suggestions)
+                )
             )
         else:
             full_text = llm_text.strip()
@@ -178,7 +218,11 @@ class CopilotService:
             findings_part: List[str] = []
             suggestions_part: List[str] = []
 
-            lines = [l.strip() for l in full_text.split("\n") if l.strip()]
+            lines = [
+                line_text.strip()
+                for line_text in full_text.split("\n")
+                if line_text.strip()
+            ]
             current_section = "summary"
             for line in lines:
                 if "诊断发现" in line or "关键发现" in line:
@@ -206,15 +250,23 @@ class CopilotService:
                             suggestions_part.append(clean_item)
 
             summary = summary_part if summary_part else full_text[:220] + "..."
-            key_findings = findings_part if len(findings_part) >= 2 else [
-                f"主要排放源锁定为 {primary_source}（占比 {max(s1_pct, s2_pct)}%）。",
-                f"范围一 {s1:,.2f} 吨与范围二 {s2:,.2f} 吨均已填报，可按 GB/T 32150-2015 口径复核。",
-            ]
-            reduction_suggestions = suggestions_part if len(suggestions_part) >= 2 else [
-                "推进风机与水泵变频调速节能改造，压减厂用电率。",
-                "扩大分布式绿电与绿证直购比例，抵消外购电间接碳排。",
-                "强化机组燃烧工况在线调优，将飞灰含碳量控制在 2.5% 以内。",
-            ]
+            key_findings = (
+                findings_part
+                if len(findings_part) >= 2
+                else [
+                    f"主要排放源锁定为 {primary_source}（占比 {max(s1_pct, s2_pct)}%）。",
+                    f"范围一 {s1:,.2f} 吨与范围二 {s2:,.2f} 吨均已填报，可按 GB/T 32150-2015 口径复核。",
+                ]
+            )
+            reduction_suggestions = (
+                suggestions_part
+                if len(suggestions_part) >= 2
+                else [
+                    "推进风机与水泵变频调速节能改造，压减厂用电率。",
+                    "扩大分布式绿电与绿证直购比例，抵消外购电间接碳排。",
+                    "强化机组燃烧工况在线调优，将飞灰含碳量控制在 2.5% 以内。",
+                ]
+            )
 
         # 核心密码学：对生成全文计算 SHA-256 存证指纹
         analysis_hash = hashlib.sha256(full_text.encode("utf-8")).hexdigest()
@@ -241,7 +293,10 @@ class CopilotService:
         if llm_text:
             return PolicyQAResponse(
                 answer=llm_text.strip(),
-                relevant_standards=["GB/T 32150-2015 工业企业温室气体排放核算和报告通则", "企业温室气体排放核算方法与报告指南 发电设施"],
+                relevant_standards=[
+                    "GB/T 32150-2015 工业企业温室气体排放核算和报告通则",
+                    "企业温室气体排放核算方法与报告指南 发电设施",
+                ],
                 model_used=model_used,
             )
 
@@ -260,7 +315,10 @@ class CopilotService:
                 "虽然直接排烟发生在发电厂，但由于是本企业用电驱动，按照污染者付费原则需记入本企业范围二。"
                 "计算公式为：净外购电量 (MWh) × 区域电网平均排放因子 (如全国电网平均因子 0.5810 tCO₂/MWh)。"
             )
-            standards = ["GB/T 32150-2015 第 4.2 条", "生态环境部《关于做好2023-2025年发电行业配额预分配工作的通知》"]
+            standards = [
+                "GB/T 32150-2015 第 4.2 条",
+                "生态环境部《关于做好2023-2025年发电行业配额预分配工作的通知》",
+            ]
         elif "氧化率" in q or "of" in q_lower:
             ans = (
                 "【碳氧化率 (OF, Oxidation Factor)】表示燃料中碳被完全燃烧氧化成 CO₂ 的质量比率（范围 0~1）。"
@@ -281,9 +339,13 @@ class CopilotService:
             )
             standards = ["GB/T 32150-2015 工业企业温室气体排放核算和报告通则"]
 
-        return PolicyQAResponse(answer=ans, relevant_standards=standards, model_used=model_used)
+        return PolicyQAResponse(
+            answer=ans, relevant_standards=standards, model_used=model_used
+        )
 
-    def get_procurement_advice(self, req: ProcurementAdviceRequest) -> ProcurementAdviceResponse:
+    def get_procurement_advice(
+        self, req: ProcurementAdviceRequest
+    ) -> ProcurementAdviceResponse:
         """Analyze compliance shortfall and provide actionable carbon procurement advice."""
         shortfall = round(req.current_emission - req.current_quota, 2)
         price = req.current_market_price
@@ -297,7 +359,7 @@ class CopilotService:
                 "建议立即启动分期采购，避开履约期临近时的全网集中抢购与价格脉冲峰值。"
             )
             actions = [
-                f"第一步：在双向拍卖市场以限价单分批挂买（建议出价 {price*0.98:.2f} ~ {price*1.01:.2f} 元），先锁定 40% 缺口（约 {shortfall*0.4:.0f} 吨）。",
+                f"第一步：在双向拍卖市场以限价单分批挂买（建议出价 {price * 0.98:.2f} ~ {price * 1.01:.2f} 元），先锁定 40% 缺口（约 {shortfall * 0.4:.0f} 吨）。",
                 "第二步：联系供应链上下游企业，通过系统 P2P 协议交易询价大宗碳配额，争取 2%~4% 的大宗协议折扣。",
                 "第三步：核查企业名下是否有可申报核证自愿减排量 (CCER) 的绿电或光伏项目，按政策上限抵销 5% 履约额。",
             ]
@@ -309,7 +371,7 @@ class CopilotService:
                 "缺口规模可控，建议结合未来 7 天 AI 碳价预测通道，在价格下探至支撑位时逢低吸筹补齐。"
             )
             actions = [
-                f"观察 AI 市场预测价格通道，在预测价格位于下轨时挂买入单（建议目标价 {price*0.97:.2f} 元）。",
+                f"观察 AI 市场预测价格通道，在预测价格位于下轨时挂买入单（建议目标价 {price * 0.97:.2f} 元）。",
                 "排查本月下半程机组排产计划，适度增加高热值低硫煤使用比重以收窄排放增量。",
             ]
         else:
@@ -321,7 +383,7 @@ class CopilotService:
                 f"若全量挂牌变现，按当前市价预计可实现碳资产收益约 {earned:,.2f} 元，亦可结转至下一履约周期储备。"
             )
             actions = [
-                f"策略 A（变现增收）：在双向拍卖市场挂出部分盈余配额（如挂牌 {surplus*0.5:.0f} 吨），价格可设定在 AI 预测上轨以获取溢价。",
+                f"策略 A（变现增收）：在双向拍卖市场挂出部分盈余配额（如挂牌 {surplus * 0.5:.0f} 吨），价格可设定在 AI 预测上轨以获取溢价。",
                 "策略 B（结转避险）：将核心盈余配额保留在账户中作为安全缓冲，以应对下个生产年度基准线收紧的风险。",
             ]
 

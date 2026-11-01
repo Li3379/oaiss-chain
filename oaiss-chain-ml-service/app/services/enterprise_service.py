@@ -53,22 +53,24 @@ class EnterpriseService:
         n_samples = 200
 
         # Generate synthetic normal enterprise data
-        synthetic = np.column_stack([
-            rng.normal(10, 3, n_samples),      # report_count
-            rng.normal(500, 100, n_samples),   # total_emissions
-            rng.normal(75, 10, n_samples),     # credit_score
-            rng.normal(3, 1, n_samples),       # emission_rating
-            rng.normal(200, 50, n_samples),    # transaction_volume
-            rng.normal(0.5, 0.5, n_samples),   # compliance_flags
-            rng.normal(50, 15, n_samples),     # avg_emission_per_report
-            rng.normal(30, 15, n_samples),     # days_since_last_report
-        ])
+        synthetic = np.column_stack(
+            [
+                rng.normal(10, 3, n_samples),  # report_count
+                rng.normal(500, 100, n_samples),  # total_emissions
+                rng.normal(75, 10, n_samples),  # credit_score
+                rng.normal(3, 1, n_samples),  # emission_rating
+                rng.normal(200, 50, n_samples),  # transaction_volume
+                rng.normal(0.5, 0.5, n_samples),  # compliance_flags
+                rng.normal(50, 15, n_samples),  # avg_emission_per_report
+                rng.normal(30, 15, n_samples),  # days_since_last_report
+            ]
+        )
         # Clip to physically valid ranges
-        synthetic = np.clip(synthetic, [
-            0, 0, 0, 0, 0, 0, 0, 0
-        ], [
-            1000, 10000, 100, 10, 10000, 20, 5000, 365
-        ])
+        synthetic = np.clip(
+            synthetic,
+            [0, 0, 0, 0, 0, 0, 0, 0],
+            [1000, 10000, 100, 10, 10000, 20, 5000, 365],
+        )
 
         # Fit scaler and IsolationForest
         self._scaler = StandardScaler()
@@ -123,16 +125,20 @@ class EnterpriseService:
         Raises:
             ValueError: If feature vector construction fails.
         """
-        features = np.array([[
-            request.report_count,
-            request.total_emissions,
-            request.credit_score,
-            request.emission_rating,
-            request.transaction_volume,
-            request.compliance_flags,
-            request.avg_emission_per_report,
-            request.days_since_last_report,
-        ]])
+        features = np.array(
+            [
+                [
+                    request.report_count,
+                    request.total_emissions,
+                    request.credit_score,
+                    request.emission_rating,
+                    request.transaction_volume,
+                    request.compliance_flags,
+                    request.avg_emission_per_report,
+                    request.days_since_last_report,
+                ]
+            ]
+        )
 
         scaled = self._scaler.transform(features)
 
@@ -142,7 +148,11 @@ class EnterpriseService:
 
         # Compliance classification
         class_pred = int(self._xgb_model.predict(scaled)[0])
-        status_map = {0: ComplianceStatus.COMPLIANT, 1: ComplianceStatus.AT_RISK, 2: ComplianceStatus.NON_COMPLIANT}
+        status_map = {
+            0: ComplianceStatus.COMPLIANT,
+            1: ComplianceStatus.AT_RISK,
+            2: ComplianceStatus.NON_COMPLIANT,
+        }
         compliance_status = status_map.get(class_pred, ComplianceStatus.AT_RISK)
 
         # Confidence from predict_proba
