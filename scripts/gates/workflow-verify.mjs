@@ -158,6 +158,39 @@ function checkShellExecutableBits() {
   return problems
 }
 
+/**
+ * 检查用了 Playwright 的 job 是否固定了 runner 版本。
+ *
+ * 背景：`ubuntu-latest` 已经从 24.04 迁移到 26.04，而 Playwright 1.59.1
+ * 明确不支持 ubuntu26.04-x64：
+ *
+ *   ERROR: Playwright does not support chromium on ubuntu26.04-x64
+ *
+ * 结果是浏览器装不上，所有 E2E 用例报 "Executable doesn't exist"——
+ * 报错看起来像 Playwright 坏了，实际是 runner 镜像升级导致的。
+ *
+ * `ubuntu-latest` 的含义随时会变，凡是依赖「镜像里有什么」的 job
+ * 都应该钉死版本。
+ *
+ * @returns {string[]} 问题列表
+ */
+function checkRunnerPinning() {
+  const problems = []
+  const files = readdirSync(WF_DIR).filter(f => f.endsWith('.yml') || f.endsWith('.yaml'))
+  for (const file of files) {
+    const lines = readFileSync(join(WF_DIR, file), 'utf8').split(/\r?\n/)
+    const text = lines.join('\n')
+    const needsPin = /playwright/i.test(text)
+    if (!needsPin) continue
+    // 只要有 runs-on: ubuntu-latest 而文件涉及 playwright 就告警
+    const badLine = lines.findIndex(l => /^\s*runs-on:\s*ubuntu-latest\s*$/.test(l))
+    if (badLine >= 0) {
+      problems.push(`${file}:${badLine + 1} 使用 ubuntu-latest，但该工作流依赖 Playwright（需固定 ubuntu-24.04）`)
+    }
+  }
+  return problems
+}
+
 function main() {
   console.log('=== GitHub Actions 工作流门禁 ===\n')
 
@@ -213,6 +246,16 @@ function main() {
     console.log('    修复: git update-index --chmod=+x <file>')
   } else {
     console.log('✓ 所有 .sh 脚本均带可执行位')
+  }
+
+  // runner 版本钉死（Playwright 与 ubuntu-latest 不兼容）
+  console.log('\n--- runner 版本钉死 ---')
+  const unpinned = checkRunnerPinning()
+  if (unpinned.length > 0) {
+    failures++
+    unpinned.forEach(p => console.log(`✗ ${p}`))
+  } else {
+    console.log('✓ 依赖 Playwright 的工作流已固定 runner 版本')
   }
 
   console.log('')

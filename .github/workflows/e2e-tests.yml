@@ -37,7 +37,16 @@ on:
 jobs:
   e2e:
     timeout-minutes: 30
-    runs-on: ubuntu-latest
+    # 固定到 24.04，不用 ubuntu-latest。
+    #
+    # ubuntu-latest 已迁移到 26.04，而当前 Playwright 1.59.1 明确报
+    #   "Playwright does not support chromium on ubuntu26.04-x64"
+    # 直接导致浏览器装不上、所有 E2E 用例报 "Executable doesn't exist"。
+    #
+    # 选择固定 runner 而不是升级 Playwright：runner 镜像升级是上游行为，
+    # 而 Playwright 大版本升级会带来断言/选择器行为变化，风险更大。
+    # 待 Playwright 支持 26.04 后再评估放开。
+    runs-on: ubuntu-24.04
 
     services:
       mysql:
