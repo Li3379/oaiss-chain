@@ -46,7 +46,7 @@ public class AuctionOrder extends BaseEntity {
     private BigDecimal quantity;
 
     /**
-     * 期望单价（元/吨）
+     * 期望单价（碳币/吨）
      */
     @Column(name = "price", nullable = false, precision = 15, scale = 2)
     private BigDecimal price;

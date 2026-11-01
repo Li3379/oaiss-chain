@@ -49,7 +49,7 @@ public class Transaction extends BaseEntity {
     private java.math.BigDecimal quantity;
 
     /**
-     * 单价（元/吨）
+     * 单价（碳币/吨）
      */
     @Column(name = "unit_price", nullable = false, precision = 15, scale = 2)
     private java.math.BigDecimal unitPrice;

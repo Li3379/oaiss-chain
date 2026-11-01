@@ -44,7 +44,7 @@ public class TradeRequest {
     private BigDecimal quantity;
 
     /**
-     * 单价（元/吨）
+     * 单价（碳币/吨）
      */
     @NotNull(message = "单价不能为空")
     @Positive(message = "单价必须为正数")

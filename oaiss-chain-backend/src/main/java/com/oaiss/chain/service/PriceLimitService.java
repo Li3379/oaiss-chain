@@ -44,7 +44,7 @@ public class PriceLimitService {
     /**
      * 判断某时刻创建的成交是否属于「历史口径」（口径分界之前）。
      *
-     * <p>历史成交按元/吨录入，不参与碳币/吨的限价规则。
+     * <p>历史成交按法币口径录入，不参与碳币/吨的限价规则。
      */
     public boolean isLegacy(LocalDateTime tradeCreatedAt) {
         LocalDateTime effectiveFrom = properties.getEffectiveFrom();
@@ -120,7 +120,7 @@ public class PriceLimitService {
     /**
      * 均价查询窗口下界：{@code max(now - referenceDays, effectiveFrom)}。
      *
-     * <p>下界取 effectiveFrom 是为了**杜绝跨口径污染**：分界日之前的成交价是元/吨，
+     * <p>下界取 effectiveFrom 是为了**杜绝跨口径污染**：分界日之前的成交价是法币口径，
      * 若混入均价，会让新口径的价格基准失真。
      */
     LocalDateTime averageWindowStart(LocalDateTime tradeCreatedAt) {

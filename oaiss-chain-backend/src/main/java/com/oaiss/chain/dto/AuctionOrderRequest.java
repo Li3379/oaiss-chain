@@ -32,7 +32,7 @@ public class AuctionOrderRequest {
     private BigDecimal quantity;
 
     /**
-     * 期望单价（元/吨）
+     * 期望单价（碳币/吨）
      */
     @NotNull(message = "挂单价格不能为空")
     @Positive(message = "挂单价格必须为正数")

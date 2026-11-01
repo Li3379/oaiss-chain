@@ -403,7 +403,7 @@ public class DoubleAuctionService {
                             java.util.List.of(buyOrder.getUserId(), sellOrder.getUserId()),
                             "拍卖撮合成交待审核",
                             "您的拍卖订单已撮合 " + matchQty + " 吨，成交价 " + settlementPrice
-                                    + " 元/吨，正在审核中。审核通过后资金与配额才会结算。",
+                                    + " 碳币/吨，正在审核中。审核通过后资金与配额才会结算。",
                             "TRADE");
 
                     buyRemaining = buyRemaining.subtract(matchQty);
@@ -442,7 +442,7 @@ public class DoubleAuctionService {
                         java.util.List.of(buyOrder.getUserId(), sellOrder.getUserId()),
                         "拍卖撮合成交",
                         "您的拍卖订单已成交 " + matchQty + " 吨，成交价 " + settlementPrice
-                                + " 元/吨（系统自动撮合），资金与配额已同步结算。",
+                                + " 碳币/吨（系统自动撮合），资金与配额已同步结算。",
                         "TRADE");
 
                 buyRemaining = buyRemaining.subtract(matchQty);

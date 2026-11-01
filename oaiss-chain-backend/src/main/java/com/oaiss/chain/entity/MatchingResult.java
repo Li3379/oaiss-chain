@@ -58,7 +58,7 @@ public class MatchingResult extends BaseEntity {
     private BigDecimal matchedQuantity;
 
     /**
-     * 成交单价（元/吨）
+     * 成交单价（碳币/吨）
      */
     @Column(name = "settlement_price", nullable = false, precision = 15, scale = 2)
     private BigDecimal settlementPrice;
