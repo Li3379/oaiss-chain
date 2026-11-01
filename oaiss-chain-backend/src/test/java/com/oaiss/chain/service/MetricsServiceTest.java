@@ -181,4 +181,36 @@ class MetricsServiceTest {
 
         assertNotNull(metricsService);
     }
+
+    // ==================== 对账无法判定占比 ====================
+
+    @Test
+    @DisplayName("对账指标-按比例记录无法判定占比")
+    void testRecordReconciliationRatio() {
+        metricsService.recordReconciliation(6, 20);
+
+        double ratio = meterRegistry.get("oaiss.chain.reconciliation.inconclusive.ratio")
+                .gauge().value();
+        assertEquals(0.30, ratio, 0.001, "6/20 = 30%");
+    }
+
+    @Test
+    @DisplayName("对账指标-分母为 0 时置 0，绝不做除法")
+    void testRecordReconciliationZeroDenominator() {
+        metricsService.recordReconciliation(5, 0);
+
+        double ratio = meterRegistry.get("oaiss.chain.reconciliation.inconclusive.ratio")
+                .gauge().value();
+        assertEquals(0.0, ratio, 0.001, "空库不等于「100% 无法判定」");
+    }
+
+    @Test
+    @DisplayName("对账指标-全部无法判定时为 1.0")
+    void testRecordReconciliationAllInconclusive() {
+        metricsService.recordReconciliation(10, 10);
+
+        double ratio = meterRegistry.get("oaiss.chain.reconciliation.inconclusive.ratio")
+                .gauge().value();
+        assertEquals(1.0, ratio, 0.001);
+    }
 }

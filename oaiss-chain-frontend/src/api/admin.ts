@@ -182,15 +182,36 @@ export interface ChainReconciliationDetail {
   reportId: number
   reportNo?: string
   dbTxHash?: string
+  chainTxHash?: string
   dbTotalEmission?: string
   chainTotalEmission?: string
-  status: 'MATCHED' | 'MISSING_ON_CHAIN' | 'CONTENT_MISMATCH' | 'UNVERIFIABLE' | string
+  /** 哈希是否真实存在于该报告的账本历史。null = 无法判定（未验证，不是「哈希为假」） */
+  txHashVerified?: boolean | null
+  status:
+    | 'MATCHED'
+    | 'MISSING_ON_CHAIN'
+    | 'CONTENT_MISMATCH'
+    | 'UNVERIFIABLE'
+    | 'INSUFFICIENT_DATA'
+    | 'HISTORICAL_V1'
+    | 'HISTORICAL_MOCK'
+    | string
+  /** 内容比对中具体不符的字段（如 totalEmission / signature / txHash） */
+  mismatchFields?: string[]
   reason?: string
 }
 
 export interface ChainReconciliationResult {
-  checked: number
+  /** 全库参与对账的报告总数（7 类计数与它同口径，由同一次遍历产出） */
+  checkedGlobal: number
+  /** 当前页条数（仅供前端标注「本页」） */
+  checkedPage: number
+  /** 哈希已验证且全字段一致 */
   matched: number
+  /** 链上有快照但金额/参与字段不足，无法判定是否一致 */
+  insufficientData: number
+  /** 链上为 v1 结构（无金额字段），仅做哈希验证、不做内容比对 */
+  historicalV1: number
   missingOnChain: number
   contentMismatch: number
   unverifiable: number

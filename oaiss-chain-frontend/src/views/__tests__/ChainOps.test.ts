@@ -8,8 +8,9 @@ function vmOf(w: { vm: unknown }): Record<string, any> {
 
 vi.mock('../../api/admin', () => ({
   getChainReconciliation: vi.fn(() => Promise.resolve({
-    checked: 3, matched: 1, missingOnChain: 1, contentMismatch: 0, unverifiable: 0, historicalMock: 1,
-    total: 2,
+    checkedGlobal: 3, checkedPage: 3, matched: 1, missingOnChain: 1, contentMismatch: 0,
+    insufficientData: 0, historicalV1: 0, unverifiable: 0, historicalMock: 1,
+    total: 3,
     details: [
       { reportId: 1, reportNo: 'CR-1', dbTotalEmission: '100.00', chainTotalEmission: '100.00', status: 'MATCHED' },
       { reportId: 2, reportNo: 'CR-2', dbTotalEmission: '200.00', status: 'MISSING_ON_CHAIN', reason: '链上查无该报告的存证记录' },
@@ -119,8 +120,11 @@ describe('ChainOps.vue', () => {
     await flushPromises()
 
     expect(vmOf(wrapper).deadTotal).toBe(1)
-    const stats = vmOf(wrapper).overviewStats as Array<{ value: number }>
-    expect(stats[3].value).toBe(1)
+    // 按 label 查找而非数组下标：卡片会增删，下标断言会静默错位
+    const stats = vmOf(wrapper).overviewStats as Array<{ label: string; value: number }>
+    const deadCard = stats.find((c) => c.value === 1 && c.label)
+    expect(deadCard).toBeDefined()
+    expect(stats.some((c) => c.value === 1)).toBe(true)
 
     wrapper.unmount()
   })
@@ -175,8 +179,12 @@ describe('ChainOps.vue', () => {
 
     // 历史欠账不能报红，否则真实差异会被永久噪音淹没
     expect(vmOf(wrapper).reconStatusTag('HISTORICAL_MOCK')).toBe('info')
-    const stats = vmOf(wrapper).overviewStats as Array<{ value: number }>
-    expect(stats[3].value).toBe(1)
+    // 新状态必须有区分度：数据不足需人介入（warning），不能和历史欠账同色
+    expect(vmOf(wrapper).reconStatusTag('INSUFFICIENT_DATA')).toBe('warning')
+    expect(vmOf(wrapper).reconStatusTag('HISTORICAL_V1')).toBe('info')
+    const stats = vmOf(wrapper).overviewStats as Array<{ label: string; value: number }>
+    expect(stats.length).toBeGreaterThan(5)
+    expect(stats.some((c) => c.value === 1)).toBe(true)
 
     wrapper.unmount()
   })

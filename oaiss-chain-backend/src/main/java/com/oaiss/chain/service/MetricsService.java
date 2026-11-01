@@ -30,6 +30,14 @@ public class MetricsService {
     private final AtomicLong activeUsers = new AtomicLong(0);
     private final AtomicLong pendingCarbonCredit = new AtomicLong(0);
     private final AtomicLong pendingTrade = new AtomicLong(0);
+    /**
+     * 对账「无法判定」占比（0-1）。
+     *
+     * <p>分子 = insufficientData + unverifiable（链上比不了 / 链不可达），
+     * 分母 = checkedGlobal。该比率高说明对账在「看起来跑完了」但没有真正判定，
+     * 是管理员误判系统健康度的直接信号，因此单独立指标告警。</p>
+     */
+    private final AtomicLong reconciliationInconclusiveRatio = new AtomicLong(0);
 
     public MetricsService(MeterRegistry meterRegistry) {
         this.meterRegistry = meterRegistry;
@@ -44,6 +52,13 @@ public class MetricsService {
      * 注册业务Gauge指标
      */
     private void registerBusinessGauges() {
+        // 对账无法判定占比（以万分比整数存储，避免浮点 Gauge 的精度问题）
+        Gauge.builder("oaiss.chain.reconciliation.inconclusive.ratio", reconciliationInconclusiveRatio,
+                        v -> v.get() / 10000.0)
+                .description("Share of reconciliation rows that could not be judged "
+                        + "(insufficient data + chain unreachable) over checkedGlobal")
+                .tag("type", "chain")
+                .register(meterRegistry);
         // 活跃用户数
         Gauge.builder("oaiss.active.users", activeUsers, AtomicLong::get)
                 .description("Current number of active users")
@@ -164,6 +179,20 @@ public class MetricsService {
     /**
      * 更新活跃用户数
      */
+    /**
+     * 记录一次对账的「无法判定」占比。
+     *
+     * @param inconclusive  insufficientData + unverifiable 的条数
+     * @param checkedGlobal 本次遍历的全库报告数
+     */
+    public void recordReconciliation(int inconclusive, int checkedGlobal) {
+        // 分母为 0 时置 0，绝不做除法——空库不等于「100% 无法判定」
+        double ratio = checkedGlobal <= 0 ? 0.0 : (double) inconclusive / checkedGlobal;
+        reconciliationInconclusiveRatio.set((long) Math.round(ratio * 10000));
+        log.debug("Reconciliation metric recorded: inconclusive={}, checkedGlobal={}, ratio={}",
+                inconclusive, checkedGlobal, ratio);
+    }
+
     public void updateActiveUsers(long count) {
         activeUsers.set(count);
     }

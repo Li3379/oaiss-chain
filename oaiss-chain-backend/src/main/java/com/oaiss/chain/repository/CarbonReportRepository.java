@@ -3,6 +3,7 @@ package com.oaiss.chain.repository;
 import com.oaiss.chain.entity.CarbonReport;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -51,6 +52,13 @@ public interface CarbonReportRepository extends JpaRepository<CarbonReport, Long
      * 否则每一份草稿都会被报成「链上缺失」。</p>
      */
     Page<CarbonReport> findByBlockchainTxHashIsNotNullAndDeletedFalse(Pageable pageable);
+
+    /**
+     * 无分页版本：对账的全量遍历用（单次遍历是 7 类计数与明细的唯一数据源）。
+     *
+     * <p>同名重载由 Spring Data 解析（同 PartTree + 可选 Pageable）。</p>
+     */
+    List<CarbonReport> findByBlockchainTxHashIsNotNullAndDeletedFalse(Sort sort);
 
     /**
      * 按哈希前缀查找（标记历史 Mock 脏数据用）

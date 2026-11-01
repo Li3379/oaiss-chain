@@ -771,10 +771,13 @@ class AdminControllerTest {
     // ==================== Chain Ops (reconciliation / dead letters) ====================
 
     @Test
-    @DisplayName("链上对账-返回四类差异统计与明细")
+    @DisplayName("链上对账-返回七类差异统计与明细（计数为全局口径）")
     void testReconcileChainReturnsClassification() throws Exception {
         var result = com.oaiss.chain.service.ChainReconciliationService.ReconciliationResult.builder()
-                .checked(2).matched(1).missingOnChain(1).contentMismatch(0).unverifiable(0)
+                .checkedGlobal(2).checkedPage(2)
+                .matched(1).missingOnChain(1)
+                .insufficientData(0).historicalV1(0).contentMismatch(0)
+                .unverifiable(0).historicalMock(0)
                 .details(List.of(java.util.Map.of("reportId", 1, "status", "MATCHED")))
                 .total(2)
                 .build();
@@ -785,6 +788,9 @@ class AdminControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.matched").value(1))
                 .andExpect(jsonPath("$.data.missingOnChain").value(1))
+                .andExpect(jsonPath("$.data.checkedGlobal").value(2))
+                .andExpect(jsonPath("$.data.insufficientData").value(0))
+                .andExpect(jsonPath("$.data.historicalV1").value(0))
                 .andExpect(jsonPath("$.data.details").isArray());
 
         verify(chainReconciliationService).reconcile(1, 10);

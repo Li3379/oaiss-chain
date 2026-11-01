@@ -98,6 +98,9 @@ const reconStatusTag = (status?: string) => {
     case 'MISSING_ON_CHAIN': return 'danger'
     case 'CONTENT_MISMATCH': return 'warning'
     case 'UNVERIFIABLE': return 'info'
+    // 数据不足需人介入，不能和「既定历史欠账」共用同一视觉语气
+    case 'INSUFFICIENT_DATA': return 'warning'
+    case 'HISTORICAL_V1': return 'info'
     case 'HISTORICAL_MOCK': return 'info'
     default: return 'info'
   }
@@ -109,6 +112,8 @@ const reconStatusText = (status?: string) => {
     case 'MISSING_ON_CHAIN': return t('chainOps.statusMissingOnChain')
     case 'CONTENT_MISMATCH': return t('chainOps.statusContentMismatch')
     case 'UNVERIFIABLE': return t('chainOps.statusUnverifiable')
+    case 'INSUFFICIENT_DATA': return t('chainOps.statusInsufficientData')
+    case 'HISTORICAL_V1': return t('chainOps.statusHistoricalV1')
     case 'HISTORICAL_MOCK': return t('chainOps.statusHistoricalMock')
     default: return status || '-'
   }
@@ -192,8 +197,9 @@ const overviewStats = computed(() => {
   const recon = reconResult.value
   return [
     {
+      // 全库口径：7 类计数与它同源，避免「本页 vs 全库」两个数字并列
       label: t('chainOps.statChecked'),
-      value: recon?.checked ?? 0,
+      value: recon?.checkedGlobal ?? 0,
       unit: t('chainOps.unitReports'),
       delta: t('chainOps.statCheckedHint'),
       tone: 'neu' as const,
@@ -229,6 +235,40 @@ const overviewStats = computed(() => {
       unit: t('chainOps.unitMessages'),
       delta: t('chainOps.statDeadHint'),
       tone: deadTotal.value > 0 ? ('neg' as const) : ('neu' as const),
+      icon: Tickets,
+    },
+    // 新增卡片一律追加末尾：既有测试对数组下标有硬耦合
+    {
+      label: t('chainOps.statMatched'),
+      value: recon?.matched ?? 0,
+      unit: t('chainOps.unitReports'),
+      delta: t('chainOps.statMatchedHint'),
+      tone: (recon?.matched ?? 0) > 0 ? ('pos' as const) : ('neu' as const),
+      icon: Connection,
+    },
+    {
+      label: t('chainOps.statusHistoricalV1'),
+      value: recon?.historicalV1 ?? 0,
+      unit: t('chainOps.unitReports'),
+      delta: t('chainOps.statHistoricalV1Hint'),
+      tone: 'neu' as const,
+      icon: Document,
+    },
+    {
+      label: t('chainOps.statusInsufficientData'),
+      value: recon?.insufficientData ?? 0,
+      unit: t('chainOps.unitReports'),
+      delta: t('chainOps.statInsufficientHint'),
+      tone: (recon?.insufficientData ?? 0) > 0 ? ('neg' as const) : ('neu' as const),
+      icon: Refresh,
+    },
+    {
+      // 审计最需要看到「多少条根本没判定」——不能只把它藏在明细里
+      label: t('chainOps.statusUnverifiable'),
+      value: recon?.unverifiable ?? 0,
+      unit: t('chainOps.unitReports'),
+      delta: t('chainOps.statUnverifiableHint'),
+      tone: 'neu' as const,
       icon: Tickets,
     },
   ]
@@ -282,6 +322,24 @@ onMounted(() => {
             <el-table-column prop="status" :label="t('chainOps.colReconStatus')" min-width="150">
               <template #default="{ row }">
                 <el-tag :type="reconStatusTag(row.status)">{{ reconStatusText(row.status) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="txHashVerified" :label="t('chainOps.colHashVerified')" min-width="130">
+              <template #default="{ row }">
+                <!-- 三态：true/false/null(无法判定)。null 不能渲染成「未通过」 -->
+                <el-tag v-if="row.txHashVerified === true" type="success" size="small">
+                  {{ t('chainOps.hashVerifiedYes') }}
+                </el-tag>
+                <el-tag v-else-if="row.txHashVerified === false" type="danger" size="small">
+                  {{ t('chainOps.hashVerifiedNo') }}
+                </el-tag>
+                <span v-else class="recon-muted">{{ t('chainOps.hashVerifiedUnknown') }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="mismatchFields" :label="t('chainOps.colMismatchFields')" min-width="180" show-overflow-tooltip>
+              <template #default="{ row }">
+                <span v-if="row.mismatchFields?.length">{{ row.mismatchFields.join('、') }}</span>
+                <span v-else class="recon-muted">-</span>
               </template>
             </el-table-column>
             <el-table-column prop="reason" :label="t('chainOps.colReason')" min-width="240" show-overflow-tooltip>

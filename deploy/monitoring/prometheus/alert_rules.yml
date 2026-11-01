@@ -14,6 +14,17 @@ groups:
           summary: "OAISS Chain Backend is down"
           description: "The OAISS Chain Backend application has been down for more than 1 minute."
 
+      # Chain Reconciliation Alert
+      # 「对账跑完了但大部分没判定」= 管理员会误以为系统健康。占比超 30% 即告警。
+      - alert: ChainReconciliationInconclusive
+        expr: oaiss_chain_reconciliation_inconclusive_ratio > 0.3
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Chain reconciliation mostly inconclusive"
+          description: "More than 30% of reconciled reports could not be judged (insufficient on-chain data or chain unreachable) for 10 minutes."
+
       - alert: HighErrorRate
         expr: |
           sum(rate(http_server_requests_seconds_count{application="oaiss-chain-backend", status=~"5.."}[5m])) 
