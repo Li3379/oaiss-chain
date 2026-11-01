@@ -407,7 +407,25 @@ jobs:
       - name: Start frontend dev server
         run: |
           cd oaiss-chain-frontend
-          npx vite --port 5173 &
+          # 输出重定向到文件：进程若启动失败，日志是唯一线索
+          npx vite --host 127.0.0.1 --port 5173 --strictPort > ../frontend.log 2>&1 &
+          echo "FRONTEND_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Wait for frontend
+        run: |
+          # 必须等到真正监听：v1.1 模式 playwright.config 的 webServer 是
+          # undefined（它假设 dev server 已由外部启动），所以不等就绪的话
+          # 所有用例都会 ERR_CONNECTION_REFUSED at 127.0.0.1:5173。
+          set +e
+          timeout 90 bash -c 'until curl -sf http://127.0.0.1:5173/ > /dev/null 2>&1; do sleep 2; done'
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::frontend dev server did not become ready within 90s"
+            tail -80 frontend.log 2>/dev/null || true
+            exit 1
+          fi
+          echo "Frontend is ready"
 
       - name: Run E2E tests (v1.1)
         if: success() || failure()
