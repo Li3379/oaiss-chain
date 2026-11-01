@@ -45,11 +45,11 @@ function collectColumnTypes() {
   for (const file of files) {
     const sql = readFileSync(join(MIGRATION_DIR, file), 'utf8')
 
-    // CREATE TABLE 中的列定义
-    for (const t of sql.matchAll(/CREATE TABLE\s+`?(\w+)`?\s*\(([\s\S]*?)\n\)\s*ENGINE/gi)) {
+    // CREATE TABLE 中的列定义（兼容 CREATE TABLE IF NOT EXISTS）
+    for (const t of sql.matchAll(/CREATE TABLE\s+(?:IF NOT EXISTS\s+)?`?(\w+)`?\s*\(([\s\S]*?)\n\)\s*(?:ENGINE|DESC|COMMENT)/gi)) {
       const table = t[1]
       for (const line of t[2].split('\n')) {
-        const c = line.match(/^\s*`(\w+)`\s+([A-Za-z]+(?:\(\d+\))?)/)
+        const c = line.match(/^\s*`?(\w+)`?\s+([A-Za-z]+(?:\(\d+\))?)/)
         if (c) types.set(`${table}.${c[1]}`, c[2].toUpperCase())
       }
     }
@@ -66,11 +66,16 @@ function collectColumnTypes() {
       const a = stmt.match(/ALTER TABLE\s+`?(\w+)`?([\s\S]*)/i)
       if (!a) continue
       const table = a[1]
-      for (const c of a[2].matchAll(/ADD COLUMN\s+`(\w+)`\s+([A-Za-z]+(?:\(\d+\))?)/gi)) {
+      for (const c of a[2].matchAll(/ADD COLUMN\s+`?(\w+)`?\s+([A-Za-z]+(?:\(\d+\))?)/gi)) {
         types.set(`${table}.${c[1]}`, c[2].toUpperCase())
       }
-      for (const c of a[2].matchAll(/MODIFY COLUMN\s+`(\w+)`\s+([A-Za-z]+(?:\(\d+\))?)/gi)) {
+      for (const c of a[2].matchAll(/MODIFY COLUMN\s+`?(\w+)`?\s+([A-Za-z]+(?:\(\d+\))?)/gi)) {
         types.set(`${table}.${c[1]}`, c[2].toUpperCase())
+      }
+      // CHANGE COLUMN old new type：重命名列，旧键必须删掉再登记新键
+      for (const c of a[2].matchAll(/CHANGE COLUMN\s+`?(\w+)`?\s+`?(\w+)`?\s+([A-Za-z]+(?:\(\d+\))?)/gi)) {
+        types.delete(`${table}.${c[1]}`)
+        types.set(`${table}.${c[2]}`, c[3].toUpperCase())
       }
     }
   }
@@ -78,7 +83,7 @@ function collectColumnTypes() {
 }
 
 /** 实体类 → 表名 */
-function collectEntities() {
+function collectEntities(baseFields = []) {
   const map = new Map() // simpleClassName -> { table, fields: [{column, javaType, hasColumnDefinition}] }
   if (!existsSync(ENTITY_DIR)) return map
 
@@ -98,22 +103,71 @@ function collectEntities() {
       // 防止跨到下一个字段：区间内不允许再出现 @Column
       const between = src.slice(m.index + m[0].indexOf(')'), m.index + m[0].length)
       if ((between.match(/@Column\(/g) || []).length > 1) continue
+      // @Transient 字段不参与列映射，不能要求它在迁移里存在
+      const prefix = src.slice(Math.max(0, m.index - 200), m.index)
+      if (/@Transient[\s\S]{0,100}$/.test(prefix)) continue
       fields.push({
         column: col[1],
         javaType,
         hasColumnDefinition: /columnDefinition\s*=/.test(attrs),
       })
     }
-    map.set(file.replace('.java', ''), { table: tm[1], fields })
+    // 继承字段：题干里声明 extends BaseEntity 的实体，其 id/created_at/
+    // updated_at/is_deleted 都来自父类，必须一并纳入比对，
+    // 否则父类列名一旦与迁移不一致就完全看不见。
+    const inherited = /extends\s+BaseEntity/.test(src) ? baseFields : []
+    map.set(file.replace('.java', ''), { table: tm[1], fields: [...fields, ...inherited] })
   }
   return map
+}
+
+/**
+ * 列名归一化：用于识别「语义相同、命名不同」的列。
+ *
+ * `deleted` 与 `is_deleted` 是同一个软删除标记的两种常见写法。
+ * 去掉 is_/has_ 前缀与下划线后比较，能覆盖这一类漂移。
+ */
+function normalizeColumn(name) {
+  return name
+    .toLowerCase()
+    .replace(/^(is|has)_/, '')
+    .replace(/_/g, '')
+}
+
+/**
+ * 解析 BaseEntity 的字段。
+ *
+ * 所有实体都继承 BaseEntity（id / created_at / updated_at / is_deleted），
+ * 但这些字段不在各实体文件中，若不合并进来，门禁就看不到它们——
+ * quota_transaction 的 deleted vs is_deleted 漂移正是因此漏检：
+ * 实体文件里没有 is_deleted，比较时自然无从谈起。
+ */
+function collectBaseEntityFields() {
+  const path = join(ENTITY_DIR, 'BaseEntity.java')
+  if (!existsSync(path)) return []
+  const src = readFileSync(path, 'utf8')
+  const fields = []
+  const re = /@Column\(([^)]*)\)[\s\S]{0,400}?private\s+([\w.<>]+)\s+(\w+)\s*[;=]/g
+  for (const m of src.matchAll(re)) {
+    const col = m[1].match(/name\s*=\s*"(\w+)"/)
+    if (!col) continue
+    const prefix = src.slice(Math.max(0, m.index - 200), m.index)
+    if (/@Transient[\s\S]{0,100}$/.test(prefix)) continue
+    fields.push({
+      column: col[1],
+      javaType: m[2],
+      hasColumnDefinition: /columnDefinition\s*=/.test(m[1]),
+    })
+  }
+  return fields
 }
 
 function main() {
   console.log('=== JPA 实体 / Flyway 迁移 列类型一致性门禁 ===\n')
 
   const columnTypes = collectColumnTypes()
-  const entities = collectEntities()
+  const baseFields = collectBaseEntityFields()
+  const entities = collectEntities(baseFields)
 
   if (columnTypes.size === 0 || entities.size === 0) {
     console.log('⚠ 未找到迁移或实体，跳过')
@@ -122,11 +176,38 @@ function main() {
 
   const problems = []
   let checked = 0
+  let missingColumns = 0
 
   for (const [className, { table, fields }] of entities) {
     for (const field of fields) {
       const declared = columnTypes.get(`${table}.${field.column}`)
-      if (!declared) continue
+      if (!declared) {
+        // 先看同表里有没有「语义相同但名字不同」的列（如 deleted vs is_deleted）。
+        // 这类列名漂移同样会让 Hibernate 报 missing column，而按精确名比对
+        // 完全看不见——quota_transaction 就是这样藏了很久。
+        const sameTable = [...columnTypes.keys()]
+          .filter(k => k.startsWith(`${table}.`))
+          .map(k => k.slice(table.length + 1))
+        const near = sameTable.find(c => normalizeColumn(c) === normalizeColumn(field.column))
+        if (near) {
+          problems.push(
+            `${className}.${field.column} (${table}): 实体用 "${field.column}"，` +
+            `迁移里叫 "${near}" —— 列名漂移，validate 会报 missing column`,
+          )
+          missingColumns++
+          continue
+        }
+        // 实体声明了某列、迁移里根本没建 —— 比类型不符更致命：
+        //   Schema-validation: missing column [is_deleted] in table [quota_transaction]
+        // 同样只在 ddl-auto=validate 下暴露（本地 none 不校验）。
+        // @Transient 字段已在解析阶段排除，不会走到这里。
+        problems.push(
+          `${className}.${field.column} (${table}.${field.column}): ` +
+          `迁移中不存在该列 → Hibernate validate 会报 "missing column"`,
+        )
+        missingColumns++
+        continue
+      }
       checked++
 
       // 只关心窄整型与 Java Integer/Long 的组合：
