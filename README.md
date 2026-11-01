@@ -98,9 +98,24 @@ docker compose -f deploy/compose/docker-compose.infra.yml up -d
    * 后端启动后，直接访问：`http://localhost:8080/api/v1/swagger-ui/index.html` 在线调试全部 153 个 REST 接口。
 4. **提交前一键自检**：
    ```bash
-   node scripts/doc-verify.mjs          # 校验代码与架构事实零漂移（数字）
-   node scripts/role-matrix-verify.mjs  # 校验角色/权限语义与方案 A 定稿一致
-   node scripts/i18n-verify.mjs  # 校验前端国际化语言包完整性
+   node scripts/gates/doc-verify.mjs      # 代码与架构事实零漂移（数字）
+   node scripts/gates/i18n-verify.mjs     # 前端国际化语言包完整性
+   node scripts/gates/version-verify.mjs  # pom / package.json / CHANGELOG 版本三方对齐
+   npm run type-check --prefix oaiss-chain-frontend
+   ```
+5. **Git 护栏安装（克隆后执行一次）**：
+   ```bash
+   git config core.hooksPath .githooks
+   ```
+   * `commit-msg` 强制 Conventional Commits 格式
+   * `pre-push` 拦截直推 main、Flyway 版本号撞车、提交信息回退
+   * 多会话/多 Agent 并发作业的完整契约见
+     [`docs/开发手册/多Agent协作-Git契约.md`](docs/开发手册/多Agent协作-Git契约.md)
+6. **发布新版本**：
+   ```bash
+   node scripts/release.mjs 1.7.2            # 干跑：只检查前置条件
+   node scripts/release.mjs 1.7.2 --tag --push
+   gh release create v1.7.2 --title "v1.7.2" --notes-from-tag
    ```
 
 ---

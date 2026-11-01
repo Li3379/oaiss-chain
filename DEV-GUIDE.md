@@ -65,7 +65,9 @@ Vue 组件 → api/*.ts (Axios) → request.ts 拦截器(JWT注入, pageNum→pa
 - **软删除**: 实体继承 `BaseEntity`（`deleted`），查询用 `...AndDeletedFalse`
 - **AOP 注解**: `@AuditLog` `@RateLimit` `@RequirePermission` `@DataIsolation` `@DistributedLock`
 - **Fabric**: 默认关，仅 `fabric` profile 激活 `FabricBlockchainService`
-- **Git**: Conventional commits (`feat|fix|docs|test|refactor|chore(scope):`)
+- **Git**: Conventional commits (`feat|fix|docs|test|refactor|chore(scope):`)；由 `.githooks/commit-msg` 强制
+- **分支**: 禁止直推 `main`，一个任务 = 一个分支 = 一个 worktree；并发作业见 `docs/开发手册/多Agent协作-Git契约.md`
+- **版本**: `CHANGELOG.md` 为版本号唯一事实源，`pom.xml` / `package.json` 跟随，由 `scripts/gates/version-verify.mjs` 强制
 
 ## 7. 文档体系（活文档索引）
 
@@ -82,6 +84,7 @@ Vue 组件 → api/*.ts (Axios) → request.ts 拦截器(JWT注入, pageNum→pa
 | 概览 | `docs/OAISS_CHAIN_技术架构与使用说明书.md` | 技术架构与使用说明 |
 | 接口 | `docs/接口参考/系统API接口参考规范.md` | 端点与模块完整清单 |
 | 指南 | `docs/开发指南/全栈开发与技术规格指南.md` | 前后端开发规范（页面/API/路由/i18n） |
+| 指南 | `docs/开发手册/多Agent协作-Git契约.md` | 多 Agent/多会话并发作业的强制 Git 契约 |
 | 指南 | `docs/开发指南/drawio与EA12架构图绘制实操手册.md` | 架构图绘制 |
 | 运维 | `docs/运维部署/系统部署与运维手册.md` | staging/prod 部署与生产配置 |
 | 产品 | `docs/产品规格/AI智能预测模块深度重塑与LLM融合升级说明.md` | AI/ML 模块设计 |
@@ -160,8 +163,8 @@ bash ./scripts/stability-baseline.sh
 | Entities | 28 | 27 @Entity + BaseEntity |
 | Tables | 27 | 现存 27 张（曾创建 28 张，authenticator 在 V8 DROP 退场） |
 | Repositories | 27 | `repository/*.java` 数 |
-| Flyway 迁移 | V1-V23 | V3 跳过（共 22 个版本；V18=监管线索，V19=证书吊销留痕，V20=链上存证标记，V21=软删列名修复，V22=信誉下市标记，V23=单价口径注释） |
-| i18n 词条 | 2292 | zh-CN 与 en-US 严格镜像（`scripts/i18n-verify.mjs` 实测） | zh-CN 与 en-US 严格镜像（`scripts/gates/i18n-verify.mjs` 实测；2026-11-01 新增成交审核与监管线索文案） |
+| Flyway 迁移 | V1-V24 | V3、V22 跳过（共 22 个版本；V18=监管线索，V19=证书吊销留痕，V20=链上存证标记，V21=软删列名修复，V23=单价口径注释，V24=信誉下市标记） |
+| i18n 词条 | 2292 | zh-CN 与 en-US 严格镜像（`scripts/gates/i18n-verify.mjs` 实测；2026-11-01 新增成交审核与监管线索文案） |
 | 前端 API 模块 | 24 | `src/api/*.ts`（不含 request.ts 与 index.ts；2026-11-01 新增 tradeAudit / regulatoryFinding） |
 | 枚举 | 9 | `enums/*.java`（UserTypeEnum 等 9 个核心枚举） |
 | 角色 | 4 | ENTERPRISE/REVIEWER/THIRD_PARTY/ADMIN |
