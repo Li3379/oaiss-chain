@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+#
+# pre-push 钩子：推送前的三道护栏。
+#
+# 这个钩子存在的直接原因，是一次真实事故：
+#   会话 A 在 19:50 新建了 V22__add_credit_delisted.sql（未提交）。
+#   与此同时会话 B 在 19:47 已经提交并推送了 V23__update_unit_price_comment.sql。
+#   两个会话共享同一个工作区，谁都没看到对方的文件。
+#   结果：V22 在 V23 之后才要入库 → Flyway 判定 out-of-order → 已部署环境拒绝启动。
+#   （最终处置：V22 重编为 V24，V22 作为永久空号在 DEV-GUIDE 中声明。）
+#
+# 三道护栏：
+#   1. 禁止直推受保护分支（main），除非显式 ALLOW_PUSH_MAIN=1
+#   2. Flyway 版本冲突检测 —— 新增迁移的版本号必须大于远端已有最大版本
+#   3. 推送范围内的提交信息合规复查（本地改历史后 commit-msg 不会重跑）
+#
+# 刻意**不**在这里跑测试/构建：
+#   pre-push 是同步阻塞的，跑 15 分钟单测的结果是人人都加 --no-verify。
+#   测试在 CI，这里只做 3 秒内能完成的、CI 拦不住或拦晚了的事。
+
+set -uo pipefail
+
+PROTECTED_BRANCHES="main master"
+ZERO="0000000000000000000000000000000000000000"
+MIG_DIR="oaiss-chain-backend/src/main/resources/db/migration"
+
+remote_name="${1:-origin}"
+
+declare -a pushed_refs=()
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ -z "${local_ref:-}" ] && continue
+  pushed_refs+=("$local_ref|$local_sha|$remote_ref|$remote_sha")
+done
+
+if [ ${#pushed_refs[@]} -eq 0 ]; then
+  exit 0
+fi
+
+fail=0
+
+# ------------------------------------------------------------------
+# 工具函数
+# ------------------------------------------------------------------
+
+version_of() {
+  # V22__foo.sql -> 22 ；不符合命名时输出空
+  basename "$1" | sed -nE 's/^V([0-9]+)__.*/\1/p'
+}
+
+# 计算「本次推送新增了什么」的基点。
+#
+# 坑：新建远端分支时 remote_sha 是全 0。若直接把 range 设成 HEAD，
+# `git diff HEAD` 等于「与空树比较」——所有文件都算新增，于是会把
+# 历史上每条迁移都当成「本次新增」、把每个历史提交都当成「本次推送
+# 的不合规提交信息」，钩子变成对全仓历史的误报机器（实测复现过）。
+#
+# 正确做法：优先用 merge-base(远端 main, 本地推送的 commit)，
+# 拿不到再退到「上一次可达提交」，而不是退回整个历史。
+resolve_base() {
+  local local_sha="$1" remote_sha="$2" remote_branch="$3"
+
+  if [ "$remote_sha" != "$ZERO" ] && git cat-file -e "${remote_sha}^{commit}" 2>/dev/null; then
+    echo "$remote_sha"; return
+  fi
+  if git rev-parse --verify -q "refs/remotes/${remote_name}/main" >/dev/null 2>&1; then
+    local mb
+    mb="$(git merge-base "refs/remotes/${remote_name}/main" "$local_sha" 2>/dev/null)" || mb=""
+    if [ -n "$mb" ]; then echo "$mb"; return; fi
+  fi
+  if [ -n "$remote_branch" ] && git rev-parse --verify -q "refs/remotes/${remote_name}/${remote_branch}" >/dev/null 2>&1; then
+    local mb2
+    mb2="$(git merge-base "refs/remotes/${remote_name}/${remote_branch}" "$local_sha" 2>/dev/null)" || mb2=""
+    if [ -n "$mb2" ]; then echo "$mb2"; return; fi
+  fi
+  git rev-parse -q --verify "${local_sha}^" 2>/dev/null || echo "$ZERO"
+}
+
+# ------------------------------------------------------------------
+# 护栏 1：受保护分支禁止直推
+# ------------------------------------------------------------------
+for entry in "${pushed_refs[@]}"; do
+  IFS='|' read -r local_ref local_sha remote_ref remote_sha <<<"$entry"
+  remote_branch="${remote_ref#refs/heads/}"
+  for pb in $PROTECTED_BRANCHES; do
+    if [ "$remote_branch" = "$pb" ] && [ "${ALLOW_PUSH_MAIN:-0}" != "1" ]; then
+      cat >&2 <<EOF
+
+✗ 拒绝直接推送到受保护分支：$pb
+
+  原因：
+    main 是发布基线。直推意味着「本地跑过就算过」——而本次诊断发现的
+    连续 10 次 main 全红，正是这么来的：分支上不跑 CI，合进 main 才
+    第一次看到红色，于是每一次修复都要等一轮 CI。
+
+  正确做法：
+    git switch -c feat/<scope>-<一句话>
+    git push -u $remote_name feat/<scope>-<一句话>
+    然后在 GitHub 开 PR —— PR 上会自动跑快速门禁 + 单元测试。
+
+  确实需要直推（例如紧急回滚一个已发布的错误版本）：
+    ALLOW_PUSH_MAIN=1 git push $remote_name $pb
+
+EOF
+      fail=1
+    fi
+  done
+done
+
+# ------------------------------------------------------------------
+# 护栏 2：Flyway 版本冲突检测
+# ------------------------------------------------------------------
+# 远端 main 上已有的最大版本号，是本次推送新增迁移的「水位线」。
+# 任何新增迁移的版本号 <= 水位线，都会在已部署环境触发 out-of-order。
+check_migration_watermark() {
+  local base_sha="$1"
+
+  local watermark=0
+  if git rev-parse --verify -q "refs/remotes/${remote_name}/main" >/dev/null 2>&1; then
+    while IFS= read -r f; do
+      local v
+      v="$(version_of "$f")"
+      if [ -n "$v" ] && [ "$v" -gt "$watermark" ]; then watermark=$v; fi
+    done < <(git ls-tree -r --name-only "refs/remotes/${remote_name}/main" -- "$MIG_DIR" 2>/dev/null)
+  fi
+
+  local range
+  if [ "$base_sha" = "$ZERO" ]; then
+    range="HEAD"
+  else
+    range="${base_sha}..HEAD"
+  fi
+
+  local added
+  added="$(git diff --name-only --diff-filter=A "$range" -- "$MIG_DIR" 2>/dev/null || true)"
+  [ -z "$added" ] && return 0
+
+  local bad=0
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    local v
+    v="$(version_of "$f")"
+    if [ -z "$v" ]; then
+      echo "✗ 迁移文件命名不合规（应为 Vxx__desc.sql）：$f" >&2
+      bad=1
+      continue
+    fi
+    if [ "$v" -le "$watermark" ]; then
+      cat >&2 <<EOF
+
+✗ Flyway 版本冲突：$f
+
+  该迁移版本 V$v，但 ${remote_name}/main 上已有 V$watermark。
+  在已执行过 V$watermark 的环境里，V$v 会被 Flyway 判定为 out-of-order，
+  应用直接启动失败（不是告警，是拒绝启动）。
+
+  为什么会发生：
+    多个会话/多个人并行开发时，各自按本地看到的「最大号」+1，
+    而本地未必包含对方刚推上去的那个版本号。
+
+  正确做法（按顺序做，不要偷懒）：
+    git fetch $remote_name
+    ls $MIG_DIR | sort -V | tail -3      # 取真正的最大号
+    git mv "$f" $MIG_DIR/V$((watermark + 1))__<描述>.sql
+    # 然后同步 DEV-GUIDE.md §11 的 Flyway 迁移行
+
+  注意：若空号已经产生，**不要**去补空号。补空号等于让所有已部署环境炸掉；
+  正确做法是把该号在 DEV-GUIDE 里声明为空号（门禁支持声明式跳号）。
+
+EOF
+      bad=1
+    fi
+  done <<< "$added"
+
+  return $bad
+}
+
+for entry in "${pushed_refs[@]}"; do
+  IFS='|' read -r local_ref local_sha remote_ref remote_sha <<<"$entry"
+  [ "$local_sha" = "$ZERO" ] && continue
+  remote_branch="${remote_ref#refs/heads/}"
+  base="$(resolve_base "$local_sha" "$remote_sha" "$remote_branch")"
+  check_migration_watermark "$base" || fail=1
+done
+
+# ------------------------------------------------------------------
+# 护栏 3：推送范围内的提交信息复查
+# ------------------------------------------------------------------
+# commit-msg 只在「新建提交」时跑。rebase / amend / cherry-pick 之后，
+# 历史里可能混入不合规信息，而那时钩子已经不会再触发。
+# 注意：PATTERN 内不能再放行首锚点 ^。它被拼进 "^[0-9a-f]+ ${PATTERN}"，
+# 中间出现第二个 ^ 会让整条正则永不匹配——表现是「所有提交都不合规」，
+# 钩子对任何人都报错（第一版就是这么写错的，靠负向测试才抓到）。
+MSG_TYPES='feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert'
+MSG_PATTERN="(${MSG_TYPES})(\([a-zA-Z0-9._/-]+\))?!?: .+"
+
+for entry in "${pushed_refs[@]}"; do
+  IFS='|' read -r local_ref local_sha remote_ref remote_sha <<<"$entry"
+  [ "$local_sha" = "$ZERO" ] && continue
+  remote_branch="${remote_ref#refs/heads/}"
+  base="$(resolve_base "$local_sha" "$remote_sha" "$remote_branch")"
+
+  if [ "$base" = "$ZERO" ]; then
+    range="$local_sha"
+  else
+    range="${base}..${local_sha}"
+  fi
+
+  bad_msgs="$(git log --format='%h %s' "$range" 2>/dev/null \
+    | grep -vE '^[0-9a-f]+ (Merge|Revert|fixup!|squash!)' \
+    | grep -vE "^[0-9a-f]+ ${MSG_PATTERN}" || true)"
+  if [ -n "$bad_msgs" ]; then
+    echo "" >&2
+    echo "✗ 推送范围内存在不符合 Conventional Commits 的提交：" >&2
+    echo "$bad_msgs" | sed 's/^/    /' >&2
+    echo "" >&2
+    echo "  修正：git rebase -i <基点> 改写信息后重推。" >&2
+    echo "  （.githooks/commit-msg 只拦新建提交，改历史后需在此复查）" >&2
+    fail=1
+  fi
+done
+
+if [ "$fail" -ne 0 ]; then
+  exit 1
+fi
+
+echo "✓ pre-push 检查通过（分支保护 / Flyway 水位线 / 提交信息）"
+exit 0

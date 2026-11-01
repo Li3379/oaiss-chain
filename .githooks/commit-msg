@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+#
+# commit-msg 钩子：Conventional Commits 强制校验。
+#
+# 为什么需要它：
+#   实测最近 300 条提交 100% 合规——说明团队习惯是好的。
+#   但「习惯好」和「有护栏」是两件事：一旦有人（或某个 Agent 会话）
+#   在赶工时写了 "update" / "fix bug" / "WIP"，历史里就永久多一条脏提交，
+#   release notes 的自动生成也会跟着破。
+#
+#   这个钩子只做一件事：在本地拦下不合规的提交信息，让人当场改。
+#   它不做 lint、不跑测试——那些在 pre-push 和 CI 里，职责分开。
+#
+# 放行规则：
+#   - 合并提交 / 回滚提交（Merge / Revert 开头）照常放行
+#   - 以 `fixup!` `squash!` 开头的交互式 rebase 中间提交放行
+#   - 其余必须是：type(scope)!: subject
+#
+# 安装（克隆后执行一次）：
+#   git config core.hooksPath .githooks
+# 或用 npm script：npm run hooks:install
+
+set -euo pipefail
+
+MSG_FILE="${1:-}"
+if [ -z "$MSG_FILE" ] || [ ! -f "$MSG_FILE" ]; then
+  echo "commit-msg: 未收到提交信息文件路径" >&2
+  exit 1
+fi
+
+# 取首行作为 subject；忽略以 # 开头的注释行与空行
+SUBJECT="$(grep -v '^#' "$MSG_FILE" | sed '/^[[:space:]]*$/d' | head -n1)"
+
+# 空提交信息直接拒绝（git 本身通常会拦，但 -m "" 能绕过某些路径）
+if [ -z "$SUBJECT" ]; then
+  echo "" >&2
+  echo "✗ 提交信息为空。" >&2
+  echo "  格式：type(scope): subject   例如：fix(auth): 修正验证码二次消费" >&2
+  exit 1
+fi
+
+# 放行场景
+case "$SUBJECT" in
+  Merge\ *|Revert\ *|fixup!\ *|squash!\ *|amend!\ *)
+    exit 0
+    ;;
+esac
+
+TYPES='feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert'
+
+# 允许结尾带 !（破坏性变更）与任意 scope
+PATTERN="^(${TYPES})(\([a-zA-Z0-9._/-]+\))?!?: .+"
+
+if ! printf '%s' "$SUBJECT" | grep -qE "$PATTERN"; then
+  cat >&2 <<EOF
+
+✗ 提交信息不符合 Conventional Commits 规范。
+
+  你的首行：$SUBJECT
+
+  要求格式：<type>(<scope>)!: <subject>
+  可用 type：feat fix docs style refactor perf test build ci chore revert
+
+  示例：
+    feat(trade): 新增批量成交审核入口
+    fix(auth): 修正验证码二次消费导致登录误报
+    docs(dev-guide): 同步 V24 迁移版本
+
+  为什么卡这个：
+    提交历史是 release notes、变更定位、回滚判断的唯一依据。
+    "update" / "修复bug" 这类信息会让三个月后的你重新读一遍 diff。
+
+  确需临时提交（草稿分支）：git commit --no-verify
+  但合并前请用 rebase -i 整理成合规信息。
+
+EOF
+  exit 1
+fi
+
+# subject 长度提示（不阻塞）：过长的首行在 git log --oneline 里会被截断
+SUBJECT_LEN=$(printf '%s' "$SUBJECT" | wc -m | tr -d ' ')
+if [ "$SUBJECT_LEN" -gt 100 ]; then
+  echo "提示：提交信息首行 ${SUBJECT_LEN} 字，建议控制在 72 字以内，便于 git log --oneline 阅读。" >&2
+fi
+
+exit 0
