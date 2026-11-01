@@ -314,15 +314,15 @@ function renderChart() {
             <div style="font-weight: 600; color: var(--color-text); margin-bottom: 6px;">${date}</div>
             <div style="color: var(--color-chart-1); display: flex; align-items: center; gap: 6px;">
               <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--color-chart-1);"></span>
-              <span>${t('marketPrediction.price')}: <strong>${pVal != null ? Number(pVal).toFixed(2) : '--'}</strong> 元/吨</span>
+              <span>${t('marketPrediction.price')}: <strong>${pVal != null ? Number(pVal).toFixed(2) : '--'}</strong> 碳币/吨</span>
             </div>
             <div style="color: var(--color-chart-2); display: flex; align-items: center; gap: 6px;">
               <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--color-chart-2);"></span>
-              <span>${t('marketPrediction.upperBound')}: <strong>${uVal != null ? Number(uVal).toFixed(2) : '--'}</strong> 元/吨</span>
+              <span>${t('marketPrediction.upperBound')}: <strong>${uVal != null ? Number(uVal).toFixed(2) : '--'}</strong> 碳币/吨</span>
             </div>
             <div style="color: var(--color-chart-3); display: flex; align-items: center; gap: 6px;">
               <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--color-chart-3);"></span>
-              <span>${t('marketPrediction.lowerBound')}: <strong>${lVal != null ? Number(lVal).toFixed(2) : '--'}</strong> 元/吨</span>
+              <span>${t('marketPrediction.lowerBound')}: <strong>${lVal != null ? Number(lVal).toFixed(2) : '--'}</strong> 碳币/吨</span>
             </div>
           </div>
         `

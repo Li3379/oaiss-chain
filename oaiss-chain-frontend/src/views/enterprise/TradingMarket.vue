@@ -585,18 +585,18 @@ const marketStats = computed(() => [
           <div class="preview-row">
             <span>{{ t('tradingMarket.estimatedTotal') }}:</span>
             <strong class="preview-total">{{ estimatedTotal }}</strong>
-            <span class="preview-unit">碳币</span>
+            <span class="preview-unit">{{ t('common.unit_coin') }}</span>
           </div>
 
           <!-- 买入资产联动卡片 -->
           <div v-if="formModel.direction === 1" style="margin-top: 10px; font-size: 13px; line-height: 1.8;">
             <div style="color: var(--color-text-muted); display: flex; justify-content: space-between;">
               <span>{{ t('tradingMarket.userBalance') }}:</span>
-              <strong>{{ formatNumber(userBalance) }} 碳币</strong>
+              <strong>{{ formatNumber(userBalance) }} {{ t('common.unit_coin') }}</strong>
             </div>
             <div style="color: var(--color-text-muted); display: flex; justify-content: space-between;">
               <span>{{ t('tradingMarket.estimatedFreeze') }}:</span>
-              <strong style="color: var(--color-status-warning);">{{ estimatedTotal }} 碳币</strong>
+              <strong style="color: var(--color-status-warning);">{{ estimatedTotal }} {{ t('common.unit_coin') }}</strong>
             </div>
             <div v-if="parseFloat(estimatedTotal) > userBalance" style="margin-top: 6px;">
               <el-alert type="error" :closable="false" show-icon :title="t('tradingMarket.balanceInsufficientWarn')" />
