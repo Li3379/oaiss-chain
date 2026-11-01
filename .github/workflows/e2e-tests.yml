@@ -319,16 +319,32 @@ jobs:
           # invalid group 退出的场景，比直接跑脚本更容易定位问题
           bash scripts/ops/test-bootstrap-remote-release-host.sh
           chmod +x scripts/bootstrap-remote-release-host.sh
-          ./scripts/bootstrap-remote-release-host.sh --target-dir ./tmp/release-host-smoke-ci --deploy-user "$(id -un)" > bootstrap-release-host-smoke.txt
-          test -d ./tmp/release-host-smoke-ci/runtime-logs/backend
-          test -d ./tmp/release-host-smoke-ci/runtime-logs/frontend
-          test -d ./tmp/release-host-smoke-ci/runtime-logs/ml-service
-          test -d ./tmp/release-host-smoke-ci/secrets/fabric
-          test -d ./tmp/release-host-smoke-ci/backups
-          test -d ./tmp/release-host-smoke-ci/scripts
-          grep -q "Directory layout ready" bootstrap-release-host-smoke.txt
-          grep -q "docker compose version" bootstrap-release-host-smoke.txt
+          set +e
+          ./scripts/bootstrap-remote-release-host.sh --target-dir ./tmp/release-host-smoke-ci --deploy-user "$(id -un)" > bootstrap-release-host-smoke.txt 2>&1
+          BOOT_EXIT=$?
+          set -e
+          if [ "$BOOT_EXIT" -ne 0 ]; then
+            echo "::error::bootstrap script exited $BOOT_EXIT"
+            cat bootstrap-release-host-smoke.txt
+            exit 1
+          fi
+          fail=0
+          for d in runtime-logs/backend runtime-logs/frontend runtime-logs/ml-service secrets/fabric backups scripts; do
+            if [ ! -d "./tmp/release-host-smoke-ci/$d" ]; then
+              echo "::error::missing directory: $d"; fail=1
+            fi
+          done
+          if ! grep -q "Directory layout ready" bootstrap-release-host-smoke.txt; then
+            echo "::error::output missing 'Directory layout ready'"; fail=1
+          fi
+          # 脚本会实际执行 `docker compose version`，输出形如
+          # "Docker Compose version v2.29.7"。原先断言字面量
+          # "docker compose version"，与实际输出永远不匹配。
+          if ! grep -qiE "(docker[- ]compose|Docker Compose) version" bootstrap-release-host-smoke.txt; then
+            echo "::error::output missing docker compose version line"; fail=1
+          fi
           rm -rf ./tmp/release-host-smoke-ci
+          [ "$fail" -eq 0 ]
 
       - name: Run repository closure audit
         run: |
