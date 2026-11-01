@@ -16,10 +16,8 @@
  *     * GET  /api/v1/trade/my-trades    -> getMyTrades() 查询P2P转让记录
  *     * POST /api/v1/trade/{id}/confirm -> confirmTrade() 确认承接订单
  *     * POST /api/v1/trade/{id}/cancel  -> cancelTrade() 撤销待确认订单
- *   - CreditScoreController:
- *     * GET  /api/v1/credit/ranking     -> getScoreRanking() 获取企业信用等级
  *   - EnterpriseController:
- *     * GET  /api/v1/enterprise/{id}    -> getEnterpriseById() 获取对手企业档案
+ *     * GET  /api/v1/enterprise/search  -> searchEnterprises() 按企业名/信用码远程搜索交易对手
  * ==============================================================================
  */
 import { computed, reactive, ref, onMounted } from "vue"
@@ -27,12 +25,11 @@ import { useI18n } from "vue-i18n"
 import { ElMessage, ElMessageBox } from "element-plus"
 import { CircleCheck, Clock, Histogram, PriceTag } from "@element-plus/icons-vue"
 import { getMyTrades, createP2PTrade, cancelTrade, confirmTrade } from "../../api/trade"
+import { searchEnterprises, type EnterpriseSearchItem } from "../../api/enterprise"
 import type { TradeIdentityFilter, TradeResponse } from "../../types"
 import { formatDateTime } from "../../utils/format"
 import PageHint from '../../components/PageHint.vue'
 import { formatNumber } from '../../utils/format'
-import { getScoreRanking } from "../../api/credit"
-import { getEnterpriseById } from "../../api/enterprise"
 import { useAppStore } from "../../store"
 import StatusTag from '../../components/StatusTag.vue'
 import PageHeader from '../../components/pen/PageHeader.vue'
@@ -147,41 +144,46 @@ const resetDialogForm = () => {
 /** 交易对手下拉：信誉排名提供企业名单，逐个取详情映射出 userId（后端 P2P 以用户 ID 定位买方） */
 const buyerOptions = ref<Array<{ userId: number; label: string }>>([])
 const buyerOptionsLoading = ref(false)
+/** 请求序号：用于丢弃过期响应（连续输入时只认最后一次） */
+let buyerSearchSeq = 0
 
-async function loadBuyerOptions(): Promise<void> {
+/**
+ * 交易对手远程搜索。
+ *
+ * 替代原先「取信誉榜前 50 名 -> 逐个查企业详情」的 N+1 实现：
+ * 那个实现在企业超过 50 家时静默截断，且把内部 userId 拼进了用户可见文案。
+ *
+ * 三条约束：
+ *  - 不足 2 个字符不发请求（避免每敲一个键就打一次后端）
+ *  - 下拉只展示「企业名（信用码后 6 位）」，不展示 userId
+ *  - 内部仍以 userId 提交（后端 P2P 契约如此），只是不渲染给用户
+ */
+async function buyerSearch(keyword: string): Promise<void> {
+  const kw = (keyword || '').trim()
+  if (kw.length < 2) {
+    buyerOptions.value = []
+    return
+  }
+  const seq = ++buyerSearchSeq
   buyerOptionsLoading.value = true
   try {
-    const page = await getScoreRanking({ pageNum: 1, pageSize: 50 })
-    const rivals = (page?.items ?? []).filter(
-      (item) => item.enterpriseId && item.enterpriseId !== appStore.enterpriseId,
-    )
-    const options = await Promise.all(
-      rivals.map(async (item) => {
-        try {
-          const enterprise = await getEnterpriseById(item.enterpriseId)
-          return {
-            userId: enterprise.userId,
-            label: `${enterprise.enterpriseName}（用户 ${enterprise.userId}）`,
-          }
-        } catch {
-          return null
-        }
-      }),
-    )
-    buyerOptions.value = options.filter(
-      (option): option is { userId: number; label: string } => option !== null,
-    )
+    const result = await searchEnterprises(kw, 1, 20)
+    if (seq !== buyerSearchSeq) return
+    const items = result?.items ?? []
+    buyerOptions.value = items.map((item: EnterpriseSearchItem) => ({
+      userId: item.userId,
+      label: `${item.enterpriseName}（${(item.creditCode || '').slice(-6)}）`,
+    }))
   } catch {
-    buyerOptions.value = []
+    if (seq === buyerSearchSeq) buyerOptions.value = []
   } finally {
-    buyerOptionsLoading.value = false
+    if (seq === buyerSearchSeq) buyerOptionsLoading.value = false
   }
 }
 
 const openAddDialog = () => {
   resetDialogForm()
   dialogVisible.value = true
-  void loadBuyerOptions()
 }
 
 const onCancel = () => {
@@ -404,6 +406,9 @@ const p2pStats = computed(() => {
           <el-select
             v-model="dialogForm.buyerId"
             filterable
+            remote
+            reserve-keyword
+            :remote-method="buyerSearch"
             :loading="buyerOptionsLoading"
             :placeholder="t('tradingP2P.buyerSelectPlaceholder')"
             style="width: 100%"

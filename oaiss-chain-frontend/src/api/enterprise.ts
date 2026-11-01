@@ -65,3 +65,32 @@ export function getEnterpriseById(enterpriseId: number): Promise<EnterpriseRespo
   if (!enterpriseId) return Promise.reject(new Error('Enterprise ID is required'))
   return request.get(`/enterprise/${enterpriseId}`)
 }
+
+/** 交易对手搜索结果项（与后端 EnterpriseSearchResponse 对应） */
+export interface EnterpriseSearchItem {
+  enterpriseId: number
+  /** P2P 建单以 userId 定位买方；**不可展示给用户** */
+  userId: number
+  enterpriseName: string
+  creditCode: string
+  creditScore: number
+}
+
+/**
+ * 【业务功能】：按企业名称或统一社会信用代码远程搜索交易对手
+ * 【对应后端端点】：EnterpriseController -> GET /enterprise/search
+ * 【对应前端页面】：views/enterprise/TradingP2P.vue（P2P 建单的对手方选择器）
+ *                   views/admin/CertificateManage.vue（管理员选企业）
+ *
+ * 【替代了什么】：原实现是 getScoreRanking(前50) + 逐个 getEnterpriseById，
+ * 最多 51 次请求，企业超过 50 家时静默截断，且下拉文案硬拼了内部 userId。
+ */
+export function searchEnterprises(
+  keyword: string,
+  pageNum = 1,
+  pageSize = 20,
+): Promise<{ items: EnterpriseSearchItem[]; total: number }> {
+  return request.get('/enterprise/search', {
+    params: { keyword, page: pageNum, size: pageSize },
+  })
+}
