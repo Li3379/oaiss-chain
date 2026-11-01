@@ -5,8 +5,8 @@ Exposes /metrics endpoint for Prometheus scraping using
 prometheus-fastapi-instrumentator.
 """
 
-from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter, Histogram
+from prometheus_fastapi_instrumentator import Instrumentator
 
 # Custom business metrics
 PREDICTION_REQUESTS = Counter(

@@ -1,0 +1,50 @@
+# ruff 配置：显式声明规则集，让 CI 结果与 ruff 版本解耦。
+#
+# 背景：CI 用 `pip install ruff` 装最新版，而规则集随版本演进——
+# 新版把 BLE001（盲捕获 Exception）纳入了默认检查，于是同一份代码
+# 在本地（0.15.20）全绿、在 CI（最新版）报 41 个错误。
+# 这属于工具漂移，不是代码缺陷：CI 到底检查什么，不该由
+# 「那天装到哪个版本」决定。
+#
+# 因此：
+#   1. 版本在 lint.yml 中固定（见 PIP_RUFF_VERSION）
+#   2. 规则集在此显式列出，不依赖版本默认值
+
+target-version = "py311"
+line-length = 88
+
+[lint]
+# 只启用明确需要的规则族，避免被上游默认值的变化牵连。
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear（真 bug 模式）
+    "C4",   # flake8-comprehensions
+    "SIM",  # flake8-simplify
+]
+# 刻意不启用 BLE001（盲捕获 Exception）：
+# 本服务多处需要在外部依赖（Prophet/XGBoost/LLM）失败时降级返回，
+# 捕获宽泛异常是有意的容错设计，而非疏忽。若将来要收紧，
+# 应逐处改成具体异常类型，而不是靠关掉规则绕过。
+
+ignore = [
+    # E501 由 formatter 负责，不重复检查
+    "E501",
+]
+
+[lint.per-file-ignores]
+# 测试里允许 assert 与非惯用写法
+"tests/**" = ["S101", "B011"]
+# Pydantic 模型用 (str, Enum) 混入是刻意的：JSON 直接输出字符串值，
+# 改成 StrEnum 会改变序列化行为与既有 API 契约。
+"app/schemas/enterprise.py" = ["UP042"]
+# SIM102 在此处合并嵌套 if 会让 clean_item 的作用域逻辑更难读，
+# 显式分层的可读性优先。
+"app/services/copilot_service.py" = ["SIM102"]
+
+[format]
+quote-style = "double"
+indent-style = "space"

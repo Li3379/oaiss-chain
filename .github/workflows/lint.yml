@@ -55,7 +55,11 @@ jobs:
           python-version: '3.11'
 
       - name: Install ruff
-        run: pip install ruff
+        # 固定版本：ruff 的默认规则集随版本演进，不锁版本会让同一份代码
+        # 在本地全绿、在 CI 报错（实测发生过：新版把 BLE001 纳入默认集，
+        # 一次性多出 41 个「错误」，而代码根本没变）。
+        # 规则集本身在 oaiss-chain-ml-service/ruff.toml 中显式声明。
+        run: pip install "ruff==0.15.20"
 
       - name: Check formatting
         run: ruff format --check .

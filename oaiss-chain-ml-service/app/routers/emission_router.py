@@ -10,8 +10,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from app.security import require_ml_service_secret
 from app.schemas.emission import EmissionForecastRequest, EmissionForecastResponse
+from app.security import require_ml_service_secret
 from app.services.emission_service import EmissionService
 
 logger = logging.getLogger(__name__)

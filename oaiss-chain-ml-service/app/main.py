@@ -6,16 +6,16 @@ enterprise inference, and market forecasting.
 """
 
 import logging
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from fastapi import Depends, FastAPI
 
-from app.security import require_ml_service_secret
+from app.routers.copilot_router import router as copilot_router
+from app.routers.emission_router import router as emission_router
 from app.routers.enterprise_router import router as enterprise_router
 from app.routers.market_router import router as market_router
-from app.routers.emission_router import router as emission_router
-from app.routers.copilot_router import router as copilot_router
+from app.security import require_ml_service_secret
 
 logger = logging.getLogger(__name__)
 

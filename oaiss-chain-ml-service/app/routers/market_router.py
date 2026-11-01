@@ -7,8 +7,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.security import require_ml_service_secret
 from app.schemas.market import MarketForecastRequest, MarketForecastResponse
+from app.security import require_ml_service_secret
 from app.services.market_service import MarketService
 
 logger = logging.getLogger(__name__)

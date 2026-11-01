@@ -6,9 +6,9 @@ and XGBoost compliance risk classification.
 import logging
 
 import numpy as np
+import xgboost as xgb
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
-import xgboost as xgb
 
 from app.schemas.enterprise import (
     ComplianceStatus,

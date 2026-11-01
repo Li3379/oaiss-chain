@@ -7,7 +7,6 @@ authoritative GB/T 32150-2015 domain expert rule engine for offline resiliency.
 import hashlib
 import json
 import logging
-from typing import List, Tuple
 
 import httpx
 
@@ -38,9 +37,9 @@ class CopilotService:
         self.ollama_model = settings.ollama_model
         self.timeout = settings.llm_timeout_seconds
 
-    def _llm_targets(self) -> List[Tuple[str, str, str]]:
+    def _llm_targets(self) -> list[tuple[str, str, str]]:
         """仅在显式配置后才会产生 LLM 调用目标；不做隐式本机探测。"""
-        targets: List[Tuple[str, str, str]] = []
+        targets: list[tuple[str, str, str]] = []
         if self.api_key:
             targets.append((self.api_base, self.api_key, self.model_name))
         if self.ollama_base:
@@ -215,8 +214,8 @@ class CopilotService:
             full_text = llm_text.strip()
             # 智能提取段落
             summary_part = ""
-            findings_part: List[str] = []
-            suggestions_part: List[str] = []
+            findings_part: list[str] = []
+            suggestions_part: list[str] = []
 
             lines = [
                 line_text.strip()

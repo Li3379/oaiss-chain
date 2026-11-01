@@ -12,7 +12,7 @@ import pytest
 @pytest.fixture
 def sample_dates():
     """Generate 30 sample dates starting 2025-01-01."""
-    return [("2025-01-{:02d}".format(i)) for i in range(1, 31)]
+    return [(f"2025-01-{i:02d}") for i in range(1, 31)]
 
 
 @pytest.fixture

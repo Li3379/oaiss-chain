@@ -10,11 +10,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.security import require_ml_service_secret
 from app.schemas.enterprise import (
     EnterpriseInferenceRequest,
     EnterpriseInferenceResponse,
 )
+from app.security import require_ml_service_secret
 from app.services.enterprise_service import EnterpriseService
 
 logger = logging.getLogger(__name__)

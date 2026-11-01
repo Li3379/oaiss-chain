@@ -89,7 +89,7 @@ class TestConfidence:
 
     def test_confidence_narrow_interval(self, service):
         """Constant data should yield high confidence (narrow intervals)."""
-        dates = ["2025-01-{:02d}".format(i) for i in range(1, 31)]
+        dates = [f"2025-01-{i:02d}" for i in range(1, 31)]
         emissions = [200.0] * 30
         request = EmissionForecastRequest(
             enterprise_id=1,

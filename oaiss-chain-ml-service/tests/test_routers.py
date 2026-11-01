@@ -36,7 +36,7 @@ def auth_headers():
 def _valid_emission_payload():
     return {
         "enterprise_id": 1,
-        "dates": ["2025-01-{:02d}".format(i) for i in range(1, 31)],
+        "dates": [f"2025-01-{i:02d}" for i in range(1, 31)],
         "emissions": [float(100 + i * 5) for i in range(30)],
         "sector": "power_generation",
         "horizon_days": 7,
@@ -45,7 +45,7 @@ def _valid_emission_payload():
 
 def _valid_market_payload():
     return {
-        "dates": ["2025-01-{:02d}".format(i) for i in range(1, 31)],
+        "dates": [f"2025-01-{i:02d}" for i in range(1, 31)],
         "prices": [50.0 + (i % 3) * 2.0 for i in range(30)],
         "volumes": [1000.0 + (i % 5) * 50.0 for i in range(30)],
         "horizon_days": 7,

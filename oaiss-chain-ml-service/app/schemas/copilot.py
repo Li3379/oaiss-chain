@@ -2,14 +2,15 @@
 Schemas for AI Dual-Carbon Copilot services.
 """
 
-from typing import Any, List, Optional
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
 class ReportAnalysisRequest(BaseModel):
     """Request for AI-assisted carbon accounting report analysis."""
 
-    report_id: Optional[Any] = Field(default=None, description="Report ID or No")
+    report_id: Any | None = Field(default=None, description="Report ID or No")
     enterprise_name: str = Field(
         default="申报企业", max_length=200, description="Enterprise name"
     )
@@ -22,7 +23,7 @@ class ReportAnalysisRequest(BaseModel):
     desulf_emission: float = Field(
         default=0.0, ge=0.0, description="Desulfurization emissions"
     )
-    emission_details: Optional[Any] = Field(
+    emission_details: Any | None = Field(
         default=None, description="Structured emission details or JSON"
     )
 
@@ -30,12 +31,12 @@ class ReportAnalysisRequest(BaseModel):
 class ReportAnalysisResponse(BaseModel):
     """Response containing AI-generated carbon accounting analysis."""
 
-    report_id: Optional[Any] = None
+    report_id: Any | None = None
     summary: str = Field(..., description="Executive summary paragraph")
-    key_findings: List[str] = Field(
+    key_findings: list[str] = Field(
         default_factory=list, description="Key diagnostic findings"
     )
-    reduction_suggestions: List[str] = Field(
+    reduction_suggestions: list[str] = Field(
         default_factory=list, description="Concrete abatement suggestions"
     )
     full_text: str = Field(..., description="Full analytical narrative text")
@@ -49,7 +50,7 @@ class ReportAnalysisResponse(BaseModel):
         default=False,
         description="True when the report carries no usable emission data; analysis fields are then intentionally empty",
     )
-    insufficient_data_reason: Optional[str] = Field(
+    insufficient_data_reason: str | None = Field(
         default=None,
         description="Human-readable explanation returned only when insufficient_data is true",
     )
@@ -64,7 +65,7 @@ class PolicyQARequest(BaseModel):
         max_length=1000,
         description="User question about standards, formulas, or policy",
     )
-    context_topic: Optional[str] = Field(
+    context_topic: str | None = Field(
         default=None,
         max_length=200,
         description="Optional focus topic (e.g. power-generation, grid, fuel)",
@@ -75,7 +76,7 @@ class PolicyQAResponse(BaseModel):
     """Response for policy and standard question answering."""
 
     answer: str = Field(..., description="Expert explanation and advice")
-    relevant_standards: List[str] = Field(
+    relevant_standards: list[str] = Field(
         default_factory=list, description="Referenced official national standards"
     )
     model_used: str = Field(..., description="Model used to answer")
@@ -84,8 +85,8 @@ class PolicyQAResponse(BaseModel):
 class ProcurementAdviceRequest(BaseModel):
     """Request for carbon quota compliance and trading procurement advice."""
 
-    enterprise_id: Optional[Any] = None
-    enterprise_name: Optional[str] = Field(default="本企业", max_length=200)
+    enterprise_id: Any | None = None
+    enterprise_name: str | None = Field(default="本企业", max_length=200)
     current_emission: float = Field(
         ..., ge=0.0, description="Total verified emission in tons"
     )
@@ -110,7 +111,7 @@ class ProcurementAdviceResponse(BaseModel):
         ..., description="Estimated cost to clear shortfall at current prices"
     )
     advice: str = Field(..., description="Executive strategy narrative")
-    action_items: List[str] = Field(
+    action_items: list[str] = Field(
         default_factory=list, description="Step-by-step actionable recommendations"
     )
     model_used: str = Field(..., description="Model used")
