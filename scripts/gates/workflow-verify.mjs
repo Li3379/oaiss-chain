@@ -17,6 +17,7 @@
  * 用法：node scripts/gates/workflow-verify.mjs
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -126,6 +127,37 @@ function extractTriggerBranches(lines) {
   return branches
 }
 
+/**
+ * 检查 shell 脚本是否保留了可执行位。
+ *
+ * 背景：Windows 上开发时 git 默认不记录文件权限（core.fileMode=false），
+ * 于是所有 .sh 脚本入库时都是 100644。Linux Runner 上直接调用
+ * `./scripts/xxx.sh` 会得到 exit 126 (Permission denied)——
+ * 而本地 Windows 跑同样的命令完全正常，缺陷只在 CI 暴露。
+ *
+ * @returns {string[]} 缺可执行位的文件列表
+ */
+function checkShellExecutableBits() {
+  const problems = []
+  try {
+    const out = execFileSync('git', ['ls-files', '-s', '*.sh'], {
+      cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+    })
+    for (const line of out.split('\n')) {
+      if (!line.trim()) continue
+      const parts = line.split(/\s+/)
+      const mode = parts[0]
+      const file = parts.slice(3).join(' ')
+      // vendor/ 下的是第三方依赖自带的脚本，不参与本项目执行，不计入
+      if (file.includes('/vendor/')) continue
+      if (mode === '100644') problems.push(file)
+    }
+  } catch {
+    // 非 git 环境，跳过
+  }
+  return problems
+}
+
 function main() {
   console.log('=== GitHub Actions 工作流门禁 ===\n')
 
@@ -166,6 +198,21 @@ function main() {
     console.log('  所有工作流均为手动触发（workflow_dispatch），无自动触发分支')
   } else {
     console.log(`  自动触发分支: ${[...allBranches].join(', ')}`)
+  }
+
+  // shell 脚本可执行位
+  console.log('\n--- shell 脚本可执行位 ---')
+  const nonExec = checkShellExecutableBits()
+  if (nonExec.length > 0) {
+    failures++
+    console.log(`✗ ${nonExec.length} 个 .sh 脚本入库权限为 100644（缺可执行位）`)
+    console.log('    Linux Runner 上 ./xxx.sh 会直接 exit 126 (Permission denied)，')
+    console.log('    而 Windows 本地不受影响——缺陷只在 CI 暴露。')
+    nonExec.slice(0, 5).forEach(f => console.log(`    ${f}`))
+    if (nonExec.length > 5) console.log(`    ... 另有 ${nonExec.length - 5} 个`)
+    console.log('    修复: git update-index --chmod=+x <file>')
+  } else {
+    console.log('✓ 所有 .sh 脚本均带可执行位')
   }
 
   console.log('')
