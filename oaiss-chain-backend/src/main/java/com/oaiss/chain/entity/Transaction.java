@@ -84,7 +84,11 @@ public class Transaction extends BaseEntity {
      *
      * <p>取值与 {@link TradeAudit} 的常量保持一致，避免两处定义漂移。
      */
-    @Column(name = "audit_status", nullable = false)
+    // 列类型显式声明为 TINYINT（V17 建列时即 TINYINT）。不声明的话
+    // Hibernate 按 Integer 推断期望 INTEGER，ddl-auto=validate 下会因
+    // 实际列是 TINYINT 而拒绝启动——同一缺陷曾让 carbon_coin_transaction.tx_type
+    // 在 CI 上直接阻塞后端启动。
+    @Column(name = "audit_status", nullable = false, columnDefinition = "TINYINT")
     @Builder.Default
     private Integer auditStatus = 0;
 

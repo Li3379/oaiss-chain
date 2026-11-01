@@ -55,7 +55,9 @@ public class TradeAudit extends BaseEntity {
     /**
      * 审核态（0 无需审 / 1 待审 / 2 通过 / 3 驳回）
      */
-    @Column(name = "audit_status", nullable = false)
+    // 列类型显式声明为 TINYINT。不声明时 Hibernate 按 Integer 推断期望 INTEGER，
+    // ddl-auto=validate 下会因实际列为 TINYINT 拒绝启动。
+    @Column(name = "audit_status", nullable = false, columnDefinition = "TINYINT")
     @Builder.Default
     private Integer auditStatus = AUDIT_NOT_REQUIRED;
 

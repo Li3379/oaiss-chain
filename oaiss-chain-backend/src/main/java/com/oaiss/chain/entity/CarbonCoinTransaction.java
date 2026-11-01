@@ -34,8 +34,19 @@ public class CarbonCoinTransaction extends BaseEntity {
 
     /**
      * 交易类型（1-充值, 2-购买配额, 3-出售配额；4 为历史转账遗留值）
+     *
+     * <p>列类型必须显式声明为 TINYINT：V17 迁移把该列从 INT 收紧为 TINYINT，
+     * 而 Java 侧仍是 Integer。Hibernate 的 {@code ddl-auto: validate} 会拿
+     * 「Integer → INTEGER」去比对实际列，发现是 TINYINT 就判定类型不符并
+     * 直接让应用启动失败：
+     *
+     * <pre>Schema-validation: wrong column type encountered in column [tx_type]
+     * found [tinyint], but expecting [integer]</pre>
+     *
+     * 本地跑 {@code ddl-auto=none} 时不校验，所以这个缺陷只在 CI（docker profile
+     * 用 validate）暴露。</p>
      */
-    @Column(name = "tx_type", nullable = false)
+    @Column(name = "tx_type", nullable = false, columnDefinition = "TINYINT")
     private Integer txType;
 
     /**
