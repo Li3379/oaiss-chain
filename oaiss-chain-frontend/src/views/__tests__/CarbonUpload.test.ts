@@ -2,12 +2,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 
+vi.mock('../../api/blockchain', () => ({
+  getReportSnapshot: vi.fn(() => Promise.resolve(null)),
+}))
+
 vi.mock('../../api/carbon', () => ({
   getMyReports: vi.fn(() => Promise.resolve({ items: [], total: 0 })),
   createReport: vi.fn(() => Promise.resolve()),
   deleteReport: vi.fn(() => Promise.resolve()),
   submitReport: vi.fn(() => Promise.resolve()),
   getAiReportAnalysis: vi.fn(),
+  getReport: vi.fn(),
 }))
 
 vi.mock('element-plus', async (importOriginal) => {
@@ -20,7 +25,8 @@ vi.mock('element-plus', async (importOriginal) => {
 })
 
 import CarbonUpload from '../enterprise/CarbonUpload.vue'
-import { getMyReports, createReport, deleteReport, submitReport, getAiReportAnalysis } from '../../api/carbon'
+import { getMyReports, createReport, deleteReport, submitReport, getAiReportAnalysis, getReport } from '../../api/carbon'
+import { getReportSnapshot } from '../../api/blockchain'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const stubs = {
@@ -248,6 +254,53 @@ describe('CarbonUpload.vue', () => {
 
     expect(ElMessage.error).toHaveBeenCalled()
     expect(wrapper.find('[data-testid="ai-analysis-error"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('loads the on-chain snapshot when the detail has a txHash', async () => {
+    vi.mocked(getMyReports).mockResolvedValueOnce({
+      items: [], total: 0,
+    } as never)
+    vi.mocked(getReport).mockResolvedValueOnce({
+      id: 7,
+      status: 5,
+      blockchainTxHash: 'tx-abc',
+      onChainAt: '2026-10-01T10:00:00',
+    } as never)
+    vi.mocked(getReportSnapshot).mockResolvedValueOnce({
+      reportId: '7', schemaVersion: 'v2', totalEmission: '1234.56',
+    } as never)
+
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    await (wrapper.vm as unknown as { viewDetail: (row: { id: number; status: number; blockchainTxHash: string }) => Promise<void> })
+      .viewDetail({ id: 7, status: 5, blockchainTxHash: 'tx-abc' })
+    await flushPromises()
+
+    expect(getReportSnapshot).toHaveBeenCalledWith(7)
+    expect((wrapper.vm as unknown as { chainSnapshot: unknown }).chainSnapshot).toMatchObject({
+      schemaVersion: 'v2',
+      totalEmission: '1234.56',
+    })
+
+    wrapper.unmount()
+  })
+
+  it('does not query the ledger when the report has no txHash', async () => {
+    vi.mocked(getReport).mockResolvedValueOnce({
+      id: 8, status: 1, blockchainTxHash: null,
+    } as never)
+
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    await (wrapper.vm as unknown as { viewDetail: (row: { id: number; status: number }) => Promise<void> })
+      .viewDetail({ id: 8, status: 1 })
+    await flushPromises()
+
+    expect(getReportSnapshot).not.toHaveBeenCalled()
+
     wrapper.unmount()
   })
 })

@@ -30,6 +30,7 @@ import { ArrowRight, Clock, CopyDocument, Cpu, DataAnalysis, Document, Key, Link
 import { useI18n } from 'vue-i18n'
 import { getMyReports, createReport, updateReport, deleteReport, submitReport, getReport, getAiReportAnalysis, type AiReportAnalysisResponse } from '../../api/carbon'
 import { getKeyPair } from '../../api/signature'
+import { getReportSnapshot } from '../../api/blockchain'
 import { uploadFile } from '../../api/file'
 import type { CarbonReportResponse, RsaKeyPairResponse } from '../../types'
 import { formatDateTime, formatNumber } from '../../utils/format'
@@ -132,6 +133,16 @@ const formRef = ref()
 const submitting = ref(false)
 const detailDialogVisible = ref(false)
 const detailData = ref<CarbonReportResponse | null>(null)
+/**
+ * 链上原始快照（读自 Fabric 账本，非本地库）。
+ *
+ * 存证卡此前的 TxHash 来自 MySQL 的 blockchain_tx_hash 自填字段——它只能证明
+ * 「我们记了一笔哈希」，证明不了「链上真的写了这份报告」。快照是从链上读回来的，
+ * 才让「链上存了什么」变成可核对的事实。
+ */
+const chainSnapshot = ref<Record<string, unknown> | null>(null)
+const chainSnapshotLoading = ref(false)
+const chainSnapshotError = ref('')
 const detailLoading = ref(false)
 const formModel = reactive({
   accountingPeriod: '',
@@ -673,14 +684,45 @@ const overviewStats = computed(() => {
 const viewDetail = async (row: CarbonReportResponse) => {
   detailLoading.value = true
   detailDialogVisible.value = true
+  chainSnapshot.value = null
+  chainSnapshotError.value = ''
   try {
     const data = await getReport(row.id)
     detailData.value = data
+    // 只有已上链的报告才去读账本；草稿/待审阶段链上没有东西可读
+    if (data?.blockchainTxHash) {
+      loadChainSnapshot(data.id)
+    }
   } catch {
     ElMessage.error(t('carbonUpload.loadDetailFailed'))
     detailDialogVisible.value = false
   } finally {
     detailLoading.value = false
+  }
+}
+
+/** 快照字段值展示：对象/数组转 JSON，其余原样；空值统一显示为 '-'。 */
+const formatSnapshotValue = (value: unknown): string => {
+  if (value === null || value === undefined || value === '') return '-'
+  if (typeof value === 'object') return JSON.stringify(value)
+  if (typeof value === 'string' && value.length > 120) return `${value.slice(0, 120)}…`
+  return String(value)
+}
+
+const loadChainSnapshot = async (reportId: number) => {
+  chainSnapshotLoading.value = true
+  try {
+    const snapshot = await getReportSnapshot(reportId)
+    chainSnapshot.value = snapshot || null
+    if (!snapshot) {
+      chainSnapshotError.value = t('carbonUpload.chainSnapshotEmpty')
+    }
+  } catch {
+    // 链上读不到不等于数据有问题：可能是节点不可达。提示「无法核对」而不是「存证缺失」。
+    chainSnapshot.value = null
+    chainSnapshotError.value = t('carbonUpload.chainSnapshotFailed')
+  } finally {
+    chainSnapshotLoading.value = false
   }
 }
 
@@ -1007,8 +1049,39 @@ onMounted(() => {
               <span style="color: var(--color-text-muted);">TxHash:</span> <code>{{ detailData.blockchainTxHash }}</code>
             </div>
             <div v-if="detailData.onChainAt" style="font-size: 11px; color: var(--color-text-muted); margin-top: 4px;">
-              上链时间: {{ formatDateTime(detailData.onChainAt) }}
+              {{ t('carbonUpload.onChainAtLabel') }}: {{ formatDateTime(detailData.onChainAt) }}
             </div>
+
+            <!-- 历史 Mock 欠账：哈希在库里、链上没有。必须显式告知，否则企业会误以为存证有效 -->
+            <el-alert
+              v-if="detailData.chainMark === 'HISTORICAL_MOCK'"
+              class="chain-mark-alert"
+              type="warning"
+              :closable="false"
+              :title="t('carbonUpload.chainMarkHistoricalMockTitle')"
+              :description="t('carbonUpload.chainMarkHistoricalMockBody')"
+            />
+
+            <!-- 链上原始快照：从 Fabric 账本读回，用于核对「链上到底写了什么」 -->
+            <el-collapse class="chain-snapshot" data-testid="chain-snapshot">
+              <el-collapse-item :title="t('carbonUpload.chainSnapshotTitle')" name="snapshot">
+                <div v-loading="chainSnapshotLoading" class="chain-snapshot__body">
+                  <p v-if="chainSnapshotError" class="chain-snapshot__hint">{{ chainSnapshotError }}</p>
+                  <template v-else-if="chainSnapshot">
+                    <el-descriptions :column="2" size="small" border>
+                      <el-descriptions-item
+                        v-for="(value, key) in chainSnapshot"
+                        :key="String(key)"
+                        :label="String(key)"
+                      >
+                        <span class="chain-snapshot__value">{{ formatSnapshotValue(value) }}</span>
+                      </el-descriptions-item>
+                    </el-descriptions>
+                    <pre class="chain-snapshot__raw">{{ JSON.stringify(chainSnapshot, null, 2) }}</pre>
+                  </template>
+                </div>
+              </el-collapse-item>
+            </el-collapse>
           </div>
 
           <el-descriptions :column="2" border>

@@ -43,6 +43,8 @@ public class ReviewerQualificationService {
     private static final int MAX_CERT_NO_RETRIES = 3;
     /** 与 V19 迁移的 revoke_reason 列宽保持一致 */
     private static final int REVOKE_REASON_MAX_LENGTH = 200;
+    /** 资格证默认有效期（年） */
+    private static final int CERT_VALID_YEARS = 1;
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final String DEFAULT_QUALIFICATION_TYPE = "碳排放审核资质";
@@ -69,6 +71,8 @@ public class ReviewerQualificationService {
                 .certificateNo(generateUniqueCertificateNo())
                 .issuingAuthority(DEFAULT_ISSUING_AUTHORITY)
                 .issuedDate(LocalDate.now())
+                // 同企业准入证书：有效期默认签发日 + 1 年
+                .expiryDate(LocalDate.now().plusYears(CERT_VALID_YEARS))
                 .status(QualificationStatusEnum.ACTIVE.getCode())
                 .build();
 

@@ -960,6 +960,18 @@ Get permission list.
 
 Reconcile every locally-marked on-chain report against the ledger snapshot (chaincode `QueryReportHistory`). Returns counts for `matched`, `missingOnChain`, `contentMismatch`, `unverifiable` plus per-report detail rows. Read-only — the Fabric ledger is append-only and is never modified by this endpoint.
 
+### POST `/admin/blockchain/mark-historical-mock`
+
+Mark every record whose `blockchain_tx_hash` starts with `tx_mock_` as `HISTORICAL_MOCK`
+("hash exists only in the local database; the ledger never received it").
+
+**It only adds a mark.** `blockchain_tx_hash`, `status` and `on_chain_at` are left untouched —
+the hash is the historical truth and erasing it would destroy the audit trail.
+Idempotent: already-marked records are skipped and not recounted.
+
+Marked records leave the `missingOnChain` bucket and appear as `historicalMock` in the
+reconciliation result, so genuinely new gaps are no longer drowned in permanent noise.
+
 ### GET `/admin/outbox/dead-letters`
 
 Paginated list of `DEAD` outbox messages (exceeded the retry limit and still not on-chain). Before this endpoint existed, dead letters had no query surface at all.

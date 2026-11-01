@@ -30,6 +30,7 @@ import { Connection, Document, Refresh, Tickets } from '@element-plus/icons-vue'
 import {
   getChainReconciliation,
   getDeadLetters,
+  markHistoricalMockData,
   replayDeadLetter,
   type ChainReconciliationResult,
   type DeadLetterRow,
@@ -64,6 +65,32 @@ const loadReconciliation = async () => {
 
 const reconDetails = computed(() => reconResult.value?.details || [])
 
+/** 标记历史 Mock 脏数据：把「本地记了上链、链上从没写过」的老记录从缺失告警里剥离 */
+const marking = ref(false)
+
+const onMarkHistoricalMock = async () => {
+  if (marking.value) return
+  try {
+    await ElMessageBox.confirm(
+      t('chainOps.markMockConfirm'),
+      t('chainOps.markMockTitle'),
+      { confirmButtonText: t('common.confirm'), cancelButtonText: t('common.cancel'), type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  marking.value = true
+  try {
+    const result = await markHistoricalMockData()
+    ElMessage.success(t('chainOps.markMockSuccess', { count: result?.marked ?? 0 }))
+    await loadReconciliation()
+  } catch {
+    ElMessage.error(t('chainOps.markMockFailed'))
+  } finally {
+    marking.value = false
+  }
+}
+
 /** 明细行状态 → 标签色。只有 MATCHED 是正常的，其余都需要人看。 */
 const reconStatusTag = (status?: string) => {
   switch (status) {
@@ -71,6 +98,7 @@ const reconStatusTag = (status?: string) => {
     case 'MISSING_ON_CHAIN': return 'danger'
     case 'CONTENT_MISMATCH': return 'warning'
     case 'UNVERIFIABLE': return 'info'
+    case 'HISTORICAL_MOCK': return 'info'
     default: return 'info'
   }
 }
@@ -81,6 +109,7 @@ const reconStatusText = (status?: string) => {
     case 'MISSING_ON_CHAIN': return t('chainOps.statusMissingOnChain')
     case 'CONTENT_MISMATCH': return t('chainOps.statusContentMismatch')
     case 'UNVERIFIABLE': return t('chainOps.statusUnverifiable')
+    case 'HISTORICAL_MOCK': return t('chainOps.statusHistoricalMock')
     default: return status || '-'
   }
 }
@@ -187,6 +216,14 @@ const overviewStats = computed(() => {
       icon: Refresh,
     },
     {
+      label: t('chainOps.statusHistoricalMock'),
+      value: recon?.historicalMock ?? 0,
+      unit: t('chainOps.unitReports'),
+      delta: t('chainOps.statHistoricalMockHint'),
+      tone: 'neu' as const,
+      icon: Document,
+    },
+    {
       label: t('chainOps.tabDeadLetters'),
       value: deadTotal.value,
       unit: t('chainOps.unitMessages'),
@@ -220,6 +257,9 @@ onMounted(() => {
       <el-tab-pane :label="t('chainOps.tabReconciliation')" name="reconciliation">
         <DataPanel :title="t('chainOps.reconciliationTitle')" :meta="t('chainOps.reconciliationMeta')">
           <template #actions>
+            <el-button :loading="marking" @click="onMarkHistoricalMock">
+              {{ t('chainOps.markHistoricalMock') }}
+            </el-button>
             <el-button :icon="Refresh" :loading="reconLoading" @click="loadReconciliation">
               {{ t('chainOps.runReconciliation') }}
             </el-button>

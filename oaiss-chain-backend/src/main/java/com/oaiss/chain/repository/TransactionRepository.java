@@ -205,4 +205,9 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
             + "AND t.completedAt >= :since")
     java.math.BigDecimal findAverageUnitPriceSince(
             @Param("since") java.time.LocalDateTime since);
+
+    /**
+     * 按哈希前缀查找（标记历史 Mock 脏数据用）
+     */
+    java.util.List<Transaction> findByBlockchainTxHashLikeAndDeletedFalse(String prefix);
 }

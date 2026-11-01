@@ -49,9 +49,17 @@ public class ChainReconciliationService {
     private static final String STATUS_DEAD = "DEAD";
     private static final String STATUS_PENDING = "PENDING";
 
+    /** 历史 Mock 时钟哈希的标记值（链上不存在，已确认，不再纳入缺失告警） */
+    public static final String MARK_HISTORICAL_MOCK = "HISTORICAL_MOCK";
+    /** Mock 模式下生成的哈希前缀（System.currentTimeMillis + UUID） */
+    private static final String MOCK_TX_PREFIX = "tx_mock_";
+    private static final String MOCK_MARK_REASON =
+            "Mock profile 时期生成：哈希仅存于本地库，从未写入 Fabric 账本，已确认为历史欠账";
+
     private final CarbonReportRepository carbonReportRepository;
     private final BlockchainServicePort blockchainService;
     private final OutboxMessageRepository outboxMessageRepository;
+    private final com.oaiss.chain.repository.TransactionRepository transactionRepository;
     private final ObjectMapper objectMapper;
 
     /**
@@ -70,6 +78,8 @@ public class ChainReconciliationService {
         private final int contentMismatch;
         /** 查询链上失败（无法判定，不应算作差异） */
         private final int unverifiable;
+        /** 已标记为历史 Mock 欠账、不再重复告警的记录数 */
+        private final int historicalMock;
         /** 逐条明细，供管理员定位 */
         private final List<Map<String, Object>> details;
         private final long total;
@@ -90,6 +100,7 @@ public class ChainReconciliationService {
         int missing = 0;
         int mismatch = 0;
         int unverifiable = 0;
+        int historicalMock = 0;
         List<Map<String, Object>> details = new ArrayList<>();
 
         for (CarbonReport report : reports.getContent()) {
@@ -97,6 +108,17 @@ public class ChainReconciliationService {
             row.put("reportId", report.getId());
             row.put("reportNo", report.getReportNo());
             row.put("dbTxHash", report.getBlockchainTxHash());
+
+            // 已标记的历史欠账：不再去查链——那是一次必然失败的往返，
+            // 而且会把它重新混进「缺失」清单，淹没真正需要处理的问题。
+            if (report.getChainMark() != null) {
+                historicalMock++;
+                row.put("status", report.getChainMark());
+                row.put("chainMark", report.getChainMark());
+                row.put("reason", report.getChainMarkReason());
+                details.add(row);
+                continue;
+            }
 
             String snapshot;
             try {
@@ -141,9 +163,66 @@ public class ChainReconciliationService {
                 .missingOnChain(missing)
                 .contentMismatch(mismatch)
                 .unverifiable(unverifiable)
+                .historicalMock(historicalMock)
                 .details(details)
                 .total(reports.getTotalElements())
                 .build();
+    }
+
+    /**
+     * 标记历史 Mock 脏数据：把 {@code tx_mock_*} 哈希的记录标注为「链上不存在，已确认」。
+     *
+     * <p>只加标记，<b>不改动</b> {@code blockchainTxHash} / {@code status} / {@code onChainAt}：
+     * 哈希是历史真相，抹掉就没有审计线索；状态是业务事实，标记无权改写。</p>
+     *
+     * <p>幂等：已标记的记录不会重复写入，也不会重复计数。</p>
+     *
+     * @param operatorId 操作人用户ID，可为 null（系统自动标记）
+     * @return 本次新标记的记录数（报告 + 交易）
+     */
+    @Transactional
+    public int markHistoricalMockData() {
+        return markHistoricalMockData(null);
+    }
+
+    @Transactional
+    public int markHistoricalMockData(Long operatorId) {
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        String likePrefix = MOCK_TX_PREFIX + "%";
+
+        List<CarbonReport> reports = carbonReportRepository
+                .findByBlockchainTxHashLikeAndDeletedFalse(likePrefix).stream()
+                .filter(r -> r.getChainMark() == null)
+                .toList();
+        reports.forEach(r -> {
+            r.setChainMark(MARK_HISTORICAL_MOCK);
+            r.setChainMarkReason(MOCK_MARK_REASON);
+            r.setChainMarkedAt(now);
+            r.setChainMarkedBy(operatorId);
+        });
+
+        List<com.oaiss.chain.entity.Transaction> trades = transactionRepository
+                .findByBlockchainTxHashLikeAndDeletedFalse(likePrefix).stream()
+                .filter(t -> t.getChainMark() == null)
+                .toList();
+        trades.forEach(t -> {
+            t.setChainMark(MARK_HISTORICAL_MOCK);
+            t.setChainMarkReason(MOCK_MARK_REASON);
+            t.setChainMarkedAt(now);
+            t.setChainMarkedBy(operatorId);
+        });
+
+        if (!reports.isEmpty()) {
+            carbonReportRepository.saveAll(reports);
+        }
+        if (!trades.isEmpty()) {
+            transactionRepository.saveAll(trades);
+        }
+
+        int total = reports.size() + trades.size();
+        log.info("[CHAIN-MARK] Marked {} historical mock records (reports={}, trades={})",
+                total, reports.size(), trades.size());
+        return total;
     }
 
     /**

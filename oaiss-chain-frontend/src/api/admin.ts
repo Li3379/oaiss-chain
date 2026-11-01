@@ -194,6 +194,8 @@ export interface ChainReconciliationResult {
   missingOnChain: number
   contentMismatch: number
   unverifiable: number
+  /** 已标记为历史 Mock 欠账、不再重复告警的记录数 */
+  historicalMock: number
   details: ChainReconciliationDetail[]
   total: number
 }
@@ -239,6 +241,16 @@ export function getDeadLetters(params?: PageRequest): Promise<PageResponse<DeadL
  * 【界面触发操作】：死信列表操作列点击【重放】并二次确认
  * 【后端对应端点】：AdminController -> POST /admin/outbox/{id}/replay
  */
+/**
+ * 【业务功能】：标记历史 Mock 脏数据（tx_mock_* 哈希：本地记了上链、链上从未写入）
+ * 【对应前端页面】：ChainOps.vue (/admin/blockchain)
+ * 【界面触发操作】：对账 Tab 点击【标记历史 Mock 数据】并二次确认
+ * 【后端对应端点】：AdminController -> POST /admin/blockchain/mark-historical-mock
+ */
+export function markHistoricalMockData(): Promise<{ marked: number }> {
+  return request.post('/admin/blockchain/mark-historical-mock')
+}
+
 export function replayDeadLetter(id: number): Promise<void> {
   return request.post(`/admin/outbox/${id}/replay`)
 }

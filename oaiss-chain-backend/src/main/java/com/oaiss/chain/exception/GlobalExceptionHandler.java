@@ -313,6 +313,10 @@ public class GlobalExceptionHandler {
                 return HttpStatus.NOT_FOUND;
             }
             return HttpStatus.BAD_REQUEST;
+        } else if (code == ErrorCode.ADMISSION_REQUIRED || code == ErrorCode.QUALIFICATION_REQUIRED) {
+            // 证书门禁：主体「没有资格执行该操作」，不是请求参数有误。
+            // 归到 400 会误导调用方以为改参数就能过，从而无谓重试。
+            return HttpStatus.FORBIDDEN;
         }
         return HttpStatus.BAD_REQUEST;
     }

@@ -53,6 +53,11 @@ public interface CarbonReportRepository extends JpaRepository<CarbonReport, Long
     Page<CarbonReport> findByBlockchainTxHashIsNotNullAndDeletedFalse(Pageable pageable);
 
     /**
+     * 按哈希前缀查找（标记历史 Mock 脏数据用）
+     */
+    List<CarbonReport> findByBlockchainTxHashLikeAndDeletedFalse(String prefix);
+
+    /**
      * 根据审核员 ID 分页查询
      */
     Page<CarbonReport> findByReviewerIdAndDeletedFalse(Long reviewerId, Pageable pageable);

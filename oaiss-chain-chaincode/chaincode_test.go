@@ -2,21 +2,33 @@ package main
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/hyperledger/fabric-chaincode-go/shim"
+	"github.com/hyperledger/fabric-protos-go/ledger/queryresult"
+	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
 // MockStub provides just enough behavior for the lightweight unit tests below.
+//
+// 嵌入 ChaincodeStubInterface（nil）以获得接口完整性：链码只用得到下面显式实现的
+// 那几个方法，其余方法一旦被调用会 panic —— 这比「静默返回零值」更容易暴露问题。
 type MockStub struct {
+	shim.ChaincodeStubInterface
 	mock.Mock
-	state map[string][]byte
+	state    map[string][]byte
+	history  map[string][][]byte
+	composite []string
 }
 
 func NewMockStub() *MockStub {
-	return &MockStub{state: make(map[string][]byte)}
+	return &MockStub{
+		state:   make(map[string][]byte),
+		history: make(map[string][][]byte),
+	}
 }
 
 func (ms *MockStub) GetState(key string) ([]byte, error) {
@@ -28,6 +40,7 @@ func (ms *MockStub) GetState(key string) ([]byte, error) {
 
 func (ms *MockStub) PutState(key string, value []byte) error {
 	ms.state[key] = value
+	ms.history[key] = append(ms.history[key], value)
 	return nil
 }
 
@@ -46,16 +59,94 @@ func (ms *MockStub) CreateCompositeKey(objectType string, attributes []string) (
 	for _, a := range attributes {
 		key = key + string(rune(0)) + a
 	}
+	ms.composite = append(ms.composite, key)
 	return key, nil
 }
 
+// SplitCompositeKey 反解 CreateCompositeKey 生成的键。
+func (ms *MockStub) SplitCompositeKey(compositeKey string) (string, []string, error) {
+	parts := strings.Split(compositeKey, string(rune(0)))
+	if len(parts) == 0 {
+		return "", nil, nil
+	}
+	return parts[0], parts[1:], nil
+}
+
+// GetStateByPartialCompositeKey 返回此前写入、且以该前缀开头的复合键。
+func (ms *MockStub) GetStateByPartialCompositeKey(objectType string, attributes []string) (shim.StateQueryIteratorInterface, error) {
+	prefix := objectType
+	for _, a := range attributes {
+		prefix = prefix + string(rune(0)) + a
+	}
+	var matches []string
+	for _, key := range ms.composite {
+		if strings.HasPrefix(key, prefix) {
+			matches = append(matches, key)
+		}
+	}
+	return &mockStateIterator{keys: matches, state: ms.state}, nil
+}
+
+// GetHistoryForKey 返回该键的历史写入序列（用于 QueryReportHistory）。
+func (ms *MockStub) GetHistoryForKey(key string) (shim.HistoryQueryIteratorInterface, error) {
+	values := ms.history[key]
+	return &mockHistoryIterator{values: values}, nil
+}
+
+// mockStateIterator 是 StateQueryIteratorInterface 的最小实现。
+type mockStateIterator struct {
+	shim.StateQueryIteratorInterface
+	keys  []string
+	state map[string][]byte
+	pos   int
+}
+
+func (it *mockStateIterator) HasNext() bool { return it.pos < len(it.keys) }
+
+func (it *mockStateIterator) Next() (*queryresult.KV, error) {
+	key := it.keys[it.pos]
+	it.pos++
+	return &queryresult.KV{Key: key, Value: it.state[key]}, nil
+}
+
+func (it *mockStateIterator) Close() error { return nil }
+
+// mockHistoryIterator 是 HistoryQueryIteratorInterface 的最小实现。
+type mockHistoryIterator struct {
+	shim.HistoryQueryIteratorInterface
+	values [][]byte
+	pos    int
+}
+
+func (it *mockHistoryIterator) HasNext() bool { return it.pos < len(it.values) }
+
+func (it *mockHistoryIterator) Next() (*queryresult.KeyModification, error) {
+	value := it.values[it.pos]
+	it.pos++
+	return &queryresult.KeyModification{Value: value, TxId: "tx_mock_12345"}, nil
+}
+
+func (it *mockHistoryIterator) Close() error { return nil }
+
 // MockContext exists only to keep the test package aligned with current Fabric APIs.
 type MockContext struct {
-	stub *MockStub
+	stub shim.ChaincodeStubInterface
 }
 
 func (mc *MockContext) GetStub() shim.ChaincodeStubInterface {
-	return nil
+	return mc.stub
+}
+
+// newContractContext 返回一个可作为 contractapi.TransactionContextInterface 的生产者。
+//
+// 背景：此前本文件的用例全部是「手工 PutState 再 GetState」——它们验证的是
+// MockStub 自身，而不是链码函数。于是「后端调用的 CreateCarbonReportV2 根本
+// 不存在」这种缺陷可以长期逃过测试（实际就发生过：网络里跑着只有 v1 的旧包）。
+// 下面这些用例直接调用链码方法，才能锁住「函数存在且行为正确」。
+func newContractContext() *contractapi.TransactionContext {
+	ctx := new(contractapi.TransactionContext)
+	ctx.SetStub(NewMockStub())
+	return ctx
 }
 
 // TestCreateCarbonReport creates a report and verifies it's stored.
@@ -196,6 +287,120 @@ func TestQueryBlock(t *testing.T) {
 //
 // 背景：v1 链上只存 Data 原文，EnterpriseID 字段从未赋值，
 // 链上无法回答「这份报告属于哪家企业」。v2 补齐主体、周期、总量、三范围与签名。
+// TestCreateCarbonReportV2_IsCallable 直接调用 v2 函数。
+//
+// 这是本轮修复的核心回归：此前全仓没有任何用例真正调用链码函数，
+// 于是「后端 invoke 的 CreateCarbonReportV2 在链码里不存在」没有被发现，
+// 网络上跑着只有 v1 的旧包，自动上链长期 100% 失败。
+func TestCreateCarbonReportV2_IsCallable(t *testing.T) {
+	cc := &CarbonChaincode{}
+	ctx := newContractContext()
+
+	snapshot, err := cc.CreateCarbonReportV2(ctx, "42", "CR-2026-0042", "7", "2026-Q2",
+		"1234.5678", "1000.0000", "234.5678", "0", "12.5", "20.25", "3.75",
+		"sig-abc", `{"scope1":1000}`)
+
+	assert.NoError(t, err, "CreateCarbonReportV2 必须存在且可调用")
+	assert.NotNil(t, snapshot)
+	assert.Equal(t, "42", snapshot.ReportID)
+	assert.Equal(t, "7", snapshot.EnterpriseID)
+	assert.Equal(t, "v2", snapshot.SchemaVersion)
+	assert.Equal(t, "COMMITTED", snapshot.Status)
+	assert.Equal(t, "sig-abc", snapshot.Signature)
+
+	// 必须真的写进账本
+	stored, err := ctx.GetStub().GetState("42")
+	assert.NoError(t, err)
+	assert.NotNil(t, stored, "v2 写入后账本中必须有记录")
+
+	var decoded CarbonReportSnapshot
+	assert.NoError(t, json.Unmarshal(stored, &decoded))
+	assert.Equal(t, "1234.5678", decoded.TotalEmission)
+}
+
+// TestCreateCarbonReportV2_RejectsDuplicate 同一 reportID 二次写入必须报错。
+func TestCreateCarbonReportV2_RejectsDuplicate(t *testing.T) {
+	cc := &CarbonChaincode{}
+	ctx := newContractContext()
+
+	_, err := cc.CreateCarbonReportV2(ctx, "42", "CR-1", "7", "2026-Q2",
+		"100", "100", "0", "0", "0", "0", "0", "sig", "{}")
+	assert.NoError(t, err)
+
+	_, err = cc.CreateCarbonReportV2(ctx, "42", "CR-1", "7", "2026-Q2",
+		"100", "100", "0", "0", "0", "0", "0", "sig", "{}")
+	assert.Error(t, err, "账本不可重复写入同一 key")
+}
+
+// TestCreateTradeRecord_IsCallable 直接调用交易存证函数。
+func TestCreateTradeRecord_IsCallable(t *testing.T) {
+	cc := &CarbonChaincode{}
+	ctx := newContractContext()
+
+	record, err := cc.CreateTradeRecord(ctx, "T1", `{"amount":100}`)
+
+	assert.NoError(t, err, "CreateTradeRecord 必须存在且可调用")
+	assert.NotNil(t, record)
+	assert.Equal(t, "T1", record.TradeID)
+}
+
+// TestQueryReportHistory_IsCallable 直接调用历史查询（对账端点依赖它）。
+func TestQueryReportHistory_IsCallable(t *testing.T) {
+	cc := &CarbonChaincode{}
+	ctx := newContractContext()
+
+	_, err := cc.CreateCarbonReportV2(ctx, "42", "CR-1", "7", "2026-Q2",
+		"100", "100", "0", "0", "0", "0", "0", "sig", "{}")
+	assert.NoError(t, err)
+
+	history, err := cc.QueryReportHistory(ctx, "42")
+
+	assert.NoError(t, err, "QueryReportHistory 必须存在且可调用")
+	assert.Len(t, history, 1)
+	assert.Equal(t, "v2", history[0].SchemaVersion)
+}
+
+// TestVerifyReport_IsCallable 直接调用存证查验（GET /blockchain/report 的底层）。
+func TestVerifyReport_IsCallable(t *testing.T) {
+	cc := &CarbonChaincode{}
+	ctx := newContractContext()
+
+	_, err := cc.CreateCarbonReportV2(ctx, "42", "CR-1", "7", "2026-Q2",
+		"100", "100", "0", "0", "0", "0", "0", "sig", "{}")
+	assert.NoError(t, err)
+
+	value, err := cc.VerifyReport(ctx, "42")
+
+	assert.NoError(t, err, "VerifyReport 必须存在且可调用")
+	assert.NotNil(t, value)
+}
+
+// TestAllBackendInvokedFunctionsExist 锁定「后端会调用到的每个链码函数都存在」。
+//
+// 后端 FabricBlockchainService 硬编码了这些函数名；任何一项缺失都会让
+// 对应能力在运行期静默失败（异常被捕获后降级成「没有记录」）。
+func TestAllBackendInvokedFunctionsExist(t *testing.T) {
+	cc := &CarbonChaincode{}
+	ctx := newContractContext()
+
+	// 后端实际 invoke/evaluate 的函数清单（见 FabricBlockchainService）
+	assert.NotPanics(t, func() {
+		_, _ = cc.CreateCarbonReportV2(ctx, "p1", "", "", "", "", "", "", "", "", "", "", "", "")
+	}, "CreateCarbonReportV2")
+	assert.NotPanics(t, func() {
+		_, _ = cc.CreateCarbonReport(ctx, "p2", "{}")
+	}, "CreateCarbonReport")
+	assert.NotPanics(t, func() {
+		_, _ = cc.CreateTradeRecord(ctx, "t1", "{}")
+	}, "CreateTradeRecord")
+	assert.NotPanics(t, func() {
+		_, _ = cc.QueryReportHistory(ctx, "p1")
+	}, "QueryReportHistory")
+	assert.NotPanics(t, func() {
+		_, _ = cc.VerifyReport(ctx, "p1")
+	}, "VerifyReport")
+}
+
 func TestCarbonReportSnapshotV2Shape(t *testing.T) {
 	snapshot := &CarbonReportSnapshot{
 		ReportID:          "42",

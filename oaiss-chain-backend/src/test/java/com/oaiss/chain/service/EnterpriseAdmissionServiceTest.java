@@ -126,6 +126,24 @@ class EnterpriseAdmissionServiceTest {
     }
 
     @Test
+    @DisplayName("签发准入证书-必须写入有效期，否则「有效期」永远没有意义")
+    void testIssueCertificate_setsExpiryDate() {
+        when(enterpriseRepository.findById(1L)).thenReturn(Optional.of(testEnterprise));
+        when(enterpriseAdmissionRepository.findFirstByEnterpriseIdAndStatusAndDeletedFalse(1L, 1))
+                .thenReturn(Optional.empty());
+        when(enterpriseAdmissionRepository.existsByCertificateNoAndDeletedFalse(anyString())).thenReturn(false);
+        when(enterpriseAdmissionRepository.save(any(EnterpriseAdmission.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        EnterpriseAdmission result = enterpriseAdmissionService.issueCertificate(1L);
+
+        assertNotNull(result.getExpiryDate(),
+                "签发时必须写有效期：该列此前恒为 NULL，导致到期语义形同虚设");
+        assertEquals(LocalDate.now().plusYears(1), result.getExpiryDate(),
+                "默认有效期为签发日 + 1 年，与 V19 存量回填口径一致");
+    }
+
+    @Test
     @DisplayName("吊销准入证书-写入吊销时间与原因（审计留痕）")
     void testRevokeCertificate_recordsRevocationAuditFields() {
         when(enterpriseAdmissionRepository.findFirstByEnterpriseIdAndStatusAndDeletedFalseOrderByCreatedAtDesc(1L, 1))

@@ -70,6 +70,26 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    @DisplayName("处理业务异常 - 无准入证书返回403而非400")
+    void handleBusinessException_AdmissionRequired_Returns403() {
+        BusinessException ex = new BusinessException(ErrorCode.ADMISSION_REQUIRED, "无有效准入证书");
+        ResponseEntity<ApiResponse<Void>> response = handler.handleBusinessException(ex, request);
+        // 证书缺失是「你没有资格做这件事」，不是「你的请求参数写错了」。
+        // 返回 400 会让调用方误判成参数问题而无谓重试。
+        assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
+        assertEquals(ErrorCode.ADMISSION_REQUIRED, response.getBody().getCode());
+    }
+
+    @Test
+    @DisplayName("处理业务异常 - 无审核资格证返回403而非400")
+    void handleBusinessException_QualificationRequired_Returns403() {
+        BusinessException ex = new BusinessException(ErrorCode.QUALIFICATION_REQUIRED, "无有效资格证");
+        ResponseEntity<ApiResponse<Void>> response = handler.handleBusinessException(ex, request);
+        assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
+        assertEquals(ErrorCode.QUALIFICATION_REQUIRED, response.getBody().getCode());
+    }
+
+    @Test
     @DisplayName("处理业务异常 - 资源不存在错误码返回404")
     void handleBusinessException_ResourceNotFound_Returns404() {
         BusinessException ex = new BusinessException(ErrorCode.RESOURCE_NOT_FOUND, "不存在");

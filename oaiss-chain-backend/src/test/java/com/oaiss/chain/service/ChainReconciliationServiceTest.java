@@ -22,6 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -42,6 +44,9 @@ class ChainReconciliationServiceTest {
     @Mock
     private OutboxMessageRepository outboxMessageRepository;
 
+    @Mock
+    private com.oaiss.chain.repository.TransactionRepository transactionRepository;
+
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper =
             new com.fasterxml.jackson.databind.ObjectMapper();
 
@@ -50,9 +55,11 @@ class ChainReconciliationServiceTest {
     @BeforeEach
     void wireService() {
         chainReconciliationService = new ChainReconciliationService(
-                carbonReportRepository, blockchainService, outboxMessageRepository, objectMapper);
+                carbonReportRepository, blockchainService, outboxMessageRepository,
+                transactionRepository, objectMapper);
     }
 
+    private com.oaiss.chain.entity.Transaction pendingTrade;
     private CarbonReport onChainReport;
     private CarbonReport dbOnlyReport;
 
@@ -73,6 +80,78 @@ class ChainReconciliationServiceTest {
                 .blockchainTxHash(null)
                 .build();
         dbOnlyReport.setId(2L);
+
+        pendingTrade = com.oaiss.chain.entity.Transaction.builder()
+                .tradeNo("TX-MOCK-1")
+                .sellerId(1L)
+                .buyerId(2L)
+                .blockchainTxHash("tx_mock_999")
+                .build();
+        pendingTrade.setId(9L);
+    }
+
+
+    // ==================== 标记历史脏数据 ====================
+
+    @Test
+    @DisplayName("已标记为脏数据的报告不再计入缺失，单独归类 HISTORICAL_MOCK")
+    void reconcile_classifiesMarkedMockRecordsSeparately() {
+        onChainReport.setChainMark("HISTORICAL_MOCK");
+        onChainReport.setChainMarkReason("Mock 模式生成，链上不存在");
+        when(carbonReportRepository.findByBlockchainTxHashIsNotNullAndDeletedFalse(any()))
+                .thenReturn(new PageImpl<>(List.of(onChainReport), PageRequest.of(0, 10), 1));
+
+        var result = chainReconciliationService.reconcile(1, 10);
+
+        assertEquals(1, result.getHistoricalMock());
+        assertEquals(0, result.getMissingOnChain(), "已标记的脏数据不应继续报缺失");
+        assertEquals("HISTORICAL_MOCK", result.getDetails().get(0).get("status"));
+        // 已标记的记录无须再去查链——那正是标记的意义：省掉必然失败的往返
+        verify(blockchainService, never()).queryReportSnapshot(anyLong());
+    }
+
+    @Test
+    @DisplayName("标记历史脏数据-写入标记与原因，且不改动民业务状态与 txHash")
+    void markHistoricalMockData_recordsMarkWithoutTouchingBusinessState() {
+        onChainReport.setBlockchainTxHash("tx_mock_123");
+        when(carbonReportRepository.findByBlockchainTxHashLikeAndDeletedFalse(any()))
+                .thenReturn(List.of(onChainReport));
+        when(carbonReportRepository.saveAll(any())).thenReturn(List.of(onChainReport));
+
+        int marked = chainReconciliationService.markHistoricalMockData();
+
+        assertEquals(1, marked);
+        assertEquals("HISTORICAL_MOCK", onChainReport.getChainMark());
+        assertNotNull(onChainReport.getChainMarkReason());
+        // 关键：业务状态与哈希原样保留——标记是「加注解」，不是「改事实」
+        assertEquals("tx_mock_123", onChainReport.getBlockchainTxHash());
+    }
+
+    @Test
+    @DisplayName("标记历史脏数据-重复执行幂等，已标记的不再重复写")
+    void markHistoricalMockData_isIdempotent() {
+        onChainReport.setChainMark("HISTORICAL_MOCK");
+        when(carbonReportRepository.findByBlockchainTxHashLikeAndDeletedFalse(any()))
+                .thenReturn(List.of(onChainReport));
+
+        int marked = chainReconciliationService.markHistoricalMockData();
+
+        assertEquals(0, marked, "已标记的记录不应重复计数");
+        verify(carbonReportRepository, never()).saveAll(any());
+    }
+
+    @Test
+    @DisplayName("标记历史脏数据-同时标记交易表的 Mock 哈希")
+    void markHistoricalMockData_alsoMarksTrades() {
+        when(carbonReportRepository.findByBlockchainTxHashLikeAndDeletedFalse(any()))
+                .thenReturn(List.of());
+        when(transactionRepository.findByBlockchainTxHashLikeAndDeletedFalse(any()))
+                .thenReturn(List.of(pendingTrade));
+
+        int marked = chainReconciliationService.markHistoricalMockData();
+
+        assertEquals(1, marked);
+        assertEquals("HISTORICAL_MOCK", pendingTrade.getChainMark());
     }
 
     @Test

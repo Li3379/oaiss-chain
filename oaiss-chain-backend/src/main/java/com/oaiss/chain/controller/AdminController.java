@@ -499,6 +499,26 @@ public class AdminController {
     }
 
     /**
+     * 【业务功能】：标记历史 Mock 脏数据（{@code tx_mock_*} 哈希：本地记了上链、链上从未写入）
+     * 【对应前端页面】：views/admin/ChainOps.vue (/admin/blockchain)
+     * 【对应前端API】：api/admin.ts -> markHistoricalMockData()
+     * 【可见UI操作】：链上管理页「对账」Tab 点击【标记历史 Mock 数据】
+     *
+     * <p>只加标记，不改哈希与业务状态——标记是加注解，不是改事实。幂等。</p>
+     */
+    @AuditLog(module = "系统管理", action = "标记历史Mock数据", description = "系统管理 标记历史Mock数据")
+    @PostMapping("/blockchain/mark-historical-mock")
+    @Operation(summary = "标记历史Mock数据", description = "把 tx_mock_* 哈希的记录标记为历史欠账，从对账缺失告警中剥离")
+    public ApiResponse<java.util.Map<String, Object>> markHistoricalMock(
+            @AuthenticationPrincipal JwtUserDetails currentUser) {
+        Long operatorId = currentUser == null ? null : currentUser.getUserId();
+        int marked = chainReconciliationService.markHistoricalMockData(operatorId);
+        java.util.Map<String, Object> result = new java.util.HashMap<>();
+        result.put("marked", marked);
+        return ApiResponse.success(result);
+    }
+
+    /**
      * 【业务功能】：查询死信队列（超过重试上限仍未上链的消息）
      * 【对应前端页面】：views/admin/ChainReconciliation.vue (/admin/blockchain)
      * 【对应前端API】：api/admin.ts -> getDeadLetters()

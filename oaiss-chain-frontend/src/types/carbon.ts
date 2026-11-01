@@ -35,6 +35,10 @@ export interface CarbonReportResponse {
   signatureValid?: boolean | null
   blockchainTxHash: string
   onChainAt: string
+  /** 链上存证标记：HISTORICAL_MOCK 表示该哈希仅存于本地库，链上并不存在 */
+  chainMark?: string | null
+  chainMarkReason?: string | null
+  chainMarkedAt?: string | null
   attachments: string
   createdAt: string
   updatedAt: string

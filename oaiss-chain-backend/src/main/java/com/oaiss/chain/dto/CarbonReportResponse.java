@@ -45,6 +45,19 @@ public class CarbonReportResponse {
     private Boolean signatureValid;
     private String blockchainTxHash;
     private LocalDateTime onChainAt;
+
+    /**
+     * 链上存证标记：NULL-正常，HISTORICAL_MOCK-历史 Mock 假哈希（链上不存在，已确认）
+     *
+     * <p>必须透出给前端：否则企业会看到「已上链」却不知道这条存证在链上并不存在。</p>
+     */
+    private String chainMark;
+
+    /** 标记原因 */
+    private String chainMarkReason;
+
+    /** 标记时间 */
+    private LocalDateTime chainMarkedAt;
     private String attachments;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

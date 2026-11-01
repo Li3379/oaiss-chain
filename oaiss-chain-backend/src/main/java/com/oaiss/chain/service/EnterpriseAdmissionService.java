@@ -38,6 +38,8 @@ public class EnterpriseAdmissionService {
     private static final int MAX_CERT_NO_RETRIES = 3;
     /** 与 V19 迁移的 revoke_reason 列宽保持一致 */
     private static final int REVOKE_REASON_MAX_LENGTH = 200;
+    /** 证书默认有效期（年），与 V19 迁移的存量回填口径一致 */
+    private static final int CERT_VALID_YEARS = 1;
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
@@ -68,6 +70,9 @@ public class EnterpriseAdmissionService {
                 .enterpriseId(enterpriseId)
                 .certificateNo(certNo)
                 .issuedDate(LocalDate.now())
+                // 有效期与 V19 存量回填口径一致：签发日 + 1 年。
+                // 该列此前从不赋值，「到期」语义形同虚设——门禁判过期时永远判不出来。
+                .expiryDate(LocalDate.now().plusYears(CERT_VALID_YEARS))
                 .status(QualificationStatusEnum.ACTIVE.getCode())
                 .build();
         admission = enterpriseAdmissionRepository.save(admission);

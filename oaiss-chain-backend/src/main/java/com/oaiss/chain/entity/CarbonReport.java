@@ -140,6 +140,33 @@ public class CarbonReport extends BaseEntity {
     private java.time.LocalDateTime onChainAt;
 
     /**
+     * 链上存证标记：NULL-正常，HISTORICAL_MOCK-历史 Mock 假哈希（链上不存在，已确认）
+     *
+     * <p>标记只加注解，不改动 {@code blockchainTxHash} / {@code status} / {@code onChainAt}：
+     * 哈希是历史真相，抹掉就没有审计线索了。</p>
+     */
+    @Column(name = "chain_mark", length = 32)
+    private String chainMark;
+
+    /**
+     * 标记原因（供审计与复核）
+     */
+    @Column(name = "chain_mark_reason", length = 200)
+    private String chainMarkReason;
+
+    /**
+     * 标记时间
+     */
+    @Column(name = "chain_marked_at")
+    private java.time.LocalDateTime chainMarkedAt;
+
+    /**
+     * 标记操作人用户ID
+     */
+    @Column(name = "chain_marked_by")
+    private Long chainMarkedBy;
+
+    /**
      * 附件URL（JSON数组）
      */
     @Column(name = "attachments", columnDefinition = "TEXT")
