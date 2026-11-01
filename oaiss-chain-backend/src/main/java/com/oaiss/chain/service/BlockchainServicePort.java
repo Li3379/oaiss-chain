@@ -8,6 +8,13 @@ import java.util.Map;
 
 public interface BlockchainServicePort {
 
+    /**
+     * <b>禁调黑名单</b>：链码里这三个函数是恒返回 VALID/空数组的桩，不碰账本——
+     * {@code GetTransactionByID} / {@code QueryBlock} / {@code ListTransactions}。
+     * 严禁经由通用 {@link #invokeChaincode} / {@link #queryChaincode} 调用它们：
+     * 对不存在的交易号也会得到「已验证」的假结论。
+     * 真实区块/交易数据由实现类自行解析区块事件流产出。
+     */
     String invokeChaincode(String channelName, String chaincodeName, String functionName, String... args);
 
     String queryChaincode(String channelName, String chaincodeName, String functionName, String... args);

@@ -451,6 +451,11 @@ public class ChainReconciliationService {
             }
         }
 
+        // data（emissionData 原文逐字比对）：堵住「改明细但保持派生量一致」的绕过路径。
+        // 链上 data 即提交时的 emissionData 原文，库里也是同一字段——
+        // 两侧都非空且不相等即为篡改痕迹。
+        checkText(diffs, "data", report.getEmissionData(), text(chain, "data"));
+
         return diffs;
     }
 
@@ -473,6 +478,7 @@ public class ChainReconciliationService {
         if (bothTextPresent(report.getSignatureData(), text(chain, "signature"))) n++;
         if (bothTextPresent(report.getEnterpriseId() == null ? null : report.getEnterpriseId().toString(),
                 text(chain, "enterpriseId"))) n++;
+        if (bothTextPresent(report.getEmissionData(), text(chain, "data"))) n++;
         return n;
     }
 

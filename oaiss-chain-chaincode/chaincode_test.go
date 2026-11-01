@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/hyperledger/fabric-chaincode-go/shim"
-	"github.com/hyperledger/fabric-protos-go/ledger/queryresult"
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
+	"github.com/hyperledger/fabric-protos-go/ledger/queryresult"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -19,8 +19,8 @@ import (
 type MockStub struct {
 	shim.ChaincodeStubInterface
 	mock.Mock
-	state    map[string][]byte
-	history  map[string][][]byte
+	state     map[string][]byte
+	history   map[string][][]byte
 	composite []string
 }
 
@@ -228,6 +228,51 @@ func TestCreateTradeRecord(t *testing.T) {
 	assert.Equal(t, "tx_mock_12345", storedTrade.TxHash)
 }
 
+// TestCreateTradeRecord_TradeKeyNoLongerCollidesWithReport 是撞号修复的回归用例。
+//
+// 历史缺陷：报告与交易都用裸数字 String.valueOf(id) 做 state key，而两张表的
+// 自增主键相互独立、数值必然重叠——报告 #5 上链后，交易 #5 永远无法上链
+// （already exists）。修复后交易 key 带 trade~ 前缀，与报告 key 空间隔离。
+func TestCreateTradeRecord_TradeKeyNoLongerCollidesWithReport(t *testing.T) {
+	ctx := newContractContext()
+	stub := ctx.GetStub()
+
+	// 先占住报告 key "5"（模拟已上链的报告）
+	reportBytes, _ := json.Marshal(&CarbonReport{ReportID: "5", Data: "{}", Status: "COMMITTED"})
+	assert.NoError(t, stub.PutState("5", reportBytes))
+
+	// 修复前：CreateTradeRecord("5") 会撞 "already exists"；修复后应成功写入 trade~5
+	cc := &CarbonChaincode{}
+	created, err := cc.CreateTradeRecord(ctx, "5", `{"sellerId":"E1","buyerId":"E2"}`)
+	assert.NoError(t, err, "交易 #5 不应被报告 #5 挡住")
+	assert.NotNil(t, created)
+
+	// 落在带前缀的 key 上
+	stored, err := stub.GetState("trade~5")
+	assert.NoError(t, err)
+	assert.NotNil(t, stored, "交易必须写入 trade~<id> key")
+
+	// 报告 key 未被交易数据污染
+	reportState, err := stub.GetState("5")
+	assert.NoError(t, err)
+	var r CarbonReport
+	assert.NoError(t, json.Unmarshal(reportState, &r))
+	assert.Equal(t, "COMMITTED", r.Status, "报告 key 的内容不得被交易覆盖")
+}
+
+// TestCreateTradeRecord_DuplicateRejected 交易自身 key 幂等：同 ID 二次创建被拒。
+func TestCreateTradeRecord_DuplicateRejected(t *testing.T) {
+	ctx := newContractContext()
+	cc := &CarbonChaincode{}
+
+	_, err := cc.CreateTradeRecord(ctx, "7", `{"amount":1}`)
+	assert.NoError(t, err)
+
+	_, err = cc.CreateTradeRecord(ctx, "7", `{"amount":2}`)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "already exists")
+}
+
 // TestVerifyReport verifies a report can be retrieved.
 func TestVerifyReport(t *testing.T) {
 	stub := NewMockStub()
@@ -265,8 +310,11 @@ func TestVerifyReportNotFound(t *testing.T) {
 	assert.Nil(t, stored, "Non-existent report should return nil")
 }
 
-// TestGetTransactionByID returns a valid JSON response.
-func TestGetTransactionByID(t *testing.T) {
+// TestGetTransactionByID_KnownStubUnusedByBackend 是欠账基线而非契约保证：
+// 该链码函数是恒返回 VALID 的桩（对不存在的交易号也一样），后端零调用方。
+// 本用例仅固化「当前行为」，防止有人误把桩当真实查询接入业务路径后
+// 在不知情时改语义；真正治理见 BlockchainServicePort 禁调黑名单。
+func TestGetTransactionByID_KnownStubUnusedByBackend(t *testing.T) {
 	cc := &CarbonChaincode{}
 	result, err := cc.GetTransactionByID(nil, "tx123")
 	assert.NoError(t, err)

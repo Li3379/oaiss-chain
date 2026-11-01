@@ -286,6 +286,23 @@ class ChainReconciliationServiceTest {
         assertTrue(fields.contains("desulfEmission"), "脱硫量被改必须被发现");
     }
     @Test
+    @DisplayName("第 7 行：data 明细被改但派生量一致 → CONTENT_MISMATCH（堵绕过路径）")
+    void reconcile_detectsDataFieldTampering() {
+        onChainReport.setEmissionData("{\"scope1\":100}");
+        stubAll(List.of(onChainReport));
+        // v2Snapshot 无 data 字段 → 链侧为 null、库侧非空 → 仅一侧非空即差异
+        String snap = v2Snapshot("tx-001");
+        when(blockchainService.queryReportSnapshot(1L)).thenReturn(snap);
+
+        var result = chainReconciliationService.reconcile(1, 10);
+
+        assertEquals(1, result.getContentMismatch());
+        @SuppressWarnings("unchecked")
+        var fields = (List<String>) result.getDetails().get(0).get("mismatchFields");
+        assertTrue(fields.contains("data"), "明细原文必须参与比对");
+    }
+
+    @Test
     @DisplayName("第 8 行：内容全等但 txHash 不符 → CONTENT_MISMATCH（不得宣称哈希已验证）")
     void reconcile_hashMismatchWithEqualContentIsMismatch() {
         alignAllFields();

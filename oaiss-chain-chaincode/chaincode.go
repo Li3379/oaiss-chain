@@ -262,10 +262,22 @@ func (cc *CarbonChaincode) QueryReportHistory(ctx contractapi.TransactionContext
 }
 
 // CreateTradeRecord stores a new trade record on the ledger
+// tradeStateKey 返回交易记录的账本 state key。
+//
+// 必须带 `trade~` 前缀：报告与交易的自增主键是两张表各自独立生成的
+// （entity/BaseEntity 各自 IDENTITY），数值必然重叠——曾经两者都用裸数字
+// String.valueOf(id) 做 key，报告 #N 上链后交易 #N 永远无法上链
+// （already exists）。前缀让两者进入不同的 key 空间。
+func tradeStateKey(tradeID string) string {
+	return "trade~" + tradeID
+}
+
+// CreateTradeRecord stores a new trade record on the ledger.
 func (cc *CarbonChaincode) CreateTradeRecord(ctx contractapi.TransactionContextInterface, tradeID string, tradeData string) (*TradeRecord, error) {
-	existing, err := ctx.GetStub().GetState(tradeID)
+	stateKey := tradeStateKey(tradeID)
+	existing, err := ctx.GetStub().GetState(stateKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read state: %v", err)
+		return nil, fmt.Errorf("failed to read state: %w", err)
 	}
 	if existing != nil {
 		return nil, fmt.Errorf("trade %s already exists", tradeID)
@@ -283,11 +295,11 @@ func (cc *CarbonChaincode) CreateTradeRecord(ctx contractapi.TransactionContextI
 
 	tradeBytes, err := json.Marshal(trade)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal trade: %v", err)
+		return nil, fmt.Errorf("failed to marshal trade: %w", err)
 	}
 
-	if err := ctx.GetStub().PutState(tradeID, tradeBytes); err != nil {
-		return nil, fmt.Errorf("failed to write state: %v", err)
+	if err := ctx.GetStub().PutState(stateKey, tradeBytes); err != nil {
+		return nil, fmt.Errorf("failed to write state: %w", err)
 	}
 
 	return trade, nil
@@ -311,17 +323,26 @@ func (cc *CarbonChaincode) VerifyReport(ctx contractapi.TransactionContextInterf
 	return &report, nil
 }
 
-// GetTransactionByID returns transaction details by ID
+// GetTransactionByID returns transaction details by ID.
+//
+// Deprecated: 桩实现——不碰账本，对任意输入（包括不存在的交易号）恒返回 VALID。
+// 后端零调用方；保留仅为兼容既有测试基线。严禁在业务路径调用，
+// 参见 BlockchainServicePort 的禁调黑名单。
 func (cc *CarbonChaincode) GetTransactionByID(ctx contractapi.TransactionContextInterface, txID string) (string, error) {
 	return fmt.Sprintf(`{"txId":"%s","status":"VALID"}`, txID), nil
 }
 
-// QueryBlock returns block information by number
+// QueryBlock returns block information by number.
+//
+// Deprecated: 桩实现——不碰账本，恒返回 VALID。真实区块查询走后端
+// FabricBlockchainService 的区块事件流探针，不经此处。
 func (cc *CarbonChaincode) QueryBlock(ctx contractapi.TransactionContextInterface, blockNumber string) (string, error) {
 	return fmt.Sprintf(`{"blockNumber":"%s","status":"VALID"}`, blockNumber), nil
 }
 
-// ListTransactions returns a paginated list of transactions
+// ListTransactions returns a paginated list of transactions.
+//
+// Deprecated: 桩实现——恒返回空数组。真实交易列表由后端自行解析区块生成。
 func (cc *CarbonChaincode) ListTransactions(ctx contractapi.TransactionContextInterface, page string, pageSize string) (string, error) {
 	return "[]", nil
 }
