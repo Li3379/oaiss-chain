@@ -142,6 +142,18 @@ jobs:
           cd oaiss-chain-frontend
           npm ci
 
+      # Playwright 浏览器必须在这里装好。
+      #
+      # 原先它排在「Run backend 之后」，而后续的 v1.1 步骤带 if: success() || failure()，
+      # 于是前面任何一步失败都会跳过安装、却仍然执行测试，
+      # 报错全是 "Executable doesn't exist at .../chrome-headless-shell"——
+      # 看起来像 Playwright 坏了，实际是根本没装。
+      - name: Install Playwright
+        if: always()
+        run: |
+          cd oaiss-chain-frontend
+          npx playwright install --with-deps chromium
+
       - name: Validate production env template
         run: |
           node scripts/validate-prod-env.mjs | tee prod-env-validation.txt
@@ -294,6 +306,9 @@ jobs:
 
       - name: Smoke test remote release host bootstrap script
         run: |
+          # 先跑单元级测试：覆盖「用户名与组名不同」这个曾在 CI 上导致
+          # invalid group 退出的场景，比直接跑脚本更容易定位问题
+          bash scripts/ops/test-bootstrap-remote-release-host.sh
           chmod +x scripts/bootstrap-remote-release-host.sh
           ./scripts/bootstrap-remote-release-host.sh --target-dir ./tmp/release-host-smoke-ci --deploy-user "$(id -un)" > bootstrap-release-host-smoke.txt
           test -d ./tmp/release-host-smoke-ci/runtime-logs/backend
@@ -334,11 +349,6 @@ jobs:
         run: |
           timeout 120 bash -c 'until curl -sf http://localhost:8080/api/v1/actuator/health > /dev/null 2>&1; do sleep 3; done'
           echo "Backend is healthy"
-
-      - name: Install Playwright
-        run: |
-          cd oaiss-chain-frontend
-          npx playwright install --with-deps chromium
 
       - name: Run E2E tests (smoke)
         run: |

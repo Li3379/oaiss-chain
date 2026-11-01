@@ -82,7 +82,21 @@ chmod 750 "$TARGET_DIR" "$BACKUP_DIR" "$SCRIPT_DIR" "$LOG_ROOT" \
 chmod 700 "$FABRIC_SECRETS_DIR"
 
 if [[ -n "$DEPLOY_USER" ]]; then
-    chown -R "$DEPLOY_USER":"$DEPLOY_USER" "$TARGET_DIR"
+    # 归属设置：用户名与组名未必相同。
+    # 原实现写死 chown "$DEPLOY_USER":"$DEPLOY_USER"，隐含假设存在同名组——
+    # 这在多数发行版成立，但 GitHub Runner（用户 runner，无同名组）会
+    # 直接以 "invalid group" 退出，本地 Windows 同样如此。
+    # 这里先取该用户的主组名；取不到就只改属主，保留原组。
+    if DEPLOY_GROUP="$(id -gn "$DEPLOY_USER" 2>/dev/null)"; then
+        chown -R "$DEPLOY_USER":"$DEPLOY_GROUP" "$TARGET_DIR"
+    else
+        # 用户不存在时 id 也会失败，此时应给出明确错误而不是静默跳过
+        if ! id -u "$DEPLOY_USER" >/dev/null 2>&1; then
+            echo "[ERROR] 指定的 --deploy-user 不存在: $DEPLOY_USER" >&2
+            exit 1
+        fi
+        chown -R "$DEPLOY_USER" "$TARGET_DIR"
+    fi
 fi
 
 echo "[INFO] Directory layout ready"
