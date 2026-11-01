@@ -40,7 +40,12 @@ public class MlServiceHealthIndicator implements HealthIndicator {
                     .build();
         } catch (Exception e) {
             log.warn("ML service health check failed: {}", e.getMessage());
-            return Health.down()
+            // ML 是**可选**依赖：推理能力缺席不等于整个应用不健康。
+            // 早先这里返回 DOWN，后果是只要推理服务没起，聚合健康状态就是
+            // DOWN——K8s 探针会反复重启 Pod，CI 的「等待后端就绪」也永远超时，
+            // 而实际上碳核算、交易、存证这些主链路都完全正常。
+            // UNKNOWN 表达「该项无法判定/未启用」，不污染整体状态。
+            return Health.unknown()
                     .withDetail("ml-service", "unavailable")
                     .withDetail("url", mlServiceConfig.getUrl())
                     .withDetail("error", e.getMessage())
