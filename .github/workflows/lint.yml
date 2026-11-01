@@ -1,24 +1,39 @@
 name: Lint
 
+# 触发面说明（这是本次治理的重点之一）
+#
+# 历史配置只监听 `push: [main]` 与 `pull_request: [main]`。
+# 后果：所有开发都在 `feat/*` 分支进行，推送时不跑任何检查，
+# 直到合进 main 才第一次看到红色——于是出现连续 10 次 main 推送全红、
+# 每次都在修同一条流水线的局面。
+#
+# 现在的分工：
+#   push 任意分支   → 快速门禁（文档/架构/类型/静态分析，~2 分钟）
+#   pull_request    → 同上 + 单测
+#   push main       → 全量
+# 分支名过滤放在 job 内用 if 判断，而不是在 on.push 里堆列表——
+# 分支命名一变（feat/ hotfix/ release/）就要改 YAML，忘了就静默失效。
+
 on:
   push:
-    branches: [main]
+    branches: ['**']
     paths:
       - 'oaiss-chain-ml-service/**'
       - 'oaiss-chain-frontend/**'
       - 'oaiss-chain-backend/**'
       - 'docs/**'
       - 'scripts/**'
+      - '.github/workflows/**'
       - 'DEV-GUIDE.md'
   pull_request:
-    branches: [main]
-    paths:
-      - 'oaiss-chain-ml-service/**'
-      - 'oaiss-chain-frontend/**'
-      - 'oaiss-chain-backend/**'
-      - 'docs/**'
-      - 'scripts/**'
-      - 'DEV-GUIDE.md'
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  # 同一分支上的重复推送取消前一次运行：省 runner，也让「最新提交」的结论
+  # 不被旧的失败结果盖住。不同分支互不干扰。
+  group: lint-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -34,12 +49,35 @@ jobs:
         with:
           node-version: '22'
 
+      # 逐个独立执行并汇总，而不是用 `&&` 串联或 -e 提前退出。
+      # 串联的话第一个失败就看不到后面 8 个的结论，每轮只能修一个问题，
+      # 一轮 3 分钟的 CI 会拖成五六轮。
       - name: Doc & Architecture Gates
         run: |
-          node scripts/gates/doc-verify.mjs
-          node scripts/gates/i18n-verify.mjs
-          node scripts/role-matrix-verify.mjs
-          node scripts/gates/closure-audit.mjs
+          set +e
+          failed=()
+          run_gate() {
+            echo "===== $1 ====="
+            node "$1"
+            if [ $? -ne 0 ]; then failed+=("$1"); fi
+          }
+          run_gate scripts/gates/doc-verify.mjs
+          run_gate scripts/gates/i18n-verify.mjs
+          run_gate scripts/gates/role-matrix-verify.mjs
+          run_gate scripts/gates/closure-audit.mjs
+          run_gate scripts/gates/workflow-verify.mjs
+          run_gate scripts/gates/jpa-schema-verify.mjs
+          run_gate scripts/gates/quota-ledger-verify.mjs
+          run_gate scripts/gates/image-availability-verify.mjs
+          run_gate scripts/gates/version-verify.mjs
+
+          if [ ${#failed[@]} -gt 0 ]; then
+            echo ""
+            echo "::error::以下门禁未通过: ${failed[*]}"
+            exit 1
+          fi
+          echo ""
+          echo "全部门禁通过"
 
   python-lint:
     name: Python (ruff)
@@ -88,7 +126,7 @@ jobs:
       - name: Type check
         run: npx vue-tsc --noEmit
 
-  java-lint:
+  java-static-analysis:
     name: Java (PMD + SpotBugs)
     runs-on: ubuntu-latest
     defaults:
@@ -103,8 +141,117 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
 
-      - name: Run PMD
-        run: mvn pmd:check -q || true
+      # 注意：这里不再有 `|| true`。
+      #
+      # 改造前的两行是 `mvn pmd:check -q || true`。pom 里 failOnViolation=false
+      # 已经让 mvn 返回 0，再叠 `|| true` = 这两步永远成功。
+      # 结果是 CI 上有一个常年绿色的 "Java (PMD + SpotBugs)"，
+      # 而实际一条代码都没检查。假绿的危害大于没接：它阻止了别人去接真的。
+      #
+      # 现在改为「生成报告 → 棘轮比对基线」：
+      #   存量 428 条 PMD 不阻塞，但**一条都不许多**。
+      #   修掉的告警用 --update 收紧基线，方向单向下行。
+      - name: Generate analysis reports
+        run: mvn -B -q pmd:pmd compile spotbugs:spotbugs
+        # 生成阶段用 -q 压噪；失败才是真问题（编译不过/插件缺失）
 
-      - name: Run SpotBugs
-        run: mvn spotbugs:check -q || true
+      - name: Ratchet against baseline
+        run: node ../scripts/gates/static-analysis-ratchet.mjs
+
+      - name: Upload analysis reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-analysis-reports
+          path: |
+            oaiss-chain-backend/target/pmd.xml
+            oaiss-chain-backend/target/spotbugsXml.xml
+          retention-days: 7
+
+  backend-tests:
+    name: Backend Unit Tests
+    runs-on: ubuntu-latest
+    # 只在 PR 与 main 上跑：这是「护栏」，不是「快速反馈」。
+    # 每次 push 到分支都跑全套后端测试会让反馈循环从 2 分钟变成 15 分钟，
+    # 开发者就会开始绕过它。分支上跑快速门禁，合并前由 PR 卡住。
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: oaiss-chain-backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      # 后端 174 个测试类此前从未在 CI 上跑过——这是全仓最大的保护缺口。
+      # 单测被设计为 H2 + Mock 自足（test/resources/application-test.yml），
+      # 不需要 MySQL/Redis；IntegrationTest 已由 surefire 排除。
+      #
+      # jacoco-check（PACKAGE 级 95%）绑定在 verify 阶段而非 test，
+      # 这里只跑 test，因此不会被覆盖率门槛拦下——
+      # 覆盖率是长期目标，不是准入条件，混在一起会让新人无法提交。
+      - name: Run unit tests
+        run: mvn -B test
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports
+          path: |
+            oaiss-chain-backend/target/surefire-reports/
+            oaiss-chain-backend/target/site/jacoco/
+          retention-days: 7
+
+  frontend-tests:
+    name: Frontend Unit Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: oaiss-chain-frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: oaiss-chain-frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm run test
+
+  ml-tests:
+    name: ML Service Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: oaiss-chain-ml-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+
+      - name: Run tests
+        # ML_SERVICE_SECRET 必须提供：该服务对非 /health 端点强制校验，
+        # 缺失时 test_security.py 的用例会在导入期就抛错（Fail-Closed 设计）。
+        env:
+          ML_SERVICE_SECRET: ci-test-secret-not-a-real-credential
+        run: python -m pytest -q

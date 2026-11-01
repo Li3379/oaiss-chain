@@ -313,3 +313,8 @@ oaiss-chain-frontend/.tokens.json
 
 # GUI 黑盒测试截图（web-gui-tester 证据）
 gui-test-screenshots/
+
+# ----- 多 Agent 并发租约（运行时状态，不入库）-----
+# 入库会让每次抢租约都产生提交、并在合并时互相冲突——
+# 用版本控制管理锁是反模式。租约是本地协作状态，不是代码。
+.agent-leases/

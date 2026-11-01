@@ -24,7 +24,16 @@ public enum CreditEventTypeEnum {
      * 未造成实际损失，扣分的作用是形成行为记录并驱动连续驳回的监管线索，
      * 而非惩罚已发生的损失。
      */
-    TRADE_AUDIT_REJECTED(6, "成交审核驳回", -8);
+    TRADE_AUDIT_REJECTED(6, "成交审核驳回", -8),
+
+    /**
+     * 管理员下市处罚（R-03）：禁止碳交易直至恢复上市。0 分=纯状态事件，不动分数。
+     * raw 03 L1098「删除用户=暂时退出碳交易系统」；权限仅 ADMIN（L913+role-matrix 定稿）。
+     */
+    ADMIN_DELIST(7, "管理员下市处罚", 0),
+
+    /** 恢复上市（下市解除），留痕用。 */
+    ADMIN_REPEAL(8, "恢复上市", 0);
 
     private final Integer code;
     private final String description;

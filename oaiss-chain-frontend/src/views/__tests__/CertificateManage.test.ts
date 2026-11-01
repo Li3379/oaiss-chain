@@ -9,7 +9,14 @@ vi.mock('vue-i18n', () => ({
   }),
 }))
 
+vi.mock('../../api/credit', () => ({
+  getRestrictedEnterprises: vi.fn(() => Promise.resolve([
+    makeRestrictedRow(),
+  ])),
+  getScoreRanking: vi.fn(() => Promise.resolve([])),
+}))
 vi.mock('../../api/admin', () => ({
+  restoreUser: vi.fn(() => Promise.resolve({ enterpriseId: 11, delisted: false })),
   getEnterpriseAdmissionList: vi.fn(() => Promise.resolve({ items: [], total: 0 })),
   issueEnterpriseAdmission: vi.fn(() => Promise.resolve()),
   revokeEnterpriseAdmission: vi.fn(() => Promise.resolve()),
@@ -30,8 +37,15 @@ vi.mock('element-plus', async (importOriginal) => {
   }
 })
 
+const makeRestrictedRow = () => ({
+  id: 1, enterpriseId: 11, enterpriseName: 'Restricted Co A', score: 15,
+  level: 'D', tradeRestricted: true, accountFrozen: true, delisted: true, userId: 7,
+})
+
 import CertificateManage from '../admin/CertificateManage.vue'
+import { getRestrictedEnterprises } from '../../api/credit'
 import {
+  restoreUser,
   getEnterpriseAdmissionList,
   getReviewerQualificationList,
   issueEnterpriseAdmission,
@@ -212,6 +226,52 @@ describe('CertificateManage.vue', () => {
     await flushPromises()
 
     expect(ElMessage.error).toHaveBeenCalledWith('certificateManage.loadFailed')
+    wrapper.unmount()
+  })
+
+  it('受限名单 Tab：加载受限企业并可恢复上市', async () => {
+    vi.mocked(restoreUser).mockResolvedValueOnce({ enterpriseId: 11, delisted: false } as never)
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    const vm = wrapper.vm as unknown as {
+      onTabChange: (tab: string) => void
+      restrictedList: Array<{ enterpriseName: string; delisted: boolean; userId: number }>
+      fetchRestrictedData: () => Promise<void>
+      handleRestore: (row: { enterpriseName: string; delisted: boolean; userId: number }) => Promise<void>
+    }
+    vm.onTabChange('restricted')
+    await flushPromises()
+
+    expect(vm.restrictedList.length).toBe(1)
+    expect(vm.restrictedList[0].delisted).toBe(true)
+
+    await vm.handleRestore(vm.restrictedList[0])
+    await flushPromises()
+    expect(restoreUser).toHaveBeenCalledWith(7)
+    expect(ElMessage.success).toHaveBeenCalledWith('certificateManage.restoreSuccess')
+    wrapper.unmount()
+  })
+
+  it('受限名单 Tab：无 userId 映射时拒绝恢复', async () => {
+    vi.mocked(getRestrictedEnterprises).mockResolvedValueOnce([
+      { id: 2, enterpriseId: 12, enterpriseName: '无映射企业B', score: 30, level: 'C', tradeRestricted: true, accountFrozen: false, delisted: true, userId: undefined } as never,
+    ])
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    const vm = wrapper.vm as unknown as {
+      onTabChange: (tab: string) => void
+      restrictedList: Array<{ userId?: number }>
+      handleRestore: (row: { userId?: number }) => Promise<void>
+    }
+    vm.onTabChange('restricted')
+    await flushPromises()
+
+    await vm.handleRestore({ userId: undefined })
+    await flushPromises()
+    expect(restoreUser).not.toHaveBeenCalled()
+    expect(ElMessage.error).toHaveBeenCalledWith('certificateManage.restrictedNoUser')
     wrapper.unmount()
   })
 })

@@ -303,7 +303,8 @@ public class GlobalExceptionHandler {
             if (code == ErrorCode.CANNOT_DISABLE_SELF
                     || code == ErrorCode.CANNOT_DELETE_SELF
                     || code == ErrorCode.CANNOT_DELETE_ADMIN
-                    || code == ErrorCode.ADMIN_USER_TYPE_FORBIDDEN) {
+                    || code == ErrorCode.ADMIN_USER_TYPE_FORBIDDEN
+                    || code == ErrorCode.DELIST_STATE_INVALID) {
                 return HttpStatus.BAD_REQUEST;
             }
             return HttpStatus.UNAUTHORIZED;

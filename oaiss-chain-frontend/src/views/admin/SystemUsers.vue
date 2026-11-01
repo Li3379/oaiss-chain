@@ -19,7 +19,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheck, CircleClose, Operation, User } from '@element-plus/icons-vue'
-import { createUser, deleteUser, getUserList, updateUserStatus } from '../../api/admin'
+import { createUser, delistUser, deleteUser, getUserList, restoreUser, updateUserStatus } from '../../api/admin'
 import { formatDateTime } from '../../utils/format'
 import PageHeader from '../../components/pen/PageHeader.vue'
 import StatStrip from '../../components/pen/StatStrip.vue'
@@ -37,6 +37,7 @@ type UserRow = {
   userType: number
   status: number
   createdAt?: string
+  delisted?: boolean
 }
 
 const searchForm = reactive<{
@@ -244,6 +245,39 @@ const handleDelete = async (row: UserRow) => {
   }
 }
 
+/** 下市处罚（R-03）：暂停企业碳交易资格，与禁用/删除互不替代 */
+const handleDelist = async (row: UserRow, restore = false) => {
+  if (row.userType !== 1) {
+    ElMessage.warning(t('systemUsers.delistEnterpriseOnly'))
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      restore ? t('systemUsers.restoreConfirm') : t('systemUsers.delistConfirm'),
+      restore ? t('systemUsers.restoreTitle') : t('systemUsers.delistTitle'),
+      {
+        confirmButtonText: t('common.confirm'),
+        cancelButtonText: t('common.cancel'),
+        type: 'warning',
+      },
+    )
+    if (restore) {
+      await restoreUser(row.id)
+      ElMessage.success(t('systemUsers.restoreSuccess'))
+    } else {
+      await delistUser(row.id)
+      ElMessage.success(t('systemUsers.delistSuccess'))
+    }
+    await fetchData()
+  } catch (error) {
+    if (error === 'cancel') {
+      return
+    }
+    ElMessage.error(restore ? t('systemUsers.restoreFailed') : t('systemUsers.delistFailed'))
+    return
+  }
+}
+
 /** 首屏统计条：全部由已加载的本页用户数据推导，不新增接口请求 */
 const overviewStats = computed(() => {
   const rows = userList.value
@@ -407,6 +441,12 @@ onMounted(() => {
               :inactive-text="t('systemUsers.statusDisabled')"
               style="--el-switch-on-color: var(--color-accent);"
             />
+            <el-button
+              v-if="row.userType === 1"
+              link
+              type="warning"
+              @click="handleDelist(row, false)"
+            >{{ t('systemUsers.delistUser') }}</el-button>
             <el-button
               v-if="row.userType !== 4"
               link

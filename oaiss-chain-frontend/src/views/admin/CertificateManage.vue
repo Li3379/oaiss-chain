@@ -27,6 +27,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheck, CircleClose, Document, Stamp } from '@element-plus/icons-vue'
 import {
+  restoreUser,
   getEnterpriseAdmissionList,
   issueEnterpriseAdmission,
   revokeEnterpriseAdmission,
@@ -40,19 +41,23 @@ import PageHeader from '../../components/pen/PageHeader.vue'
 import StatStrip from '../../components/pen/StatStrip.vue'
 import DataPanel from '../../components/pen/DataPanel.vue'
 import PageHint from '../../components/PageHint.vue'
-import { getScoreRanking } from '../../api/credit'
+import { getRestrictedEnterprises, getScoreRanking } from '../../api/credit'
+import type { CreditScoreResponse } from '../../types/credit'
 import StatusTag from '../../components/StatusTag.vue'
 import EmptyHint from '../../components/EmptyHint.vue'
 
 const { t } = useI18n()
 
-const activeTab = ref<'admission' | 'qualification'>('admission')
+const activeTab = ref<'admission' | 'qualification' | 'restricted'>('admission')
 
 const admissionList = ref<EnterpriseAdmissionResponse[]>([])
 const admissionLoading = ref(false)
 const admissionPage = ref(1)
 const admissionPageSize = ref(10)
 const admissionTotal = ref(0)
+
+const restrictedList = ref<CreditScoreResponse[]>([])
+const restrictedLoading = ref(false)
 
 const qualificationList = ref<ReviewerQualificationResponse[]>([])
 const qualificationLoading = ref(false)
@@ -119,11 +124,49 @@ function openIssueDialog(type: 'admission' | 'qualification'): void {
   void loadEnterpriseOptions()
 }
 
-function onTabChange(tab: 'admission' | 'qualification'): void {
+function onTabChange(tab: 'admission' | 'qualification' | 'restricted'): void {
   if (tab === 'admission') {
     void fetchAdmissionData()
-  } else {
+  } else if (tab === 'qualification') {
     void fetchQualificationData()
+  } else {
+    void fetchRestrictedData()
+  }
+}
+
+/** 交易受限名单（R-03 公示载体）：含阈值自动限制与管理员下市企业 */
+async function fetchRestrictedData(): Promise<void> {
+  restrictedLoading.value = true
+  try {
+    restrictedList.value = await getRestrictedEnterprises() || []
+  } catch {
+    ElMessage.error(t('certificateManage.restrictedLoadFailed'))
+  } finally {
+    restrictedLoading.value = false
+  }
+}
+
+/** 恢复上市：解除下市处罚 */
+async function handleRestore(row: CreditScoreResponse): Promise<void> {
+  if (!row.userId) {
+    ElMessage.error(t('certificateManage.restrictedNoUser'))
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      t('certificateManage.restoreConfirm'),
+      t('certificateManage.restoreTitle'),
+      { confirmButtonText: t('common.confirm'), cancelButtonText: t('common.cancel'), type: 'warning' },
+    )
+    await restoreUser(row.userId)
+    ElMessage.success(t('certificateManage.restoreSuccess'))
+    await fetchRestrictedData()
+  } catch (error) {
+    if (error === 'cancel') {
+      return
+    }
+    ElMessage.error(t('certificateManage.restoreFailed'))
+    return
   }
 }
 
@@ -408,6 +451,42 @@ onMounted(() => {
               @current-change="onQualificationCurrentChange"
             />
           </template>
+        </DataPanel>
+      </el-tab-pane>
+
+      <el-tab-pane :label="t('certificateManage.tabRestricted')" name="restricted">
+        <DataPanel
+          :title="t('certificateManage.panelRestrictedTitle')"
+          :meta="t('certificateManage.panelRestrictedMeta', { total: restrictedList.length })"
+        >
+          <el-table :data="restrictedList" v-loading="restrictedLoading">
+            <el-table-column prop="enterpriseName" :label="t('certificateManage.colEnterpriseName')" min-width="140" />
+            <el-table-column prop="score" :label="t('certificateManage.colScore')" width="90" />
+            <el-table-column prop="level" :label="t('certificateManage.colLevel')" width="110" />
+            <el-table-column :label="t('certificateManage.colRestrictTypes')" min-width="200">
+              <template #default="{ row }">
+                <el-tag v-if="row.tradeRestricted" type="warning" size="small" class="mr8">{{ t('certificateManage.restrictLowScore') }}</el-tag>
+                <el-tag v-if="row.accountFrozen" type="danger" size="small" class="mr8">{{ t('certificateManage.restrictFrozen') }}</el-tag>
+                <el-tag v-if="row.delisted" type="danger" size="small" class="mr8">{{ t('certificateManage.restrictDelisted') }}</el-tag>
+                <span v-if="!row.tradeRestricted && !row.accountFrozen && !row.delisted">-</span>
+          </template>
+            </el-table-column>
+            <el-table-column :label="t('common.operation')" width="140" fixed="right">
+              <template #default="{ row }">
+                <el-button
+                  v-if="row.delisted"
+                  link
+                  type="primary"
+                  @click="handleRestore(row)"
+                >{{ t('certificateManage.restoreAction') }}</el-button>
+                <span v-else>-</span>
+              </template>
+            </el-table-column>
+          </el-table>
+          <EmptyHint
+            v-if="!restrictedLoading && restrictedList.length === 0"
+            :description="t('certificateManage.restrictedEmpty')"
+          />
         </DataPanel>
       </el-tab-pane>
     </el-tabs>

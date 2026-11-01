@@ -66,6 +66,9 @@ class AdminControllerTest {
     private com.oaiss.chain.service.AdminUserService adminUserService;
 
     @MockBean
+    private com.oaiss.chain.service.CreditScoreService creditScoreService;
+
+    @MockBean
     private com.oaiss.chain.service.ChainReconciliationService chainReconciliationService;
 
     private User testUser1;
@@ -841,5 +844,38 @@ class AdminControllerTest {
         mockMvc.perform(post("/admin/outbox/{id}/replay", 3L)
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest());
+    }
+
+    // ==================== Delist Tests (R-03) ====================
+
+    @Test
+    @DisplayName("下市处罚-成功(软删除下线语义之外的交易禁入)")
+    void testDelistUserSuccess() throws Exception {
+        mockMvc.perform(post("/admin/users/7/delist"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(creditScoreService, times(1)).delistEnterpriseByUser(eq(7L), any());
+    }
+
+    @Test
+    @DisplayName("下市处罚-重复下市业务异常透传(2017)")
+    void testDelistUserAlreadyDelisted() throws Exception {
+        doThrow(new BusinessException(2017, "error.delist.state.invalid"))
+                .when(creditScoreService).delistEnterpriseByUser(eq(7L), any());
+
+        mockMvc.perform(post("/admin/users/7/delist"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(2017));
+    }
+
+    @Test
+    @DisplayName("恢复上市-成功")
+    void testRestoreUserSuccess() throws Exception {
+        mockMvc.perform(delete("/admin/users/7/delist"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(creditScoreService, times(1)).restoreEnterpriseByUser(eq(7L), any());
     }
 }

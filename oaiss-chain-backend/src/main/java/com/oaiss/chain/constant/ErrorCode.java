@@ -111,6 +111,9 @@ public final class ErrorCode {
     /** 禁止创建管理员类型账号 */
     public static final int ADMIN_USER_TYPE_FORBIDDEN = 2016;
 
+    /** 下市状态非法操作（重复下市/未下市恢复） */
+    public static final int DELIST_STATE_INVALID = 2017;
+
     // ==================== 碳核算模块错误 (3xxx) ====================
     
     /** 碳报告不存在 */

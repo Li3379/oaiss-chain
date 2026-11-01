@@ -75,13 +75,35 @@ function parseDevGuideSection11(content) {
       if (rangeMatch) {
         const start = parseInt(rangeMatch[1], 10)
         const end = parseInt(rangeMatch[2], 10)
-        const isV3Skipped = /V3\s*跳过|跳过\s*V3/i.test(row.val + ' ' + row.desc)
+        // 跳号必须由文档显式声明，门禁不猜。
+        //
+        // 历史写法只硬编码识别 V3，于是任何后续空号都会被判成「缺 Vxx」。
+        // 空号是真实存在的：V22 就是被 V23 抢先入库后留下的永久空洞
+        // ——若补一个 V22，已跑过 V23 的环境会因 Flyway out-of-order 拒绝启动。
+        // 因此空号只能「声明」，不能「消灭」；门禁要做的是确认声明的空号
+        // 确实没有对应文件（双向），而不是把声明当豁免。
+        // 空号声明支持两种写法：
+        //   逗号/顿号并列 —— "V3、V22 跳过"
+        //   逐项后缀     —— "V3 跳过，V22 空号"
+        // 用「取『跳过/空号』前的整个 V 列表」的方式解析，避免只为并列写法
+        // 加一个正则分支（那是上一版漏掉 V3 的原因）。
+        // 扫描前先把区间标记（V1-V24）本身剔掉，否则区间两端会被当成
+        // 空号声明——「V1-V24 V3、V22 跳过」会把 V1 与 V24 误判成空号。
+        const gapSrc = row.val.replace(/V\d+\s*[-~至到]\s*V\d+/gi, ' ') + ' ' + row.desc
+        const skipped = new Set()
+        for (const seg of gapSrc.split(/[，,；;]/)) {
+          if (!/跳过|空号/.test(seg)) continue
+          const head = seg.split(/跳过|空号/)[0]
+          for (const m of head.matchAll(/V(\d+)/g)) skipped.add(`V${m[1]}`)
+        }
+        for (const m of gapSrc.matchAll(/(?:跳过|空号)\s*V(\d+)/g)) skipped.add(`V${m[1]}`)
         const expectedMigs = []
         for (let i = start; i <= end; i++) {
-          if (i === 3 && isV3Skipped) continue
+          if (skipped.has(`V${i}`)) continue
           expectedMigs.push(`V${i}`)
         }
         expected.migrations = expectedMigs
+        expected.declaredGaps = [...skipped]
       }
     } else if (/i18n/.test(f)) {
       expected.i18n = parseInt(row.val.replace(/,/g, ''), 10)
@@ -240,16 +262,23 @@ if (missingEnums.length === 0 && extraEnums.length === 0) {
 // Flyway 迁移版本（双向断言：文档列的必须存在，代码有的必须被文档列到）
 // 历史盲区：早期只做单向包含，导致 V15 落地后 DEV-GUIDE 仍写「V1-V14 共 13 个版本」
 // 而门禁全绿——文档少报版本永远不会被发现。
+//
+// 第二重盲区：空号。V23 先入库、V22 后到，V22 就成了永久空洞（补齐会让
+// 已跑过 V23 的环境 out-of-order 拒启动）。若门禁只认「区间内必须逐个存在」，
+// 正确状态反而被判红——于是要么放宽断言（失去保护），要么伪造一个 V22（真炸库）。
+// 这里改成：空号必须由文档显式声明，且声明了就必须真的没有文件。
 const migrateSet = new Set(migrations)
 const missingMig = EXPECT.migrations.filter(v => !migrateSet.has(v))
 const expectedMigSet = new Set(EXPECT.migrations)
 const undeclaredMig = migrations.filter(v => !expectedMigSet.has(v))
-const hasV3 = migrateSet.has('V3')
-if (missingMig.length === 0 && undeclaredMig.length === 0 && !hasV3) {
-  console.log(`✓ Flyway 迁移: ${EXPECT.migrations.join(',')} (共 ${EXPECT.migrations.length} 个版本，V3 正确跳过)`)
+const declaredGaps = EXPECT.declaredGaps ?? []
+const phantomGaps = declaredGaps.filter(v => migrateSet.has(v))
+if (missingMig.length === 0 && undeclaredMig.length === 0 && phantomGaps.length === 0) {
+  const gapNote = declaredGaps.length ? `，${declaredGaps.join('/')} 已声明为空号` : ''
+  console.log(`✓ Flyway 迁移: ${EXPECT.migrations.join(',')} (共 ${EXPECT.migrations.length} 个版本${gapNote})`)
 } else {
   failures++
-  console.log(`✗ Flyway 迁移: 缺 ${missingMig.join(',') || '无'}${hasV3 ? '，V3 不应存在' : ''}${undeclaredMig.length ? `，代码存在但文档未声明 ${undeclaredMig.join(',')}` : ''}`)
+  console.log(`✗ Flyway 迁移: 缺 ${missingMig.join(',') || '无'}${phantomGaps.length ? `，声明为空号但文件存在 ${phantomGaps.join(',')}` : ''}${undeclaredMig.length ? `，代码存在但文档未声明 ${undeclaredMig.join(',')}` : ''}`)
 }
 
 // i18n 词条断言

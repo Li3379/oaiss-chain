@@ -100,6 +100,9 @@ public final class ErrorMessage {
     /** 禁止创建管理员类型账号 */
     public static final String ADMIN_USER_TYPE_FORBIDDEN = "error.admin.user.type.forbidden";
 
+    /** 下市状态非法操作（重复下市/未下市恢复） */
+    public static final String DELIST_STATE_INVALID = "error.delist.state.invalid";
+
     // ==================== 碳核算模块错误 (3xxx) ====================
 
     /** 碳报告不存在 */

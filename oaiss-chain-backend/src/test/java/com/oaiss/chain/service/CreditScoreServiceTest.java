@@ -1,6 +1,8 @@
 package com.oaiss.chain.service;
 
+import com.oaiss.chain.constant.ErrorCode;
 import com.oaiss.chain.dto.CreditEventResponse;
+import com.oaiss.chain.exception.BusinessException;
 import com.oaiss.chain.dto.CreditScoreResponse;
 import com.oaiss.chain.entity.CreditEvent;
 import com.oaiss.chain.entity.CreditScore;
@@ -381,7 +383,7 @@ class CreditScoreServiceTest {
     void getRestrictedEnterprises_ShouldReturnList() {
         CreditScore restricted = CreditScore.builder().enterpriseId(2L).score(35).tradeRestricted(true).accountFrozen(false).build();
         restricted.setId(2L);
-        when(creditScoreRepository.findByTradeRestrictedAndDeletedFalse(true)).thenReturn(List.of(restricted));
+        when(creditScoreRepository.findByAnyRestrictionAndDeletedFalse()).thenReturn(List.of(restricted));
         List<CreditScoreResponse> result = creditScoreService.getRestrictedEnterprises();
         assertEquals(1, result.size());
         assertTrue(result.get(0).getTradeRestricted());
@@ -390,7 +392,7 @@ class CreditScoreServiceTest {
     @Test
     @DisplayName("获取被限制交易的企业列表 - 空")
     void getRestrictedEnterprises_ShouldReturnEmpty() {
-        when(creditScoreRepository.findByTradeRestrictedAndDeletedFalse(true)).thenReturn(Collections.emptyList());
+        when(creditScoreRepository.findByAnyRestrictionAndDeletedFalse()).thenReturn(Collections.emptyList());
         List<CreditScoreResponse> result = creditScoreService.getRestrictedEnterprises();
         assertTrue(result.isEmpty());
     }
@@ -645,5 +647,90 @@ class CreditScoreServiceTest {
                 .triggeredBy(triggeredBy).triggeredAt(LocalDateTime.now()).build();
         event.setId(id);
         return event;
+    }
+
+    // ==================== 下市处罚 (R-03, TDD RED) ====================
+
+    @Test
+    @DisplayName("下市-成功：delisted置位+留痕DELIST事件+不影响分数")
+    void delistEnterpriseByUser_success() {
+        when(enterpriseRepository.findByUserIdAndDeletedFalse(7L)).thenReturn(Optional.of(testEnterprise));
+        when(creditScoreRepository.findByEnterpriseIdAndDeletedFalse(1L))
+                .thenReturn(Optional.of(testCreditScore));
+        when(creditScoreRepository.save(any(CreditScore.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        CreditScoreResponse resp = creditScoreService.delistEnterpriseByUser(7L, 1L);
+
+        assertEquals(Boolean.TRUE, resp.getDelisted());
+        assertEquals(Boolean.TRUE, testCreditScore.getDelisted());
+        verify(creditEventRepository, times(1)).save(any(CreditEvent.class));
+        assertEquals(100, testCreditScore.getScore());
+    }
+
+    @Test
+    @DisplayName("下市-重复下市拒绝(2017)")
+    void delistEnterpriseByUser_alreadyDelisted_rejected() {
+        testCreditScore.setDelisted(true);
+        when(enterpriseRepository.findByUserIdAndDeletedFalse(7L)).thenReturn(Optional.of(testEnterprise));
+        when(creditScoreRepository.findByEnterpriseIdAndDeletedFalse(1L))
+                .thenReturn(Optional.of(testCreditScore));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> creditScoreService.delistEnterpriseByUser(7L, 1L));
+
+        assertEquals(2017, ex.getCode());
+        verify(creditEventRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("下市-企业不存在拒绝")
+    void delistEnterpriseByUser_enterpriseNotFound() {
+        when(enterpriseRepository.findByUserIdAndDeletedFalse(999L)).thenReturn(Optional.empty());
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> creditScoreService.delistEnterpriseByUser(999L, 1L));
+
+        assertEquals(ErrorCode.RESOURCE_NOT_FOUND, ex.getCode());
+    }
+
+    @Test
+    @DisplayName("恢复上市-成功：delisted复位+REPEAL留痕")
+    void restoreEnterpriseByUser_success() {
+        testCreditScore.setDelisted(true);
+        when(enterpriseRepository.findByUserIdAndDeletedFalse(7L)).thenReturn(Optional.of(testEnterprise));
+        when(creditScoreRepository.findByEnterpriseIdAndDeletedFalse(1L))
+                .thenReturn(Optional.of(testCreditScore));
+        when(creditScoreRepository.save(any(CreditScore.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        CreditScoreResponse resp = creditScoreService.restoreEnterpriseByUser(7L, 1L);
+
+        assertEquals(Boolean.FALSE, resp.getDelisted());
+        assertEquals(Boolean.FALSE, testCreditScore.getDelisted());
+        verify(creditEventRepository, times(1)).save(any(CreditEvent.class));
+    }
+
+    @Test
+    @DisplayName("恢复上市-未下市时拒绝(2017)")
+    void restoreEnterpriseByUser_notDelisted_rejected() {
+        when(enterpriseRepository.findByUserIdAndDeletedFalse(7L)).thenReturn(Optional.of(testEnterprise));
+        when(creditScoreRepository.findByEnterpriseIdAndDeletedFalse(1L))
+                .thenReturn(Optional.of(testCreditScore));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> creditScoreService.restoreEnterpriseByUser(7L, 1L));
+
+        assertEquals(2017, ex.getCode());
+    }
+
+    @Test
+    @DisplayName("交易闸门-delisted企业被拒")
+    void checkTradePermission_delisted_rejected() {
+        testCreditScore.setDelisted(true);
+        when(creditScoreRepository.findByEnterpriseIdAndDeletedFalse(1L))
+                .thenReturn(Optional.of(testCreditScore));
+
+        boolean allowed = creditScoreService.checkTradePermission(1L);
+
+        assertFalse(allowed);
     }
 }
