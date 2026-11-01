@@ -14,8 +14,10 @@ test.describe('Role: Reviewer - Smoke', () => {
     await page.goto('/auditor/audit/list')
     await page.waitForLoadState('networkidle')
     const layout = new Layout(page)
-    await layout.expectSidebar(['审核材料', '项目核证', '认证管理', '搜索查询'])
-    await layout.expectRailCount(4)
+    // 审核员新增「成交审核」：可疑成交（大额/价格偏离/低信誉/自买自卖）
+    // 转人工裁决，是审核员职责的延伸。
+    await layout.expectSidebar(['审核材料', '项目核证', '成交审核', '认证管理', '搜索查询'])
+    await layout.expectRailCount(5)
   })
 
   test('user info displayed', async ({ page }) => {

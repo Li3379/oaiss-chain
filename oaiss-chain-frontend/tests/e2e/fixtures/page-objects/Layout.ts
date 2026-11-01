@@ -17,7 +17,7 @@ export class Layout {
     }
   }
 
-  /** 图标栏条数（pen 稿：企业 12 / 审核 4 / 监管 2 / 管理 5，含「搜索查询」入口） */
+  /** 图标栏条数（企业 12 / 审核 5 / 监管 2 / 管理 6，含「搜索查询」入口） */
   async expectRailCount(count: number): Promise<void> {
     await expect(this.page.locator('.pen-rail__item')).toHaveCount(count)
   }

@@ -14,8 +14,10 @@ test.describe('Role: Admin - Smoke', () => {
     await page.goto('/admin/system/users')
     await page.waitForLoadState('networkidle')
     const layout = new Layout(page)
-    await layout.expectSidebar(['系统管理', '数据管理', '撮合控制台', '证书管理', '搜索查询'])
-    await layout.expectRailCount(5)
+    // 菜单随功能演进：管理员新增「链上管理」(运维对账/死信) 与
+    // 「成交审核」(审核员卡单时的人工兜底)。
+    await layout.expectSidebar(['系统管理', '数据管理', '撮合控制台', '成交审核', '链上管理', '证书管理', '搜索查询'])
+    await layout.expectRailCount(6)
   })
 
   test('user info displayed', async ({ page }) => {
