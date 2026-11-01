@@ -1,0 +1,172 @@
+name: E2E Full Matrix
+
+# 全量功能矩阵验收（手动触发）
+#
+# 为什么不放进常规 CI：
+#   `full-functional.spec.ts` 在单条用例里串行跑 83 个子场景
+#   （test.setTimeout(45 * 60 * 1000)），实测 17.6 分钟。叠上前面的
+#   构建与容器初始化，必然撞穿 30 分钟 job 上限，整个 run 被 cancelled——
+#   结果是前面所有通过的步骤都拿不到最终结论。
+#
+# 它的定位是「发布前全量验收」，不是「每次 push 的快速回归」。
+# 常规 CI 的回归保障是 5 个 *.smoke.spec.ts（35 项），几秒到十几秒一条。
+#
+# 用法：Actions → E2E Full Matrix → Run workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      include_probes:
+        description: "同时运行人工探针脚本（*-probe.spec.ts）"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: e2e-full-matrix
+  cancel-in-progress: false
+
+jobs:
+  full-matrix:
+    # 单元矩阵用例自声明 45 分钟，这里给足余量并留出构建时间
+    timeout-minutes: 75
+    runs-on: ubuntu-24.04
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: oaiss_chain
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+      s3:
+        image: localstack/localstack:3
+        env:
+          SERVICES: s3
+          DEBUG: 0
+        ports:
+          - 9000:4566
+        options: >-
+          --health-cmd="curl -fsS http://localhost:4566/_localstack/health || exit 1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_USERNAME: root
+      DB_PASSWORD: root
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      JWT_SECRET: ci-full-matrix-jwt-secret-min-32-chars-000000
+      SPRING_PROFILES_ACTIVE: docker
+      MINIO_ENDPOINT: http://localhost:9000
+      MINIO_ACCESS_KEY: ci-test-access
+      MINIO_SECRET_KEY: ci-test-secret-key
+      API_BASE_URL: http://localhost:8080/api/v1
+      RSA_KEK: KP/oKs7nQn3oWivvwFZMEEFgD6fVBGzS72DBTzJwH0g=
+      SECURITY_CAPTCHA_ENABLED: "false"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: oaiss-chain-frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: |
+          cd oaiss-chain-frontend
+          npm ci
+
+      - name: Install Playwright
+        run: |
+          cd oaiss-chain-frontend
+          npx playwright install --with-deps chromium
+
+      - name: Build backend
+        run: |
+          cd oaiss-chain-backend
+          mvn clean package -DskipTests -B
+
+      - name: Run backend
+        run: |
+          cd oaiss-chain-backend
+          java -jar target/*.jar > ../backend.log 2>&1 &
+          echo "BACKEND_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Wait for backend
+        run: |
+          set +e
+          timeout 240 bash -c 'until curl -sf http://localhost:8080/api/v1/actuator/health > /dev/null 2>&1; do sleep 3; done'
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::backend did not become healthy within 240s"
+            tail -120 backend.log 2>/dev/null || true
+            exit 1
+          fi
+          echo "Backend is healthy"
+
+      # 全矩阵：跑 full-functional 单条长用例（83 个子场景）
+      - name: Run full functional matrix
+        run: |
+          cd oaiss-chain-frontend
+          npx playwright test full-functional.spec.ts
+        env:
+          E2E_INCLUDE_LONG: "1"
+
+      # 可选：人工探针（假设库里有特定数据，失败不代表产品缺陷）
+      - name: Run probe scripts (optional)
+        if: inputs.include_probes
+        continue-on-error: true
+        run: |
+          cd oaiss-chain-frontend
+          npx playwright test tests/e2e/smoke 2>&1 | tail -50
+        env:
+          E2E_INCLUDE_PROBES: "1"
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-matrix-report
+          path: |
+            oaiss-chain-frontend/playwright-report/
+            oaiss-chain-frontend/test-results/
+            oaiss-chain-frontend/tests/e2e/smoke/**/*-report.md
+          retention-days: 14
+
+      - name: Stop backend
+        if: always()
+        run: |
+          if [ -n "${BACKEND_PID:-}" ]; then kill "$BACKEND_PID" 2>/dev/null || true; fi

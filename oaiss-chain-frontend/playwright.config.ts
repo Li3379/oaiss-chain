@@ -26,8 +26,31 @@ export default defineConfig({
   // 30 分钟 job 预算，导致运行被 cancelled）。
   //
   // 它们在本地手工跑有价值，但放进自动回归只会带来噪音与超时。
-  // 正式回归由 *.smoke.spec.ts 与 full-functional.spec.ts 覆盖。
-  testIgnore: process.env.CI ? ['**/*-probe.spec.ts', '**/*debug*.spec.ts'] : [],
+  //
+  // 同理排除 full-functional.spec.ts：它在**单条用例**里串行跑 83 个子场景
+  // （test.setTimeout(45 * 60 * 1000)），实测 17.6 分钟。叠上前面的构建步骤
+  // 必然撞穿 30 分钟 job 上限，整个 run 会被 cancelled——前面所有通过的
+  // 步骤都拿不到最终结论。它是全量验收脚本，不是回归测试，
+  // 由 e2e-full-matrix.yml 手动触发。
+  //
+  // CI 的回归保障是各角色的 *.smoke.spec.ts（5 个文件 35 项）。
+  // 用显式开关而非「CI 是否为空」：后者依赖「空字符串为假」的隐式语义，
+  // workflow 里一旦写成 CI=false 就会静默失效（字符串 "false" 是真值）。
+  //
+  // 两个开关刻意分开：
+  //   E2E_INCLUDE_LONG   放行 full-functional（全矩阵验收，~18 分钟）
+  //   E2E_INCLUDE_PROBES 放行 *-probe / *debug*（人工探针，依赖特定数据）
+  // 只想要全矩阵时不该被迫连探针一起跑。
+  testIgnore: (() => {
+    const ignored = []
+    if (!process.env.E2E_INCLUDE_PROBES) {
+      ignored.push('**/*-probe.spec.ts', '**/*debug*.spec.ts')
+    }
+    if (!process.env.E2E_INCLUDE_LONG) {
+      ignored.push('**/full-functional.spec.ts')
+    }
+    return process.env.CI ? ignored : []
+  })(),
   timeout: isV11Mode ? 45000 : isFlowMode ? 30000 : 15000,
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
