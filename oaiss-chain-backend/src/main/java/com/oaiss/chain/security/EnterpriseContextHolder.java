@@ -82,7 +82,7 @@ public class EnterpriseContextHolder {
      */
     public static boolean isEnterpriseUser() {
         Integer userType = getUserType();
-        return userType != null && userType == UserTypeEnum.ENTERPRISE.getCode();
+        return userType != null && userType.equals(UserTypeEnum.ENTERPRISE.getCode());
     }
 
     /**
@@ -92,7 +92,7 @@ public class EnterpriseContextHolder {
      */
     public static boolean isAdmin() {
         Integer userType = getUserType();
-        return userType != null && userType == UserTypeEnum.ADMIN.getCode();
+        return userType != null && userType.equals(UserTypeEnum.ADMIN.getCode());
     }
 
     /**
@@ -102,7 +102,7 @@ public class EnterpriseContextHolder {
      */
     public static boolean isReviewer() {
         Integer userType = getUserType();
-        return userType != null && userType == UserTypeEnum.REVIEWER.getCode();
+        return userType != null && userType.equals(UserTypeEnum.REVIEWER.getCode());
     }
 
     /**

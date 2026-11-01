@@ -60,7 +60,18 @@ class ApiVersionIntegrationTest {
     @DisplayName("API版本常量正确")
     void apiVersionConstants() {
         assertEquals("v1", ApiVersionConfig.CURRENT_VERSION);
-        assertArrayEquals(new String[]{"v1"}, ApiVersionConfig.SUPPORTED_VERSIONS);
+        assertEquals(java.util.List.of("v1"), ApiVersionConfig.SUPPORTED_VERSIONS);
         assertEquals("/api", ApiVersionConfig.API_PREFIX);
+    }
+
+    @Test
+    @DisplayName("支持版本列表不可被调用方篡改")
+    void supportedVersionsIsImmutable() {
+        // 原先是 public static final String[]：final 只锁引用，内容可改。
+        // 任何一处 ApiVersionConfig.SUPPORTED_VERSIONS[0] = "v9" 都会让
+        // 版本协商静默接受一个从未实现的版本。改为不可变 List 后必须抛异常。
+        assertThrows(
+                UnsupportedOperationException.class,
+                () -> ApiVersionConfig.SUPPORTED_VERSIONS.add("v9"));
     }
 }
