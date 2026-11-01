@@ -183,6 +183,7 @@ export default {
     tabSystem: 'System',
     tabData: 'Data',
     tabCert: 'Certificates',
+    tabChain: 'On-chain',
     tabSearch: 'Search',
   },
   notFound: {

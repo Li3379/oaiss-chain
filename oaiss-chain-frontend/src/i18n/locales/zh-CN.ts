@@ -183,6 +183,7 @@ export default {
     tabSystem: '系统管理',
     tabData: '数据管理',
     tabCert: '证书管理',
+    tabChain: '链上管理',
     tabSearch: '搜索查询',
   },
   notFound: {

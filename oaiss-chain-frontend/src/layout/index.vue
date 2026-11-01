@@ -140,6 +140,9 @@ const TAB_LABEL: Record<string, string> = {
   system: 'layout.tabSystem',
   data: 'layout.tabData',
   cert: 'layout.tabCert',
+  // 链上管理（管理员对账/死信）独立成一个顶栏页签。
+  // 漏登记时界面会直接渲染字面量 "chain" 且不报错，只有截图才看得出。
+  chain: 'layout.tabChain',
   search: 'layout.tabSearch',
 }
 
