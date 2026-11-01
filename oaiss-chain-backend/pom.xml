@@ -13,7 +13,7 @@
     
     <groupId>com.oaiss</groupId>
     <artifactId>oaiss-chain-backend</artifactId>
-    <version>1.0.0</version>
+    <version>1.7.1</version>
     <name>OAISS Chain Backend</name>
     <description>双碳链动系统——基于区块链的可信碳核算与交易平台后端</description>
     
