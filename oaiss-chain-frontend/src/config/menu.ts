@@ -100,6 +100,7 @@ export const MENU_BY_ROLE: Record<RoleType, MenuItem[]> = {
       ],
     },
     { label: 'menu.projectReview', path: '/auditor/project/review', tab: 'project', rail: true },
+    { label: 'menu.tradeAudit', path: '/auditor/trade/audit', tab: 'trade', rail: true },
     { label: 'menu.certificationManage', path: '/auditor/verify/list', tab: 'verify', rail: true },
     { label: 'menu.searchCenter', path: '/search', tab: 'search', rail: true },
   ],
@@ -118,6 +119,9 @@ export const MENU_BY_ROLE: Record<RoleType, MenuItem[]> = {
     },
     { label: 'menu.dataManage', path: '/admin/data/statistics', tab: 'data', rail: true },
     { label: 'menu.auctionMatching', path: '/admin/trading/matching', tab: 'trade', rail: true },
+    // 成交审核的管理员兜底入口：审核员是主审，管理员只在卡单时补救。
+    // 与审核员端指向同一组件，路由允许 REVIEWER|ADMIN（与后端授权一致）。
+    { label: 'menu.tradeAudit', path: '/auditor/trade/audit', tab: 'trade', rail: true },
     { label: 'menu.chainOps', path: '/admin/blockchain', tab: 'chain', rail: true },
     // 上链补救统一由审核员端「上链补救」承担，管理员端不再保留功能重复的「认证列表」入口。
     { label: 'menu.certificateManage', path: '/admin/certificates', tab: 'cert', rail: true },
@@ -147,6 +151,7 @@ export const RAIL_BY_ROLE: Record<RoleType, RailItem[]> = {
   [ROLE.REVIEWER]: [
     { label: 'menu.auditMaterial', railLabel: 'menu.railAudit', path: '/auditor/audit/list', icon: 'Document', match: ['/auditor/audit/list', '/auditor/review/history'] },
     { label: 'menu.projectReview', railLabel: 'menu.railProject', path: '/auditor/project/review', icon: 'Stamp', match: ['/auditor/project/review'] },
+    { label: 'menu.tradeAudit', railLabel: 'menu.railTradeAudit', path: '/auditor/trade/audit', icon: 'Wallet', match: ['/auditor/trade/audit'] },
     { label: 'menu.certificationManage', railLabel: 'menu.railCert', path: '/auditor/verify/list', icon: 'Key', match: ['/auditor/verify/list'] },
     { label: 'menu.searchCenter', railLabel: 'menu.railSearch', path: '/search', icon: 'Search', match: ['/search'] },
   ],

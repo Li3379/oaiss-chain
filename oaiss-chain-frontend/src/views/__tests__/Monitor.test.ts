@@ -30,6 +30,18 @@ vi.mock('../../api/trade', () => ({
   listTrades: vi.fn(() => Promise.resolve({ items: [], total: 0 })),
 }))
 
+vi.mock('../../api/regulatoryFinding', () => ({
+  FINDING_SEVERITY: { LOW: 'LOW', MEDIUM: 'MEDIUM', HIGH: 'HIGH', CRITICAL: 'CRITICAL' },
+  FINDING_RULES: {
+    REPEATED_REJECTION: 'REPEATED_REJECTION',
+    QUOTA_OVERDRAFT: 'QUOTA_OVERDRAFT',
+    CREDIT_PLUNGE: 'CREDIT_PLUNGE',
+    WASH_TRADING_BLOCKED: 'WASH_TRADING_BLOCKED',
+  },
+  listFindings: vi.fn(() => Promise.resolve({ items: [], total: 0 })),
+  resolveFinding: vi.fn(() => Promise.resolve({})),
+}))
+
 vi.mock('element-plus', async (importOriginal) => {
   const actual = (await importOriginal() as any)
   return {
@@ -280,6 +292,49 @@ describe('Monitor.vue', () => {
     // 页面只调用了统计与交易列表这两个读接口
     expect(listTrades).toHaveBeenCalled()
     expect((wrapper.vm as unknown as { statistics: { totalTrades?: number } }).statistics.totalTrades).toBe(1)
+    wrapper.unmount()
+  })
+
+  it('监管线索区加载未处置线索（只呈现，不改业务状态）', async () => {
+    const findingApi = await import('../../api/regulatoryFinding')
+    const mockedListFindings = vi.mocked(findingApi.listFindings)
+    mockedListFindings.mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          enterpriseId: 10,
+          ruleCode: 'REPEATED_REJECTION',
+          severity: 'HIGH',
+          evidence: '近 30 日成交被驳回 5 次（阈值 3 次）',
+          resolved: false,
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 10,
+      totalPages: 1,
+    } as never)
+
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    expect(mockedListFindings).toHaveBeenCalled()
+    const vm = wrapper.vm as unknown as { findings: Array<Record<string, unknown>>; findingTotal: number }
+    expect(vm.findings).toHaveLength(1)
+    expect(vm.findings[0].ruleCode).toBe('REPEATED_REJECTION')
+    expect(vm.findingTotal).toBe(1)
+    wrapper.unmount()
+  })
+
+  it('线索区不提供任何影响企业状态的写操作（监管只发现不处置企业）', async () => {
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    const vm = wrapper.vm as unknown as Record<string, unknown>
+    // 冻结/扣分/下市这些动作不应出现在监管页面
+    expect(vm.freezeAccount).toBeUndefined()
+    expect(vm.deductCredit).toBeUndefined()
+    expect(vm.delistEnterprise).toBeUndefined()
     wrapper.unmount()
   })
 })

@@ -23,10 +23,11 @@
  */
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ElMessage } from 'element-plus'
-import { CircleCheck, Clock, DataAnalysis, Money, OfficeBuilding, TrendCharts } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { CircleCheck, Clock, DataAnalysis, Money, OfficeBuilding, TrendCharts, Warning } from '@element-plus/icons-vue'
 import { getCarbonReports, getOrgInfo, getStatistics, updateContact } from '../../api/thirdParty'
 import { listTrades } from '../../api/trade'
+import { listFindings, resolveFinding, type RegulatoryFindingRecord } from '../../api/regulatoryFinding'
 import { formatDateTime, formatNumber } from '../../utils/format'
 import PageHeader from '../../components/pen/PageHeader.vue'
 import StatStrip from '../../components/pen/StatStrip.vue'
@@ -314,11 +315,87 @@ const tradeTypeLabel = (tradeType: number | null | undefined) => {
   return '-'
 }
 
+/* ---------- 监管线索（系统产出的异常发现，只读 + 处置标记） ---------- */
+const findings = ref<RegulatoryFindingRecord[]>([])
+const findingsLoading = ref(false)
+const findingPage = ref(1)
+const findingPageSize = ref(10)
+const findingTotal = ref(0)
+
+const loadFindings = async () => {
+  try {
+    findingsLoading.value = true
+    const result = await listFindings({
+      pageNum: findingPage.value,
+      pageSize: findingPageSize.value,
+    })
+    findings.value = result?.items || []
+    findingTotal.value = result?.total || 0
+  } catch {
+    ElMessage.error(t('monitor.findingLoadFailed'))
+  } finally {
+    findingsLoading.value = false
+  }
+}
+
+const onFindingSizeChange = (size: number) => {
+  findingPageSize.value = size
+  findingPage.value = 1
+  loadFindings()
+}
+
+const onFindingCurrentChange = (p: number) => {
+  findingPage.value = p
+  loadFindings()
+}
+
+/**
+ * 标记线索已处置。
+ *
+ * 这不是"处置企业"——线索处置不改变任何业务状态（不冻结、不扣分、不下市），
+ * 只是记录监管已看过这条发现。真正影响企业状态的动作归管理员。
+ */
+const onResolveFinding = async (row: RegulatoryFindingRecord) => {
+  try {
+    await ElMessageBox.confirm(
+      t('monitor.findingResolveConfirm'),
+      t('monitor.findingResolveTitle'),
+      { type: 'info' },
+    )
+  } catch {
+    return
+  }
+  try {
+    await resolveFinding(row.id)
+    ElMessage.success(t('monitor.findingResolveSuccess'))
+    await loadFindings()
+  } catch {
+    ElMessage.error(t('monitor.findingResolveFailed'))
+  }
+}
+
+const severityType = (severity: string) => {
+  if (severity === 'CRITICAL') return 'danger'
+  if (severity === 'HIGH') return 'warning'
+  return 'info'
+}
+
+const ruleLabel = (ruleCode: string) => {
+  const map: Record<string, string> = {
+    REPEATED_REJECTION: t('monitor.ruleRepeatedRejection'),
+    QUOTA_OVERDRAFT: t('monitor.ruleQuotaOverdraft'),
+    CREDIT_PLUNGE: t('monitor.ruleCreditPlunge'),
+    WASH_TRADING_BLOCKED: t('monitor.ruleWashTrading'),
+  }
+  return map[ruleCode] ?? ruleCode
+}
+
 onMounted(() => {
   loadStatistics()
   loadOrgInfo()
   loadReports()
   loadTrades()
+  loadFindings()
 })
 </script>
 
@@ -532,6 +609,62 @@ onMounted(() => {
         />
       </template>
     </DataPanel>
+
+    <!-- 监管线索：系统定期核查产出的异常发现。只读 + 处置标记，不改任何业务状态。 -->
+    <DataPanel
+      :title="t('monitor.findingTableTitle')"
+      :meta="t('monitor.findingPanelMeta', { total: findingTotal })"
+      :icon="Warning"
+    >
+      <div class="finding-note">
+        {{ t('monitor.findingBoundaryNote') }}
+      </div>
+
+      <el-table :data="findings" v-loading="findingsLoading">
+        <el-table-column :label="t('common.colIndex')" width="80">
+          <template #default="scope">
+            {{ (findingPage - 1) * findingPageSize + scope.$index + 1 }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="enterpriseId" :label="t('monitor.colFindingEnterprise')" min-width="120" />
+        <el-table-column :label="t('monitor.colFindingRule')" min-width="170">
+          <template #default="{ row }">{{ ruleLabel(row.ruleCode) }}</template>
+        </el-table-column>
+        <el-table-column :label="t('monitor.colFindingSeverity')" min-width="110">
+          <template #default="{ row }">
+            <el-tag :type="severityType(row.severity)" size="small">
+              {{ row.severity }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="evidence" :label="t('monitor.colFindingEvidence')" min-width="300" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.evidence || '-' }}</template>
+        </el-table-column>
+        <el-table-column :label="t('monitor.colFindingCreatedAt')" min-width="170">
+          <template #default="{ row }">{{ formatDateTime(row.createdAt) || '-' }}</template>
+        </el-table-column>
+        <el-table-column :label="t('common.operation')" min-width="120" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="onResolveFinding(row)">
+              {{ t('monitor.findingResolve') }}
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <template #footer>
+        <el-pagination
+          v-model:current-page="findingPage"
+          v-model:page-size="findingPageSize"
+          background
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next, jumper"
+          :total="findingTotal"
+          @size-change="onFindingSizeChange"
+          @current-change="onFindingCurrentChange"
+        />
+      </template>
+    </DataPanel>
   </section>
 </template>
 
@@ -596,6 +729,13 @@ onMounted(() => {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2) var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--pen-border);
+  color: var(--pen-muted);
+  font-size: var(--fs-sub);
+}
+
+.finding-note {
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--pen-border);
   color: var(--pen-muted);

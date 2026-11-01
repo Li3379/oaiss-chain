@@ -144,6 +144,14 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '项目审核', roles: [ROLE.REVIEWER] },
       },
       {
+        // 成交审核：审核员主审，管理员兜底（与后端 TradeAuditController 授权一致）。
+        // 待审成交在审核通过前不结算、不上链，因此本页是资金与额度真正落地的关口。
+        path: 'auditor/trade/audit',
+        name: 'AuditorTradeAudit',
+        component: () => import('../views/auditor/TradeAudit.vue'),
+        meta: { title: '成交审核', roles: [ROLE.REVIEWER, ROLE.ADMIN] },
+      },
+      {
         // 方案 A：上链触发者 = 审核员审核通过（系统自动上链）。
         // 本页面是「自动上链失败的幂等补救」的**唯一入口**（ADMIN 仅保留直接 URL 兜底，
         // 不再提供独立的管理员页面，避免同一组件出现两个功能重复的菜单项）。
