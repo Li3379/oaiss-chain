@@ -33,6 +33,8 @@ function mockCarbonApi(page, reports = MOCK_REPORTS) {
   page.route(/\/api\/v1\/carbon/, (route) => {
     const url = route.request().url()
     const method = route.request().method()
+    // 诊断：CI 上曾出现「表格 0 条」，输出实际 URL 便于定位是否落到了兜底分支
+    if (process.env.E2E_TRACE_ROUTES) console.log(`[ROUTE] ${method} ${url}`)
     if (url.includes('/my-reports') && method === 'GET') {
       route.fulfill({
         status: 200,

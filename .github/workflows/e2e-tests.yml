@@ -433,6 +433,9 @@ jobs:
           echo "Frontend is ready"
 
       - name: Run E2E tests (v1.1)
+        env:
+          # 输出 page.route 实际拦截到的 URL，用于定位 mock 未命中类问题
+          E2E_TRACE_ROUTES: "1"
         if: success() || failure()
         run: |
           cd oaiss-chain-frontend
