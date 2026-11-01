@@ -14,10 +14,15 @@ test.describe('Role: Reviewer - Smoke', () => {
     await page.goto('/auditor/audit/list')
     await page.waitForLoadState('networkidle')
     const layout = new Layout(page)
-    // 审核员新增「成交审核」：可疑成交（大额/价格偏离/低信誉/自买自卖）
-    // 转人工裁决，是审核员职责的延伸。
-    await layout.expectSidebar(['审核材料', '项目核证', '成交审核', '认证管理', '搜索查询'])
+
+    // 审核员叶子同为 rail: true，侧栏二级项为空；断言图标栏与顶栏页签。
+    // 本轮新增「成交审核」——可疑成交转人工裁决，是审核职责的延伸。
     await layout.expectRailCount(5)
+    await layout.expectTopTabCount(5)
+    // 顶栏显示的是 TAB_LABEL 的文案，不是菜单项名：
+    //   tab=verify 的菜单叫「认证管理」，但顶栏文案是「上链补救」
+    //   tab=trade  共用同一页签，文案是「交易市场」
+    await layout.expectTopTabs(['审核材料', '项目核证', '交易市场', '上链补救', '搜索查询'])
   })
 
   test('user info displayed', async ({ page }) => {

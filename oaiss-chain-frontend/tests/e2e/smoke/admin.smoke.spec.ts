@@ -14,10 +14,14 @@ test.describe('Role: Admin - Smoke', () => {
     await page.goto('/admin/system/users')
     await page.waitForLoadState('networkidle')
     const layout = new Layout(page)
-    // 菜单随功能演进：管理员新增「链上管理」(运维对账/死信) 与
-    // 「成交审核」(审核员卡单时的人工兜底)。
-    await layout.expectSidebar(['系统管理', '数据管理', '撮合控制台', '成交审核', '链上管理', '证书管理', '搜索查询'])
+
+    // 管理端所有叶子都是 rail: true，侧栏（rail === false 的二级项）本来就是空的，
+    // 所以不能断言 role=menuitem——那样永远失败。真正可见的是两处：
+    //   1. 72px 图标栏（6 个入口，含本轮新增「链上管理」）
+    //   2. 顶栏一级页签（按 tab 去重：撮合控制台与成交审核共用 trade，只出现一次）
     await layout.expectRailCount(6)
+    await layout.expectTopTabCount(6)
+    await layout.expectTopTabs(['系统管理', '数据管理', '交易市场', '链上管理', '证书管理', '搜索查询'])
   })
 
   test('user info displayed', async ({ page }) => {

@@ -17,6 +17,25 @@ export class Layout {
     }
   }
 
+  /**
+   * 断言顶栏一级页签。
+   *
+   * 与 expectSidebar 的区别：侧栏只渲染 rail === false 的叶子，而顶栏页签
+   * 是**按 tab 去重**后的结果——多个菜单共用同一 tab 时（撮合控制台、成交审核
+   * 都是 tab: 'trade'），顶栏只出现一次「交易市场」。
+   * 所以不能拿菜单项名去断言顶栏，必须断言页签文案。
+   */
+  async expectTopTabs(expectedTabs: string[]): Promise<void> {
+    for (const tab of expectedTabs) {
+      await expect(this.page.locator('.top-tab', { hasText: tab }).first()).toBeVisible()
+    }
+  }
+
+  /** 顶栏页签总数（去重后的 tab 数） */
+  async expectTopTabCount(count: number): Promise<void> {
+    await expect(this.page.locator('.top-tab')).toHaveCount(count)
+  }
+
   /** 图标栏条数（企业 12 / 审核 5 / 监管 2 / 管理 6，含「搜索查询」入口） */
   async expectRailCount(count: number): Promise<void> {
     await expect(this.page.locator('.pen-rail__item')).toHaveCount(count)
