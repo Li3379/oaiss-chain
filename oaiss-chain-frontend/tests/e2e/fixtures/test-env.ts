@@ -1,6 +1,9 @@
 import { request } from '@playwright/test'
 
-const API_BASE = process.env.API_BASE_URL || 'http://localhost:8080/api/v1'
+import { API_BASE_URL } from './api-base'
+
+// 见 api-base.ts：baseURL 需以 / 结尾，否则 /api/v1 会被 Playwright 丢掉。
+const API_BASE = API_BASE_URL
 const ML_SERVICE_BASE = process.env.ML_SERVICE_URL || 'http://localhost:8001'
 const FABRIC_ENDPOINT = process.env.FABRIC_ENDPOINT || 'http://localhost:7051'
 

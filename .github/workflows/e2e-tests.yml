@@ -120,6 +120,11 @@ jobs:
       # 不显式关掉的话所有用例都会在登录处报 {"code":2006,"message":"验证码错误"}。
       # 生产环境必须保持默认 true——只在测试环境关闭。
       SECURITY_CAPTCHA_ENABLED: "false"
+      # 关闭接口限流。登录端点默认 5 次/60 秒（AuthController @RateLimit），
+      # 而 E2E 有几十个用例各登录一次，必然撞限流——表现为
+      # "Cannot read properties of undefined (reading 'accessToken')"，
+      # 因为限流响应里没有 data 字段。限流是生产保护，不是测试对象。
+      OAISS_RATELIMIT_ENABLED: "false"
 
     steps:
       - name: Checkout

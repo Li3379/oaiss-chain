@@ -2,7 +2,10 @@ import { request as playwrightRequest, type APIRequestContext } from '@playwrigh
 import * as fs from 'fs'
 import * as path from 'path'
 
-const API_BASE = process.env.API_BASE_URL || 'http://localhost:8080/api/v1'
+import { API_BASE_URL } from './api-base'
+
+// 见 api-base.ts：baseURL 需以 / 结尾，否则 /api/v1 会被 Playwright 丢掉。
+const API_BASE = API_BASE_URL
 
 /**
  * Map of frontend API modules to their endpoint patterns.
@@ -157,12 +160,29 @@ export async function verifyApiModuleCoverage(
 export async function getSwaggerSpec(): Promise<Record<string, unknown> | null> {
   let context: APIRequestContext | null = null
   try {
-    const baseUrl = API_BASE.replace(/\/api\/v1\/?$/, '')
+    // Swagger 文档路径由 application.yml 的 springdoc.api-docs.path 决定，
+    // 本项目配置为 /v1/api-docs（不是 Springdoc 默认的 /v3/api-docs）。
+    // 叠加 context-path 后实际地址是 /api/v1/v1/api-docs —— 实测 200。
+    // 早先请求 /v3/api-docs 得到 404，导致「Swagger paths: 0」而后端明明有文档。
     context = await playwrightRequest.newContext({
-      baseURL: baseUrl,
+      baseURL: API_BASE,
       timeout: 5000,
     })
-    const response = await context.get('/v3/api-docs')
+    // 该端点要求认证：无 token 返回 401，而 catch 会把失败吞成 null，
+    // 表现为「Swagger paths: 0」——看起来像后端没文档，实际是没登录。
+    const login = await context.post('auth/login', {
+      data: {
+        username: process.env.ADMIN_USERNAME || 'admin',
+        password: process.env.ADMIN_PASSWORD || 'admin123',
+      },
+    })
+    const headers: Record<string, string> = {}
+    if (login.ok()) {
+      const token = (await login.json())?.data?.accessToken
+      if (token) headers['Authorization'] = `Bearer ${token}`
+    }
+
+    const response = await context.get('v1/api-docs', { headers })
     if (response.ok()) {
       return await response.json()
     }
@@ -237,7 +257,8 @@ export async function compareSwaggerWithApiModules(): Promise<{
  */
 export function extractEndpointsFromApiModule(filePath: string): string[] {
   try {
-    const fullPath = path.join(process.cwd(), 'oaiss-chain-frontend', 'src', 'api', path.basename(filePath))
+    // cwd 在 playwright 运行时就是 oaiss-chain-frontend 目录，不能再拼一层
+    const fullPath = path.join(process.cwd(), 'src', 'api', path.basename(filePath))
     const content = fs.readFileSync(fullPath, 'utf-8')
 
     // Match request.get/post/put/delete calls with string literal paths

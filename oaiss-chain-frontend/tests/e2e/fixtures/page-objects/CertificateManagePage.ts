@@ -35,9 +35,11 @@ export class CertificateManagePage {
   }
 
   async expectCertificateList(): Promise<void> {
-    // Wait for el-table to render (may be empty but table should exist)
-    const table = this.page.locator('.el-table')
-    await expect(table.first()).toBeVisible()
+    // el-tabs 会把非激活面板的表格留在 DOM 里但 display:none，
+    // 所以 `.el-table` 有多个，`.first()` 很可能取到隐藏的那个
+    // （报错是 Received: hidden 而不是 element not found）。
+    // 断言「存在任一可见表格」才是本意。
+    await expect(this.page.locator('.el-table:visible').first()).toBeVisible()
   }
 
   async clickIssueCertificate(): Promise<void> {

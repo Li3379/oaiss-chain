@@ -20,8 +20,9 @@ export class MarketPredictionPage {
 
   async expectLoaded(): Promise<void> {
     await expect(this.page).toHaveURL(/\/enterprise\/market-prediction/)
-    // Wait for the page title (rendered via i18n key enterprise.marketPrediction.title)
-    await expect(this.page.locator('.page-title')).toBeVisible()
+    // pen 壳层用 PageHeader 组件渲染标题，类名是 .pen-page-head。
+    // 早先断言 .page-title 是旧代际的类名，pen 迁移后已不存在。
+    await expect(this.page.locator('.pen-page-head')).toBeVisible()
   }
 
   /**

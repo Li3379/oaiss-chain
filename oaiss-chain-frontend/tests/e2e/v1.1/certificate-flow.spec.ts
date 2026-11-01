@@ -17,7 +17,14 @@ test.describe('Flow: Certificate Management', () => {
 
   test.describe('Enterprise Admission Certificate (REQ-07)', () => {
     test('admin can issue enterprise admission certificate', async ({ request }) => {
-      // POST /admin/enterprise-admission/{enterpriseId}/issue (no request body)
+      // 签发有业务前置：同一企业已有有效证书时会拒绝重复签发（返回 400）。
+      // 测试跑在真实库上，前面跑过的用例可能已经签过，因此先吊销当前有效证书，
+      // 把状态归一化到「无证」再签发——否则用例成败取决于执行顺序。
+      await request.delete(`${API_BASE}/admin/enterprise-admission/1`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+        params: { reason: 'e2e-reset-before-issue' },
+      })
+
       const response = await request.post(`${API_BASE}/admin/enterprise-admission/1/issue`, {
         headers: { Authorization: `Bearer ${adminToken}` },
       })
@@ -27,6 +34,17 @@ test.describe('Flow: Certificate Management', () => {
       expect(body.code).toBe(200)
       expect(body.data).toHaveProperty('id')
       expect(body.data).toHaveProperty('status')
+      // 签发必须写入有效期，否则「到期自动失效」永远不可能触发。
+      expect(body.data.expiryDate).not.toBeNull()
+
+      // 用后清理：不留下"企业有证"这一副作用。
+      // 本文件后续用例与前序用例都依赖企业处于「无有效证」状态，
+      // 留证会让它们被判 7001 拒绝——这类跨用例的状态污染极难排查，
+      // 表现为「单独跑通过、合跑失败」。
+      await request.delete(`${API_BASE}/admin/enterprise-admission/1`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+        params: { reason: 'e2e-cleanup-after-issue' },
+      })
     })
 
     test('admin can list enterprise admission certificates', async ({ request }) => {
@@ -75,16 +93,32 @@ test.describe('Flow: Certificate Management', () => {
       expect(response.ok()).toBeTruthy()
       const body = await response.json()
       expect(body.code).toBe(200)
-      // Data may be null if no certificate has been issued
-      if (body.data) {
-        expect(body.data).toHaveProperty('status')
+
+      // 该端点返回**数组**（一家企业可能有多张历史证书，按创建时间倒序），
+      // 早先断言 body.data.status 把它当单个对象，于是 toHaveProperty('status')
+      // 必然失败——报错只说「缺属性 status」，看不出 data 其实是数组。
+      expect(Array.isArray(body.data)).toBe(true)
+      if (body.data.length > 0) {
+        const current = body.data[0]
+        expect(current).toHaveProperty('status')
+        expect(current).toHaveProperty('certificateNo')
+        // 有效期必须存在：签发时若漏写，证就永远不会过期，
+        // 「到期自动失效」形同虚设（该缺陷曾真实存在）。
+        expect(current).toHaveProperty('expiryDate')
+        expect(current.expiryDate).not.toBeNull()
       }
     })
   })
 
   test.describe('Reviewer Qualification Certificate (REQ-08)', () => {
     test('admin can issue reviewer qualification certificate', async ({ request }) => {
-      // POST /admin/reviewer-qualification/{reviewerId}/issue (no request body)
+      // 同企业准入证：已有有效资格证时重复签发会被拒（400），
+      // 先把状态归一化到「无证」再签发。
+      await request.delete(`${API_BASE}/admin/reviewer-qualification/4`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+        params: { reason: 'e2e-reset-before-issue' },
+      })
+
       const response = await request.post(`${API_BASE}/admin/reviewer-qualification/4/issue`, {
         headers: { Authorization: `Bearer ${adminToken}` },
       })
@@ -94,6 +128,12 @@ test.describe('Flow: Certificate Management', () => {
       expect(body.code).toBe(200)
       expect(body.data).toHaveProperty('id')
       expect(body.data).toHaveProperty('status')
+
+      // 同企业准入证：用后清理，避免污染「审核员持证」相关用例
+      await request.delete(`${API_BASE}/admin/reviewer-qualification/4`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+        params: { reason: 'e2e-cleanup-after-issue' },
+      })
     })
 
     test('admin can list reviewer qualification certificates', async ({ request }) => {
@@ -153,8 +193,10 @@ test.describe('Flow: Certificate Management', () => {
       } else {
         const body = await response.json()
         expect(body.code).toBe(200)
-        if (body.data) {
-          expect(body.data).toHaveProperty('status')
+        // 与 /enterprise/admission/my 同构：返回数组（一名审核员可能有多张历史资格证）。
+        expect(Array.isArray(body.data)).toBe(true)
+        if (body.data.length > 0) {
+          expect(body.data[0]).toHaveProperty('status')
         }
       }
     })

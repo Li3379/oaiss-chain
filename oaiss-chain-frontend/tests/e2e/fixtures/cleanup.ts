@@ -1,6 +1,9 @@
 import { request, type APIRequestContext } from '@playwright/test'
 
-const API_BASE = process.env.API_BASE_URL || 'http://localhost:8080/api/v1'
+import { API_BASE_URL } from './api-base'
+
+// 见 api-base.ts：baseURL 需以 / 结尾，否则 /api/v1 会被 Playwright 丢掉。
+const API_BASE = API_BASE_URL
 const ADMIN_TOKEN = process.env.E2E_ADMIN_TOKEN || ''
 
 let sharedContext: APIRequestContext | null = null

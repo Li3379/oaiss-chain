@@ -1,5 +1,6 @@
 import { test, expect, request as playwrightRequest } from '@playwright/test'
 import { TEST_USERS, loginViaApi } from '../fixtures/auth'
+import { isMlServiceAvailable } from '../fixtures/test-env'
 import {
   API_MODULE_COVERAGE,
   verifyApiModuleCoverage,
@@ -7,7 +8,10 @@ import {
   extractEndpointsFromApiModule,
 } from '../fixtures/api-coverage'
 
-const API_BASE = process.env.API_BASE_URL || 'http://localhost:8080/api/v1'
+import { API_BASE_URL } from '../fixtures/api-base'
+
+// baseURL 必须带末尾斜杠、且请求路径不带前导斜杠，否则 /api/v1 会被丢掉。
+const API_BASE = API_BASE_URL
 
 test.describe('Frontend Coverage Flow', () => {
   let adminToken: string
@@ -17,19 +21,19 @@ test.describe('Frontend Coverage Flow', () => {
   test.beforeAll(async () => {
     const ctx = await playwrightRequest.newContext({ baseURL: API_BASE })
 
-    const adminLogin = await ctx.post('/auth/login', {
+    const adminLogin = await ctx.post('auth/login', {
       data: { username: TEST_USERS.admin.username, password: TEST_USERS.admin.password },
     })
     const adminBody = await adminLogin.json()
     adminToken = adminBody.data?.accessToken || ''
 
-    const entLogin = await ctx.post('/auth/login', {
+    const entLogin = await ctx.post('auth/login', {
       data: { username: TEST_USERS.enterprise.username, password: TEST_USERS.enterprise.password },
     })
     const entBody = await entLogin.json()
     enterpriseToken = entBody.data?.accessToken || ''
 
-    const revLogin = await ctx.post('/auth/login', {
+    const revLogin = await ctx.post('auth/login', {
       data: { username: TEST_USERS.reviewer.username, password: TEST_USERS.reviewer.password },
     })
     const revBody = await revLogin.json()
@@ -42,6 +46,10 @@ test.describe('Frontend Coverage Flow', () => {
 
   test.describe('API Module Coverage (REQ-09)', () => {
     test('market prediction API endpoints exist', async () => {
+      // 市场预测端点依赖 ML 微服务；服务未启动时逐条探测必然全失败，
+      // 但那是「环境缺失」而不是「端点不存在」，不应计为缺陷。
+      test.skip(!(await isMlServiceAvailable()), 'ML service not available')
+
       const result = await verifyApiModuleCoverage('marketPrediction', enterpriseToken)
 
       expect(result.endpoints).toBeGreaterThan(0)
@@ -226,8 +234,11 @@ test.describe('Frontend Coverage Flow', () => {
 
   test.describe('Swagger Documentation Consistency (REQ-11)', () => {
     test('swagger documentation is accessible', async ({ request }) => {
-      const baseUrl = API_BASE.replace(/\/api\/v1\/?$/, '')
-      const response = await request.get(`${baseUrl}/v3/api-docs`)
+      // 路径由 application.yml 的 springdoc.api-docs.path 决定：/v1/api-docs，
+      // 叠加 context-path 即 /api/v1/v1/api-docs。且该端点要求认证（无 token 401）。
+      const response = await request.get(`${API_BASE}v1/api-docs`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      })
 
       expect(response.ok()).toBeTruthy()
       const body = await response.json()
@@ -247,8 +258,9 @@ test.describe('Frontend Coverage Flow', () => {
     })
 
     test('swagger documentation includes v1.1 endpoints', async ({ request }) => {
-      const baseUrl = API_BASE.replace(/\/api\/v1\/?$/, '')
-      const response = await request.get(`${baseUrl}/v3/api-docs`)
+      const response = await request.get(`${API_BASE}v1/api-docs`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      })
       const body = await response.json()
       const paths = body.paths as Record<string, unknown>
 
@@ -278,7 +290,10 @@ test.describe('Frontend Coverage Flow', () => {
       const fs = await import('fs')
       const pathMod = await import('path')
 
-      const apiDir = pathMod.join(process.cwd(), 'oaiss-chain-frontend', 'src', 'api')
+      // process.cwd() 在 playwright 运行时就是 oaiss-chain-frontend 目录
+      // （playwright.config.ts 在该目录下），再拼一次 oaiss-chain-frontend
+      // 会得到 .../oaiss-chain-frontend/oaiss-chain-frontend/src/api —— 恒不存在。
+      const apiDir = pathMod.join(process.cwd(), 'src', 'api')
       const requiredFiles = [
         'marketPrediction.ts',
         'enterpriseInference.ts',
@@ -301,8 +316,10 @@ test.describe('Frontend Coverage Flow', () => {
       const enterpriseInferenceEndpoints = extractEndpointsFromApiModule('enterpriseInference.ts')
       expect(enterpriseInferenceEndpoints.length).toBeGreaterThan(0)
 
+      // 该模块已不止两个端点：除发电/电网核算外，还新增了碳氧化率实测
+      // 与政策问答（G5 缺口回填）。断言取下界而非定值，避免每次加接口就红。
       const carbonFormulaEndpoints = extractEndpointsFromApiModule('carbonFormula.ts')
-      expect(carbonFormulaEndpoints.length).toBe(2)
+      expect(carbonFormulaEndpoints.length).toBeGreaterThanOrEqual(2)
     })
   })
 

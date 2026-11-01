@@ -197,20 +197,26 @@ test.describe('AI Prediction Flow', () => {
       await inferencePage.expectStatCards()
     })
 
-    test('reviewer can access enterprise inference', async ({ page }) => {
+    // AI 企业推理是**企业专有**页面：router 里
+    // meta.roles = [ROLE.ENTERPRISE]，其它角色访问会被守卫重定向到各自首页。
+    //
+    // 这两个用例原先断言「reviewer/third-party 能访问」，与实际权限模型相反：
+    // 它们跑到一半就停在 toHaveURL 失败（收到 third-party/monitor）。
+    // 正确断言是「越权访问被拒」——这才是安全边界应有的行为。
+    test('reviewer cannot access enterprise inference (redirected)', async ({ page }) => {
       await loginViaApi(page, TEST_USERS.reviewer.username, TEST_USERS.reviewer.password)
       const inferencePage = new EnterpriseInferencePage(page)
 
       await inferencePage.goto()
-      await inferencePage.expectLoaded()
+      await expect(page).not.toHaveURL(/\/enterprise\/enterprise-inference/)
     })
 
-    test('third-party can access enterprise inference', async ({ page }) => {
+    test('third-party cannot access enterprise inference (redirected)', async ({ page }) => {
       await loginViaApi(page, TEST_USERS.thirdParty.username, TEST_USERS.thirdParty.password)
       const inferencePage = new EnterpriseInferencePage(page)
 
       await inferencePage.goto()
-      await inferencePage.expectLoaded()
+      await expect(page).not.toHaveURL(/\/enterprise\/enterprise-inference/)
     })
   })
 
