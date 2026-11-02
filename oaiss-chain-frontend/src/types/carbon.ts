@@ -7,6 +7,17 @@ export interface CarbonReportRequest {
   calculationMethod?: string
   attachments?: string
   signatureData?: string
+  // ===== 组件1：配额发放依据 =====
+  /** 核算年份（唯一约束建在 periodYear + periodQuarter 上，不依赖 accountingPeriod 字符串） */
+  periodYear?: number
+  /** 核算季度 1-4；年度报告不传 */
+  periodQuarter?: number
+  /** 发电量（MWh）——配额公式的乘数因子 */
+  outputQuantity?: number
+  /** 发电量单位，固定 MWh */
+  outputUnit?: string
+  /** 机组类别 I/II/III/IV，决定查哪一行基准值 */
+  unitType?: string
 }
 
 /** 碳报告响应 */

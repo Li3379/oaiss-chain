@@ -165,7 +165,12 @@ describe('CarbonUpload.vue', () => {
     expect(dialog.find('[data-testid="structured-emission"]').exists()).toBe(true)
 
     // 填写范围一一行：100 t x 2.5 = 250
-    const numbers = dialog.findAll('.el-input-number')
+    //
+    // 不能用 findAll('.el-input-number')[0]/[1] 定位——组件 1 在表单里新增了
+    // 「发电量」输入框（同样是 el-input-number），会把索引挤位。
+    // 改为在排放编辑器内部按索引找，与该区域之外的字段解耦。
+    const emissionEditor = dialog.find('[data-testid="structured-emission"]')
+    const numbers = emissionEditor.findAll('.el-input-number')
     expect(numbers.length).toBeGreaterThanOrEqual(2)
     await numbers[0].setValue('100')
     await numbers[1].setValue('2.5')

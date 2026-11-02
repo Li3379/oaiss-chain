@@ -151,6 +151,15 @@ const formModel = reactive({
   emissionData: '',
   calculationMethod: '',
   attachments: '',
+  // ===== 组件1：配额发放依据 =====
+  // 核算周期拆结构化字段——accountingPeriod 是无格式约束的自由文本，
+  // 无法承载「同企业同周期唯一」这条约束。accountingPeriod 降为展示值，
+  // 由 periodYear + periodQuarter 自动拼出。
+  periodYear: null as number | null,
+  periodQuarter: null as number | null,
+  outputQuantity: null as number | null,
+  outputUnit: 'MWh',
+  unitType: '' as string,
 })
 
 /* ---------- 附件：真实文件上传与 SHA-256 存证指纹计算 ---------- */
@@ -395,14 +404,54 @@ const reportTypeOptions = [
   { label: t('carbonUpload.reportTypeAnnual'), value: 2 },
 ]
 
+/* ---------- 组件1：配额发放依据 ---------- */
+
+/** 可选年度：当前年往前 5 年到往后 1 年（覆盖补报与预填） */
+const periodYearOptions = computed(() => {
+  const now = new Date().getFullYear()
+  return Array.from({ length: 7 }, (_, i) => now - 5 + i)
+})
+
+/**
+ * 机组类别。四类对应官方四种基准值：
+ * 300MW 以上常规燃煤 / 及以下常规燃煤 / 非常规燃煤 / 燃气。
+ * 本轮由企业自选（项目无装机容量字段，无法自动判定）。
+ */
+const unitTypeOptions = computed(() => [
+  { label: t('carbonUpload.unitTypeI'), value: 'I' },
+  { label: t('carbonUpload.unitTypeII'), value: 'II' },
+  { label: t('carbonUpload.unitTypeIII'), value: 'III' },
+  { label: t('carbonUpload.unitTypeIV'), value: 'IV' },
+])
+
+/**
+ * 由年 + 季拼出展示用的 accountingPeriod。
+ *
+ * 后端唯一约束建在 (period_year, period_quarter) 上，不依赖这个字符串；
+ * 这里只是保持既有字段的展示连续性（列表、详情、导出都在读它）。
+ */
+const syncAccountingPeriod = () => {
+  const y = formModel.periodYear
+  const q = formModel.periodQuarter
+  if (!y) {
+    formModel.accountingPeriod = ''
+    return
+  }
+  formModel.accountingPeriod = q && q > 0 ? `${y}-Q${q}` : String(y)
+}
+
 const reportTypeLabel = (value: number | string | null | undefined) =>
   reportTypeOptions.find((option) => option.value === Number(value))?.label ?? String(value ?? '-')
 
 const formRules = {
-  accountingPeriod: [{ required: true, message: t('carbonUpload.enterAccountingPeriod'), trigger: 'blur' }],
+  accountingPeriod: [{ required: true, message: t('carbonUpload.enterAccountingPeriod'), trigger: 'change' }],
   title: [{ required: true, message: t('carbonUpload.enterReportTitle'), trigger: 'blur' }],
   reportType: [{ required: true, message: t('carbonUpload.selectReportType'), trigger: 'change' }],
   emissionData: [{ validator: validateEmissionData, trigger: 'blur' }],
+  // 组件1：配额发放依据。这三项不填，审核会失败（配额算不出来），
+  // 所以在提交期就拦住，而不是等审核员点了「通过」才报错。
+  outputQuantity: [{ required: true, message: t('carbonUpload.enterOutputQuantity'), trigger: 'blur' }],
+  unitType: [{ required: true, message: t('carbonUpload.selectUnitType'), trigger: 'change' }],
 }
 
 const fetchData = async () => {
@@ -553,6 +602,14 @@ const onSubmitForm = async () => {
       emissionData: formModel.emissionData,
       calculationMethod: formModel.calculationMethod || undefined,
       attachments: formModel.attachments || undefined,
+      // 组件1：配额发放依据。核算周期拆结构化字段（唯一约束建在它们上面），
+      // 发电量与机组类型决定配额量。
+      periodYear: formModel.periodYear ?? undefined,
+      periodQuarter:
+        formModel.periodQuarter && formModel.periodQuarter > 0 ? formModel.periodQuarter : undefined,
+      outputQuantity: formModel.outputQuantity ?? undefined,
+      outputUnit: formModel.outputUnit,
+      unitType: formModel.unitType || undefined,
     }
     if (editingReportId.value !== null) {
       // D13：修改模式——走 PUT，后端会重算四列并在提交时重新签名
@@ -870,7 +927,25 @@ onMounted(() => {
     >
       <el-form ref="formRef" :model="formModel" :rules="formRules" label-width="120px" scroll-to-error>
         <el-form-item :label="t('carbonUpload.labelAccountingPeriod')" prop="accountingPeriod">
-          <el-input v-model="formModel.accountingPeriod" :placeholder="t('carbonUpload.placeholderPeriod')" :maxlength="20" show-word-limit data-testid="create-period" />
+          <div class="period-row">
+            <el-select v-model="formModel.periodYear" :placeholder="t('carbonUpload.placeholderYear')" style="width:120px" data-testid="create-period-year" @change="syncAccountingPeriod">
+              <el-option v-for="y in periodYearOptions" :key="y" :label="String(y)" :value="y" />
+            </el-select>
+            <el-select v-model="formModel.periodQuarter" :placeholder="t('carbonUpload.placeholderQuarter')" style="width:140px" data-testid="create-period-quarter" @change="syncAccountingPeriod">
+              <el-option :label="t('carbonUpload.quarterAnnual')" :value="0" />
+              <el-option v-for="q in [1, 2, 3, 4]" :key="q" :label="`Q${q}`" :value="q" />
+            </el-select>
+            <span class="period-preview">{{ formModel.accountingPeriod || t('carbonUpload.periodNotSelected') }}</span>
+          </div>
+        </el-form-item>
+        <el-form-item :label="t('carbonUpload.labelOutputQuantity')" prop="outputQuantity">
+          <el-input-number v-model="formModel.outputQuantity" :min="0.0001" :precision="4" :step="100" style="width:220px" data-testid="create-output-quantity" />
+          <span class="field-hint">{{ t('carbonUpload.outputQuantityHint') }}</span>
+        </el-form-item>
+        <el-form-item :label="t('carbonUpload.labelUnitType')" prop="unitType">
+          <el-select v-model="formModel.unitType" :placeholder="t('carbonUpload.placeholderUnitType')" style="width:280px" data-testid="create-unit-type">
+            <el-option v-for="u in unitTypeOptions" :key="u.value" :label="u.label" :value="u.value" />
+          </el-select>
         </el-form-item>
         <el-form-item :label="t('carbonUpload.labelReportTitle')" prop="title">
           <el-input v-model="formModel.title" :placeholder="t('carbonUpload.enterReportTitle')" :maxlength="200" show-word-limit data-testid="create-title" />
