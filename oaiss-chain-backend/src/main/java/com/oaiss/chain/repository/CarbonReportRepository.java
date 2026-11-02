@@ -34,6 +34,16 @@ public interface CarbonReportRepository extends JpaRepository<CarbonReport, Long
     Optional<CarbonReport> findByIdAndDeletedFalse(Long id);
 
     /**
+     * 按「企业 + 核算年度 + 季度」查已存在的报告。
+     *
+     * <p>对应唯一键 {@code uk_report_period(enterprise_id, period_year, period_quarter, is_deleted)}。
+     * 用途是**在插入之前给出可读提示**——不查的话，重复填报会撞唯一键并抛
+     * {@code DataIntegrityViolationException}，前端只看到「系统异常」，不知道是周期重复。
+     */
+    Optional<CarbonReport> findByEnterpriseIdAndPeriodYearAndPeriodQuarterAndDeletedFalse(
+            Long enterpriseId, Integer periodYear, Integer periodQuarter);
+
+    /**
      * 根据企业 ID 查询
      */
     List<CarbonReport> findByEnterpriseIdAndDeletedFalse(Long enterpriseId);

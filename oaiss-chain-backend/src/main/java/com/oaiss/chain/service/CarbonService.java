@@ -11,6 +11,7 @@ import com.oaiss.chain.dto.ReviewRequest;
 import com.oaiss.chain.entity.CarbonReport;
 import com.oaiss.chain.entity.Enterprise;
 import com.oaiss.chain.entity.User;
+import com.oaiss.chain.enums.AllocationStateEnum;
 import com.oaiss.chain.enums.CreditEventTypeEnum;
 import com.oaiss.chain.enums.ReportStatusEnum;
 import com.oaiss.chain.constant.ErrorCode;
@@ -106,9 +107,75 @@ public class CarbonService {
                 .attachments(request.getAttachments())
                 .build();
 
+        // 配额发放依据：不落这五项，审核通过时配额算不出来（validatePrerequisites 必抛）。
+        // 这些值不参与 DRAFT 阶段的任何计算，只是随报告一起进审核。
+        applyQuotaBasis(report, request);
+
+        assertPeriodNotDuplicated(enterprise.getId(), report);
+
         report = carbonReportRepository.save(report);
         log.info("Carbon report created: {} by user {}", report.getReportNo(), currentUser.getUsername());
         return toResponse(report);
+    }
+
+    /**
+     * 同企业同核算周期只允许一份报告。
+     *
+     * <p>唯一键 {@code uk_report_period} 是最终防线，但它抛的是
+     * {@code DataIntegrityViolationException}，前端只会看到「系统异常」——
+     * 用户不知道是自己填重复了，还是会去找运维。所以在这里先查一次，给出
+     * 「2026-Q1 已有报告」这种能直接照着改的提示。
+     *
+     * <p>为什么不担心并发：两个请求同时通过这里的检查时，仍然由唯一键兜底，
+     * 结果是一方成功、另一方 500。这个窗口极窄（毫秒级），且最坏结果只是
+     * 提示退化成系统异常，不会产生重复数据——比不加约束安全得多。
+     *
+     * <p>周期字段为空（历史报告、年度汇总未选季度）时跳过检查：唯一键对 NULL
+     * 不做约束，这里也不该拦。
+     */
+    private void assertPeriodNotDuplicated(Long enterpriseId, CarbonReport report) {
+        Integer year = report.getPeriodYear();
+        if (year == null) {
+            return;
+        }
+        Integer quarter = report.getPeriodQuarter();
+        carbonReportRepository
+                .findByEnterpriseIdAndPeriodYearAndPeriodQuarterAndDeletedFalse(enterpriseId, year, quarter)
+                .ifPresent(existing -> {
+                    throw CarbonException.submitFailed(String.format(
+                            "该企业 %s 已存在一份碳报告（编号 %s，状态 %s），同一核算周期不能重复填报。"
+                                    + "如需修改请编辑原报告，或改用其他核算周期。",
+                            describePeriod(year, quarter), existing.getReportNo(),
+                            ReportStatusEnum.fromCode(existing.getStatus()).getDescription()));
+                });
+    }
+
+    /** 周期的人类可读形式：2026-Q1 / 2026 */
+    private static String describePeriod(Integer year, Integer quarter) {
+        return quarter == null ? String.valueOf(year) : year + "-Q" + quarter;
+    }
+
+    /**
+     * 修改报告时的周期查重：命中他人记录才拒绝，命中自己则放行。
+     *
+     * <p>不能复用 {@link #assertPeriodNotDuplicated}——那份实现的语义是「本周期已有任何记录就拒绝」，
+     * 用在修改路径会把「只改标题」误判成重复填报。
+     */
+    private void assertPeriodNotDuplicatedExcluding(CarbonReport report, Long selfId) {
+        Integer year = report.getPeriodYear();
+        if (year == null) {
+            return;
+        }
+        carbonReportRepository
+                .findByEnterpriseIdAndPeriodYearAndPeriodQuarterAndDeletedFalse(
+                        report.getEnterpriseId(), year, report.getPeriodQuarter())
+                .filter(existing -> !existing.getId().equals(selfId))
+                .ifPresent(existing -> {
+                    throw CarbonException.submitFailed(String.format(
+                            "该企业 %s 已存在另一份碳报告（编号 %s，状态 %s），同一核算周期不能重复。",
+                            describePeriod(year, report.getPeriodQuarter()), existing.getReportNo(),
+                            ReportStatusEnum.fromCode(existing.getStatus()).getDescription()));
+                });
     }
 
     @Transactional
@@ -163,13 +230,56 @@ public class CarbonService {
     }
 
     /**
+     * 构造签名/验签载荷。
+     *
+     * <p><b>为什么不能只签 {@code emissionData}</b>：配额发放依赖发电量与机组类型
+     * （配额 = 发电量 × 基准值，机组类型决定查哪一行基准值）。它们不在签名范围内，
+     * 意味着「签名有效」只证明排放明细没被改，不证明配额依据没被改——
+     * 篡改产量的人只要不碰 emissionData，验签照样通过。
+     *
+     * <p><b>为什么要有旧格式回退</b>：改成新载荷会让全部存量签名失效。
+     * 存量报告在本轮之前没有 {@code output_quantity} 与 {@code unit_type}
+     * （V25 才加这两列），因此按「有没有配额依据」分流：
+     * <ul>
+     *   <li>有产量或机组类型 → 新载荷（JSON，字段有序，确定性强）</li>
+     *   <li>两者都没有 → 旧载荷（就是 emissionData 原文），存量签名继续有效</li>
+     * </ul>
+     *
+     * <p>签名与验签必须调同一个方法，否则两条路径一分开就会出现
+     * 「签的时候带产量、验的时候不带」这类永远失败的签名。
+     */
+    String signaturePayload(CarbonReport report) {
+        String emissionData = report.getEmissionData();
+        BigDecimal outputQuantity = report.getOutputQuantity();
+        String unitType = report.getUnitType();
+
+        if (outputQuantity == null && (unitType == null || unitType.isBlank())) {
+            return emissionData;
+        }
+
+        // 手写 JSON 而不是用 ObjectMapper 序列化一个 Map：
+        // Map 的键顺序不保证稳定，序列化结果一变签名就失效，且这种失效难以复现。
+        StringBuilder sb = new StringBuilder(emissionData == null ? 0 : emissionData.length() + 80);
+        sb.append("{\"emissionData\":");
+        // emissionData 本身已是 JSON 对象，作为值嵌入时直接原样拼接，不二次转义。
+        sb.append(emissionData == null ? "null" : emissionData);
+        sb.append(",\"outputQuantity\":");
+        sb.append(outputQuantity == null ? "null" : outputQuantity.stripTrailingZeros().toPlainString());
+        sb.append(",\"unitType\":");
+        sb.append(unitType == null || unitType.isBlank() ? "null" : "\"" + unitType + "\"");
+        sb.append('}');
+        return sb.toString();
+    }
+
+    /**
      * 尝试签名；失败不抛异常、仅返回 false（存量兼容：无密钥企业仍可提交）。
      *
      * @return true 表示已成功写入签名
      */
     private boolean signReportIfPossible(CarbonReport report, Long userId) {
         try {
-            com.oaiss.chain.dto.SignatureResult result = digitalSignatureService.signReport(userId, report.getEmissionData());
+            com.oaiss.chain.dto.SignatureResult result =
+                    digitalSignatureService.signReport(userId, signaturePayload(report));
             report.setSignatureData(result.getSignature());
             log.info("Report {} auto-signed by user {}", report.getReportNo(), userId);
             return true;
@@ -187,7 +297,8 @@ public class CarbonService {
      */
     private boolean signReportStrict(CarbonReport report, Long userId) {
         try {
-            com.oaiss.chain.dto.SignatureResult result = digitalSignatureService.signReport(userId, report.getEmissionData());
+            com.oaiss.chain.dto.SignatureResult result =
+                    digitalSignatureService.signReport(userId, signaturePayload(report));
             report.setSignatureData(result.getSignature());
             log.info("Report {} re-signed after edit by user {}", report.getReportNo(), userId);
             return true;
@@ -218,6 +329,22 @@ public class CarbonService {
         return !Boolean.TRUE.equals(valid);
     }
 
+    /**
+     * 审核裁决（通过 → 自动上链 → 发放配额；驳回 → 冲正配额 → 扣信誉分）。
+     *
+     * <p><b>为什么需要按报告粒度的分布式锁</b>：本方法是一条「读状态 → 判状态 →
+     * 写状态 + 写外部链」的长事务。两位审核员同时点同一份报告时，两者都会读到
+     * SUBMITTED 并通过 {@code isReviewable()} 检查，随后各自上链、各自发放配额。
+     * {@code allocation_key} 唯一索引只能挡住第二次配额发放，挡不住
+     * 「链上写了两条记录」——而链上写入不可回滚。
+     *
+     * <p>锁键用 {@code #request.reportId} 而不是 {@code #reportId}：
+     * 本方法**没有** {@code reportId} 形参，写成 {@code #reportId} 时 SpEL 求值为 null，
+     * 锁键退化成常量 {@code report:review:null}，所有审核串成一把全局锁，
+     * 并发度掉到 1，而且不会有任何测试报错。
+     */
+    @com.oaiss.chain.annotation.DistributedLock(
+            key = "'report:review:' + #request.reportId", expireTime = 30)
     @Transactional
     public CarbonReportResponse reviewReport(JwtUserDetails currentUser, ReviewRequest request) {
         CarbonReport report = carbonReportRepository.findByIdAndDeletedFalse(request.getReportId())
@@ -290,6 +417,32 @@ public class CarbonService {
                 report.getReportNo(), report.getStatus(), signatureValid,
                 Objects.equals(report.getStatus(), ReportStatusEnum.ON_CHAIN.getCode()));
         return toResponseWithSignature(report, signatureValid);
+    }
+
+    /**
+     * 把请求里的配额发放依据写入报告实体。
+     *
+     * <p><b>为什么单独抽一个方法</b>：创建与修改两条路径必须写同一批字段，
+     * 否则「先建后改」会让改过的产量丢失。而这类「两条路径映射不一致」的缺陷
+     * 不会被「保存被调用了一次」这种断言发现——必须断言字段级的值。
+     *
+     * <p>缺省不填 0：{@code null} 表示「企业没填」，{@code 0} 表示「填了一个非法的 0」。
+     * 两者在 {@code validatePrerequisites} 里都失败，但在给用户看错误信息时不同，
+     * 且 0 会在库里留下一个看起来像真实数据的脏值。
+     */
+    private void applyQuotaBasis(CarbonReport report, CarbonReportRequest request) {
+        report.setPeriodYear(request.getPeriodYear());
+        report.setPeriodQuarter(request.getPeriodQuarter());
+        report.setOutputQuantity(request.getOutputQuantity());
+        report.setUnitType(request.getUnitType());
+
+        String unit = request.getOutputUnit();
+        // 单位缺省补 MWh：公式的量纲就是 MWh，前端也固定这个值，
+        // 留 null 会让「有产量但无单位」成为一种可能的库内状态。
+        if (unit == null || unit.isBlank()) {
+            unit = request.getOutputQuantity() == null ? null : "MWh";
+        }
+        report.setOutputUnit(unit);
     }
 
     /**
@@ -368,6 +521,13 @@ public class CarbonService {
         if (enterpriseId == null) {
             return;
         }
+        // 先收回配额，再扣信誉分。
+        //
+        // 为什么驳回必须冲正：报告一旦被否决，它当初换来的那批配额就没有了合法依据。
+        // 不收回的话，企业可以把一份「已被否决的报告」对应的配额拿去挂牌出售——
+        // 这是资产错账，不是少做一步流程。冲正失败不阻断驳回（见 revokeQuotaQuietly）。
+        revokeQuotaQuietly(report, operatorUserId);
+
         Integer eventType = Boolean.FALSE.equals(signatureValid)
                 ? CreditEventTypeEnum.DATA_FALSIFICATION.getCode()
                 : CreditEventTypeEnum.MINOR_VIOLATION.getCode();
@@ -382,15 +542,56 @@ public class CarbonService {
         }
     }
 
+    /**
+     * 驳回时收回已发放的配额，失败不阻断驳回。
+     *
+     * <p><b>为什么是「尽力而为」而非强校验</b>：冲正有两道保护——企业已动用配额、
+     * 或存在冻结配额（在途挂单）。这两种情况下冲正会拒绝。如果让这个拒绝抛出、
+     * 回滚整个驳回事务，审核员就会陷入死局：他必须驳回这份有问题的报告，
+     * 但企业只要挂着一笔卖单，他就永远驳不掉。业务上显然应该「驳回优先，
+     * 收回配额另行处理」。
+     *
+     * <p>失败时置 {@code REVOKE_FAILED} 并记错误日志，让这笔该收回的配额
+     * 有据可查、可由管理员重试，而不是静默消失。
+     */
+    private void revokeQuotaQuietly(CarbonReport report, Long operatorUserId) {
+        if (!quotaAllocationEnabled) {
+            return;
+        }
+        // 未发放过就没什么可收回的；这里提前判掉，避免每次都触发一次注定失败的调用
+        if (report.getQuotaAllocatedAmount() == null
+                || !AllocationStateEnum.ALLOCATED.getCode().equals(report.getAllocationState())) {
+            return;
+        }
+        try {
+            quotaAllocationService.revokeForReport(report.getId(), operatorUserId);
+            // 冲正在独立事务里提交，这里手里这份实体还是冲正**之前**的值。
+            // 若不同步，随后 carbonReportRepository.save(report) 会把
+            // allocation_state / quota_allocated_amount 写回成 ALLOCATED / 原金额，
+            // 冲正等于白做——而且账面看起来完全正常，最难查的那种。
+            CarbonReport refreshed = carbonReportRepository.findByIdAndDeletedFalse(report.getId())
+                    .orElse(report);
+            report.setAllocationState(refreshed.getAllocationState());
+            report.setQuotaAllocatedAmount(refreshed.getQuotaAllocatedAmount());
+            report.setQuotaUsedSnapshot(refreshed.getQuotaUsedSnapshot());
+        } catch (Exception ex) {
+            log.error("[QUOTA] 报告 {} 驳回时冲正失败，已置为待人工处理: {}",
+                    report.getReportNo(), ex.getMessage(), ex);
+            report.setAllocationState(AllocationStateEnum.REVOKE_FAILED.getCode());
+        }
+    }
+
     private Boolean verifyReportSignature(CarbonReport report) {
         if (report.getSignatureData() == null || report.getSignatureData().isBlank()) {
             return null; // 无签名（存量/无钥放行）
         }
         try {
-            // submitterId 即签名企业用户；用其最新公钥验签
+            // submitterId 即签名企业用户；用其最新公钥验签。
+            // 载荷必须与签名时同源（signaturePayload），否则「签时带产量、验时不带」的
+            // 不对称会让每一份新报告都验签失败。
             return digitalSignatureService.verifySignature(
                     report.getSubmitterId(),
-                    report.getEmissionData(),
+                    signaturePayload(report),
                     report.getSignatureData());
         } catch (Exception e) {
             log.warn("Signature verification failed for report {}: {}", report.getReportNo(), e.getMessage());
@@ -622,6 +823,14 @@ public class CarbonService {
         if (request.getAttachments() != null) {
             report.setAttachments(request.getAttachments());
         }
+        // 与 createReport 走同一份映射：漏掉这里会让「改过的发电量/机组类型」不生效，
+        // 审核时仍按旧值算配额——而签名已经覆盖了新内容，看不出任何异常。
+        applyQuotaBasis(report, request);
+
+        // 改周期同样要查重：把 2026-Q1 改成 2026-Q2 而后者已有一份报告时，
+        // 唯一键会在 save 时抛出 500。这里提前给可读提示。
+        // 注意要排除自己——否则「只改标题、不动周期」会被自己的记录判为重复。
+        assertPeriodNotDuplicatedExcluding(report, report.getId());
 
         // 内容变了，四列必须重算，旧签名必然失效（它覆盖的是旧 emissionData）。
         //
@@ -704,6 +913,15 @@ public class CarbonService {
                 .sf6Emission(stringify(process[2]))
                 .signature(report.getSignatureData())
                 .data(report.getEmissionData())
+                // 配额依据一并留痕：事后要能回答「这份报告为什么发了这么多吨」。
+                // 注意这几个字段**不进入链上参数**（链码签名固定），
+                // 只是让 DB 侧快照可解释。见 CarbonReportSnapshot 的说明。
+                //
+                // 不放 quotaAllocatedAmount：快照在上链**之前**构建，那一刻配额还没发，
+                // 该字段必然恒为 null——放一个永远取不到值的字段比不放更误导。
+                .outputQuantity(stringify(report.getOutputQuantity()))
+                .outputUnit(report.getOutputUnit())
+                .unitType(report.getUnitType())
                 .build();
         String txHash = blockchainService.commitReportSnapshot(snapshot);
         if (txHash == null || txHash.isBlank()) {
@@ -783,6 +1001,19 @@ public class CarbonService {
             statusText = ReportStatusEnum.fromCode(report.getStatus()).getDescription();
         }
 
+        // 配额发放结果（只读透出）。判定是纯计算，不走查库——
+        // toResponse 在列表页会被调用 N 次，任何额外查询都是 N+1。
+        BigDecimal quotaAmount = report.getQuotaAllocatedAmount();
+        BigDecimal quotaSurplusOrGap = null;
+        String quotaJudgement = null;
+        if (quotaAmount != null) {
+            QuotaAllocationService.AllocationResult judged =
+                    QuotaAllocationService.judge(quotaAmount, report.getScope1Emission(),
+                            report.getId(), true);
+            quotaSurplusOrGap = judged.getSurplusOrGap();
+            quotaJudgement = judged.getJudgement().name();
+        }
+
         return CarbonReportResponse.builder()
                 .id(report.getId())
                 .reportNo(report.getReportNo())
@@ -812,6 +1043,10 @@ public class CarbonService {
                 .attachments(report.getAttachments())
                 .createdAt(report.getCreatedAt())
                 .updatedAt(report.getUpdatedAt())
+                .quotaAllocatedAmount(quotaAmount)
+                .allocationState(report.getAllocationState())
+                .quotaSurplusOrGap(quotaSurplusOrGap)
+                .quotaJudgement(quotaJudgement)
                 .build();
     }
 }

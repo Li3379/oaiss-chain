@@ -183,8 +183,18 @@ public class QuotaAllocationService {
      *
      * @param reportId  报告ID
      * @param auditorId 触发人
+     *
+     * <p><b>为什么是 {@code REQUIRES_NEW} 而不是 {@code MANDATORY}</b>：
+     * 本方法被 {@code CarbonService} 的驳回路径「尽力而为」地调用——冲正失败
+     * （企业已动用配额 / 有冻结挂单）时**不得阻断驳回**。若与调用方共用同一个事务，
+     * 一旦这里抛出异常，即使调用方 catch 住，Spring 也已把外层事务标记为
+     * rollback-only，提交阶段会抛 {@code UnexpectedRollbackException}，
+     * 驳回变成 500，审核员彻底卡死。
+     *
+     * <p>独立事务还带来一个好处：冲正成功就落盘，与驳回的成败解耦——
+     * 不会出现「驳回因别的原因失败、冲正跟着白做」的耦合。
      */
-    @Transactional(propagation = Propagation.MANDATORY)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void revokeForReport(Long reportId, Long auditorId) {
         CarbonReport report = reportRepository.findByIdAndDeletedFalse(reportId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND,
@@ -266,8 +276,14 @@ public class QuotaAllocationService {
 
     // ==================== 内部方法 ====================
 
-    private AllocationResult buildResult(CarbonReport report, BigDecimal quota, boolean skip) {
-        BigDecimal scope1 = report.getScope1Emission();
+    /**
+     * 纯函数：由「已发放配额量」与报告自身的范围一排放算出盈余判定。
+     *
+     * <p>抽成 static 是因为它要同时服务两条路径——
+     * {@link #allocateForReport} 的返回值和 {@code CarbonService.toResponse} 的响应组装。
+     * 后者每渲染一份报告就会调一次，绝不能为了算判定再查一遍库（列表页会变成 N+1）。
+     */
+    static AllocationResult judge(BigDecimal quota, BigDecimal scope1, Long reportId, boolean skip) {
         Judgement judgement;
         BigDecimal surplusOrGap;
 
@@ -282,7 +298,7 @@ public class QuotaAllocationService {
         }
 
         return AllocationResult.builder()
-                .reportId(report.getId())
+                .reportId(reportId)
                 .quotaAmount(quota)
                 .scope1Emission(scope1)
                 .surplusOrGap(surplusOrGap)
@@ -291,8 +307,12 @@ public class QuotaAllocationService {
                 .build();
     }
 
+    private AllocationResult buildResult(CarbonReport report, BigDecimal quota, boolean skip) {
+        return judge(quota, report.getScope1Emission(), report.getId(), skip);
+    }
+
     /**
-     * 查询某报告的盈余判定（不触发发放，供列表/详情展示）。
+     * 查询某报告的盈余判定（不触发发放）。
      */
     @Transactional(readOnly = true)
     public Optional<Judgement> peekJudgement(Long reportId) {
