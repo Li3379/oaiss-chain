@@ -54,4 +54,23 @@ public class CarbonReportSnapshot {
 
     /** 报告编号（人可读，便于链上核对） */
     private String reportNo;
+
+    // ==================== 配额发放依据（组件 1，DB 侧留痕）====================
+    //
+    // ⚠️ 本轮**不写入链上**。链上写入是位置参数（FabricBlockchainService 传 14 个
+    // 定长参数，chaincode.go 的 CreateCarbonReportV2 签名固定），只加 DTO 字段对
+    // 链上零影响。要让链上真的记录产量，必须同时改链码参数 + 客户端 + schemaVersion
+    // 升级——那是独立的一轮工作，本轮明确不做。
+    //
+    // 所以这三个字段的实际作用是：报告快照落库时留下「当时按什么产量、哪类机组、
+    // 算出多少配额」的可回溯依据。缺了它，事后无法解释某份报告为什么发了这么多吨。
+
+    /** 产量（发电量，MWh） */
+    private String outputQuantity;
+
+    /** 产量单位 */
+    private String outputUnit;
+
+    /** 机组类别 I/II/III/IV */
+    private String unitType;
 }

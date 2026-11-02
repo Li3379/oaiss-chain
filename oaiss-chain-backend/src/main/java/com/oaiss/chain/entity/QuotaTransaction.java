@@ -110,13 +110,13 @@ public class QuotaTransaction extends BaseEntity {
      * 「这次变动是否动过 used」无从判断。补上后，冲正保护可以直接读流水验证。
      */
     @Column(name = "used_before", precision = 15, scale = 4)
-    private java.math.BigDecimal usedBefore;
+    private BigDecimal usedBefore;
 
     /**
      * 变动后 {@code carbon_used}
      */
     @Column(name = "used_after", precision = 15, scale = 4)
-    private java.math.BigDecimal usedAfter;
+    private BigDecimal usedAfter;
 
     /**
      * 发放幂等键，格式 {@code reportId#seq}。

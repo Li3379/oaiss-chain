@@ -142,6 +142,15 @@ app:
       enabled: ${AUCTION_AUTO_MATCHING_ENABLED:true}
       interval-ms: ${AUCTION_AUTO_MATCHING_INTERVAL_MS:30000}
       initial-delay-ms: ${AUCTION_AUTO_MATCHING_INITIAL_DELAY_MS:60000}
+  # 碳配额发放（组件 1）。默认 false，原因见 .env.example 的说明。
+  #
+  # 必须在这里显式桥接：代码读的是 app.quota.allocation.enabled，
+  # 而环境变量 QUOTA_ALLOCATION_ENABLED 按 relaxed binding 只会落到
+  # quota.allocation.enabled（少了 app. 前缀）。不写这一行，那个环境变量
+  # 设了也不生效——运维会以为开了，实际仍是关的。
+  quota:
+    allocation:
+      enabled: ${QUOTA_ALLOCATION_ENABLED:false}
 
 # API Documentation
 springdoc:

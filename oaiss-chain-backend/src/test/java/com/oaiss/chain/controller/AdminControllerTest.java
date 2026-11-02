@@ -71,6 +71,12 @@ class AdminControllerTest {
     @MockBean
     private com.oaiss.chain.service.ChainReconciliationService chainReconciliationService;
 
+    // 组件1：AdminController 新增行业基准值维护端点，构造器多了一个依赖。
+    // @WebMvcTest 切片的 bean 集合由 controller 构造器决定，漏了它整个上下文起不来
+    // ——41 个用例一起红，报错指向「第九个构造参数没有候选 bean」。
+    @MockBean
+    private com.oaiss.chain.service.IndustryBenchmarkService industryBenchmarkService;
+
     private User testUser1;
     private User testUser2;
     private User testUser3;

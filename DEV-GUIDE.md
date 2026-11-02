@@ -131,6 +131,10 @@ node scripts/role-matrix-verify.mjs
 # i18n 键引用断言（开发后必跑）——代码引用的键在 zh/en 均存在且两侧键集合一致
 node scripts/i18n-verify.mjs
 
+# GitHub Actions 工作流断言（改 .github/workflows/ 或移动 compose/脚本后必跑）
+# 三类静默失效：YAML 结构损坏 / 触发分支写错 / 引用路径已不存在（改完不跑，CI 恒绿）
+node scripts/gates/workflow-verify.mjs
+
 # 测试
 cd oaiss-chain-backend && mvn test          # 单元
 cd oaiss-chain-backend && mvn verify        # 集成(含95% JaCoCo gate)
@@ -176,7 +180,7 @@ bash ./scripts/stability-baseline.sh
 | Tables | 28 | 现存 28 张（曾创建 29 张，authenticator 在 V8 DROP 退场；+industry_benchmark） |
 | Repositories | 28 | `repository/*.java` 数（+IndustryBenchmarkRepository） |
 | Flyway 迁移 | V1-V27 | V3、V22 跳过（共 25 个版本；V23=单价口径注释，V24=信誉下市标记，V25=配额发放结构，V26=发电基准值种子，V27=报告周期唯一键） |
-| i18n 词条 | 2317 | zh-CN 与 en-US 严格镜像（`scripts/gates/i18n-verify.mjs` 实测；2026-11-02 链上管理页与证书吊销文案） |
+| i18n 词条 | 2322 | zh-CN 与 en-US 严格镜像（`scripts/gates/i18n-verify.mjs` 实测；2026-11-02 链上管理页、证书吊销与配额判定文案） |
 | 前端 API 模块 | 24 | `src/api/*.ts`（不含 request.ts 与 index.ts；2026-11-01 新增 tradeAudit / regulatoryFinding） |
 | 枚举 | 10 | `enums/*.java`（含新增 AllocationStateEnum；`doc-verify.mjs` 的 expectEnums 已同步） |
 | 角色 | 4 | ENTERPRISE/REVIEWER/THIRD_PARTY/ADMIN |

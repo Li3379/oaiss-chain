@@ -452,6 +452,18 @@ const syncAccountingPeriod = () => {
 const reportTypeLabel = (value: number | string | null | undefined) =>
   reportTypeOptions.find((option) => option.value === Number(value))?.label ?? String(value ?? '-')
 
+/**
+ * 配额盈余判定的标签语气。
+ *
+ * 盈余用 success、缺口用 danger、无法判定用 info——「判不出来」不该被渲染成
+ * 红色警报，那会让企业以为出了事故，实际只是范围一排放缺失。
+ */
+const quotaTone = (judgement: string | null | undefined): 'success' | 'danger' | 'info' => {
+  if (judgement === 'SURPLUS') return 'success'
+  if (judgement === 'SHORTFALL') return 'danger'
+  return 'info'
+}
+
 const formRules = {
   accountingPeriod: [{ required: true, message: t('carbonUpload.enterAccountingPeriod'), trigger: 'change' }],
   title: [{ required: true, message: t('carbonUpload.enterReportTitle'), trigger: 'blur' }],
@@ -1196,6 +1208,21 @@ onMounted(() => {
             <el-descriptions-item :label="t('carbonUpload.colReportType')">{{ reportTypeLabel(detailData.reportType) }}</el-descriptions-item>
             <el-descriptions-item :label="t('carbonUpload.colTotalEmission')">{{ formatNumber(detailData.totalEmission) }} tCO2e</el-descriptions-item>
             <el-descriptions-item :label="t('common.status')">{{ detailData.statusText }}</el-descriptions-item>
+            <!-- 配额发放结果：审核通过后才有值。未发放时整行不显示——
+                 显示「0 吨」会被读成「发了 0 吨」，与「还没发」是两件事。 -->
+            <template v-if="detailData.quotaAllocatedAmount != null">
+              <el-descriptions-item :label="t('carbonUpload.detailQuotaAllocated')">
+                {{ formatNumber(detailData.quotaAllocatedAmount) }} tCO2e
+              </el-descriptions-item>
+              <el-descriptions-item :label="t('carbonUpload.detailQuotaJudgement')">
+                <el-tag :type="quotaTone(detailData.quotaJudgement)" size="small">
+                  {{ t(`carbonUpload.quotaJudgement.${detailData.quotaJudgement}`) }}
+                </el-tag>
+                <template v-if="detailData.quotaSurplusOrGap != null">
+                  （{{ detailData.quotaSurplusOrGap >= 0 ? '+' : '' }}{{ formatNumber(detailData.quotaSurplusOrGap) }} tCO2e）
+                </template>
+              </el-descriptions-item>
+            </template>
             <el-descriptions-item :label="t('carbonUpload.detailEmissionData')" :span="2">
               <EmissionDataPanel :data="detailData.emissionData" />
             </el-descriptions-item>

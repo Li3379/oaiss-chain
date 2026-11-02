@@ -118,7 +118,10 @@ jobs:
         run: |
           rm -rf .deploy-bundle
           mkdir -p .deploy-bundle/scripts
-          cp docker-compose.release.yml .deploy-bundle/
+          # 源文件在 deploy/compose/（2026-10 目录归整时移入），
+          # 但**发布包内保持根级文件名**——远端 docker-compose.release.yml 的路径是既有契约，
+          # 改了就要同步远端全部已部署环境，风险大于收益。
+          cp deploy/compose/docker-compose.release.yml .deploy-bundle/
           cp scripts/prod-compose.sh .deploy-bundle/scripts/
 
       - name: Render environment file
@@ -151,7 +154,9 @@ jobs:
           set -euo pipefail
           node scripts/validate-prod-env.mjs --require-real-secrets .deploy-bundle/oaiss-chain.env
           chmod +x scripts/prod-compose.sh
-          ./scripts/prod-compose.sh --env-file .deploy-bundle/oaiss-chain.env --compose-file docker-compose.release.yml config > /tmp/oaiss-chain-release-config.local.yaml
+          # 用打包产物校验：这才是实际被 scp 上去的那一份，
+          # 直接读仓库里的 deploy/compose/ 会漏掉「打包时拷错文件」这类缺陷。
+          ./scripts/prod-compose.sh --env-file .deploy-bundle/oaiss-chain.env --compose-file .deploy-bundle/docker-compose.release.yml config > /tmp/oaiss-chain-release-config.local.yaml
 
       - name: Upload release bundle
         shell: bash
