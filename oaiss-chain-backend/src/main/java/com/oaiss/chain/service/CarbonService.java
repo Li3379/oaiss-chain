@@ -423,10 +423,25 @@ public class CarbonService {
             if (status == ReportStatusEnum.ON_CHAIN) {
                 // 幂等：已上链的报告重复调用不应重复加分/重复提交链上交易
                 log.info("Report {} already on-chain, idempotent skip", report.getReportNo());
+                // 但配额可能因上次发放失败而缺席——此时补发，而不是空退。
+                // 这正是「上链失败→certify 补救」这条链的最后一环：不补这一步，
+                // 计划里承诺的"补救后配额会发"就是空头支票。
+                if (quotaAllocationEnabled) {
+                    allocateQuotaQuietly(report, currentUser.getUserId());
+                }
                 return toResponse(report);
+            }
+            // 与 reviewReport 一致：配额前置校验必须在副作用（含上链）之前
+            if (quotaAllocationEnabled) {
+                quotaAllocationService.validatePrerequisites(report);
+                assertBenchmarkAvailable(report);
             }
             applyApprovedReportSideEffects(report, currentUser.getUserId());
             report.setStatus(ReportStatusEnum.ON_CHAIN.getCode());
+            // 补救上链成功后才发放配额（与 reviewReport 的主路径同源）
+            if (quotaAllocationEnabled) {
+                allocateQuotaQuietly(report, currentUser.getUserId());
+            }
         } else {
             if (request.getReviewComment() != null && !request.getReviewComment().isBlank()) {
                 String sanitizedComment = CommonUtils.sanitizeHtml(CommonUtils.sanitizeInput(request.getReviewComment()));

@@ -17,7 +17,7 @@
 
 | 层 | 技术 |
 |----|------|
-| 后端 | Java 17, Spring Boot 3.2.12, Spring Data JPA, Spring Security, MySQL 8, Redis 7, MinIO, Flyway, jjwt 0.12.5 |
+| 后端 | Java 17, Spring Boot 3.2.12, Spring Data JPA, Spring Security, MySQL 8, Redis 7, S3 对象存储 (LocalStack), Flyway, jjwt 0.12.5 |
 | 前端 | Vue 3.5, TypeScript, Vite, Element Plus 2.13, Pinia 3, Vue Router 5, ECharts 6, vue-i18n 11 |
 | ML | Python FastAPI (Prophet, scikit-learn, XGBoost) — 端口 8001 |
 | 区块链 | Go Chaincode, Hyperledger Fabric Gateway SDK（可选，`fabric` profile 默认关） |
@@ -145,9 +145,21 @@ bash scripts/api/double-auction-test.sh
 scripts\start-all.bat --with-fabric   # Windows 全栈
 docker compose -f deploy/compose/docker-compose.infra.yml up -d  # 基础设施
 
+# Fabric 单步（--with-fabric 内部调用的就是这两个）
+bash scripts/bootstrap-fabric.sh          # 建通道 + 链码部署（幂等）
+bash scripts/ops/deploy-chaincode.sh 1.2 4  # 手工升级链码：版本标签 + sequence
+
 # 接手验证（第一件事）
 bash ./scripts/stability-baseline.sh
 ```
+
+> **链码版本政策（2026-11-02 起）**：`FABRIC_CHAINCODE_VERSION`（默认 `1.2`）只是
+> 版本**标签**，包内容始终打包自 `oaiss-chain-chaincode/` 挂载源码；**sequence 由
+> `bootstrap-fabric.sh` 依网络已提交值自动 +1**，不要再手工传 sequence（旧脚本默认
+> `1.0/seq1`，对已升到 v1.2/seq3 的网络会被 Fabric 以 *sequence must be strictly
+> increasing* 拒绝，直接杀死 `start-all --with-fabric`）。链码源码变更 → 上调
+> `.env` 中 `FABRIC_CHAINCODE_VERSION` → 重跑 bootstrap 即自动升级。
+> 冒烟测试：`bash scripts/ops/test-bootstrap-fabric.sh`（6 例，含版本判定/升级/幂等）。
 
 > ⚠️ **`scripts/api/aop-test.sh` 会执行 `git checkout --` 回退**
 > `CarbonController` / `DoubleAuctionController`。运行前必须备份工作区改动，
@@ -158,8 +170,8 @@ bash ./scripts/stability-baseline.sh
 | 事实 | 值 | 说明 |
 |------|-----|------|
 | Controllers | 25 | `controller/*.java` 数（2026-10-31 新增 RegulatoryFindingController、TradeAuditController） |
-| REST 端点 | 163 | `@Mapping` 注解总数（2026-11-01 新增 `/admin/blockchain/mark-historical-mock`、`/enterprise/search`，以及管理员端 2 个端点；+2 下市处罚端点（delist/repeal）） |
-| Services | 49 | 46 主包 + 3 ml/（2026-11-02 组件 1：QuotaAllocationService） |
+| REST 端点 | 168 | `@Mapping` 注解总数（2026-11-02 组件 1：+5 个基准值端点 `/admin/benchmarks` CRUD + readiness） |
+| Services | 50 | 47 主包 + 3 ml/（2026-11-02 组件 1：QuotaAllocationService、IndustryBenchmarkService） |
 | Entities | 29 | 28 @Entity + BaseEntity（+IndustryBenchmark） |
 | Tables | 28 | 现存 28 张（曾创建 29 张，authenticator 在 V8 DROP 退场；+industry_benchmark） |
 | Repositories | 28 | `repository/*.java` 数（+IndustryBenchmarkRepository） |

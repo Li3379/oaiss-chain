@@ -58,6 +58,7 @@ public class AdminController {
     private final AdminUserService adminUserService;
     private final CreditScoreService creditScoreService;
     private final ChainReconciliationService chainReconciliationService;
+    private final com.oaiss.chain.service.IndustryBenchmarkService industryBenchmarkService;
 
     /**
      * 【业务功能】：分页多条件查询系统全量用户列表（支持按角色、启用状态、用户名检索）
@@ -583,5 +584,72 @@ public class AdminController {
             @Parameter(description = "发件箱消息主键", required = true, example = "1")
             @PathVariable Long id) {
         return ApiResponse.success(chainReconciliationService.replayDeadLetter(id));
+    }
+
+    // ==================== 配额发放：行业基准值维护 ====================
+
+    /**
+     * 【业务功能】：查询行业基准值列表（配额发放依据）
+     * 【对应前端页面】：views/admin/SystemConfig.vue（行业基准值区块）
+     * 【可见UI操作】：选择年度查看四类机组的发电基准值
+     */
+    @AuditLog(module = "配额基准值", action = "LIST_BENCHMARKS", description = "查询行业基准值")
+    @GetMapping("/benchmarks")
+    @Operation(summary = "查询行业基准值", description = "按年度查询发电行业四类机组的基准值；不传年度返回全部")
+    public ApiResponse<java.util.List<com.oaiss.chain.entity.IndustryBenchmark>> listBenchmarks(
+            @Parameter(description = "基准年度，不传则返回全部", example = "2026")
+            @RequestParam(required = false) Integer year) {
+        return ApiResponse.success(industryBenchmarkService.list(year));
+    }
+
+    /**
+     * 【业务功能】：就绪检查——某年度四类机组基准值是否齐备
+     * 【可见UI操作】：审核界面提前提示「该年度基准值是否已录入」
+     *
+     * <p>为什么需要它：基准值缺失会让审核失败，而审核员自己无法录入（只有管理员能）。
+     * 提前告知能避免他点了「通过」才收到错误、且无从修复。
+     */
+    @AuditLog(module = "配额基准值", action = "READINESS", description = "基准值就绪检查")
+    @GetMapping("/benchmarks/readiness")
+    @Operation(summary = "基准值就绪检查", description = "检查某年度四类机组基准值是否齐备")
+    public ApiResponse<com.oaiss.chain.service.IndustryBenchmarkService.Readiness> benchmarkReadiness(
+            @Parameter(description = "基准年度", required = true, example = "2026")
+            @RequestParam Integer year) {
+        return ApiResponse.success(industryBenchmarkService.readiness(year));
+    }
+
+    /**
+     * 【业务功能】：新增基准值
+     */
+    @AuditLog(module = "配额基准值", action = "CREATE_BENCHMARK", description = "新增行业基准值")
+    @PostMapping("/benchmarks")
+    @Operation(summary = "新增基准值", description = "为指定行业/机组类型/年度录入发电基准值")
+    public ApiResponse<com.oaiss.chain.entity.IndustryBenchmark> createBenchmark(
+            @RequestBody com.oaiss.chain.entity.IndustryBenchmark input) {
+        return ApiResponse.success(industryBenchmarkService.create(input));
+    }
+
+    /**
+     * 【业务功能】：更新基准值
+     */
+    @AuditLog(module = "配额基准值", action = "UPDATE_BENCHMARK", description = "更新行业基准值")
+    @PutMapping("/benchmarks/{id}")
+    @Operation(summary = "更新基准值", description = "仅允许更新数值；行业/机组类型/年度/类别不可改")
+    public ApiResponse<com.oaiss.chain.entity.IndustryBenchmark> updateBenchmark(
+            @Parameter(description = "基准值主键", required = true, example = "1") @PathVariable Long id,
+            @Parameter(description = "新基准值（正数）", required = true) @RequestParam java.math.BigDecimal value) {
+        return ApiResponse.success(industryBenchmarkService.update(id, value));
+    }
+
+    /**
+     * 【业务功能】：软删除基准值
+     */
+    @AuditLog(module = "配额基准值", action = "DELETE_BENCHMARK", description = "删除行业基准值")
+    @DeleteMapping("/benchmarks/{id}")
+    @Operation(summary = "删除基准值", description = "软删除；已按该值发放过配额的报告仍可回溯依据")
+    public ApiResponse<Void> deleteBenchmark(
+            @Parameter(description = "基准值主键", required = true, example = "1") @PathVariable Long id) {
+        industryBenchmarkService.delete(id);
+        return ApiResponse.success(null);
     }
 }
