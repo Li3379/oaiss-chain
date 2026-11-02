@@ -16,6 +16,7 @@ import com.oaiss.chain.repository.TransactionRepository;
 import com.oaiss.chain.repository.UserRepository;
 import com.oaiss.chain.security.JwtUserDetails;
 import com.oaiss.chain.util.CommonUtils;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -41,6 +42,10 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@SuppressFBWarnings(
+        value = "EI_EXPOSE_REP2",
+        justification = "构造器注入的是 Spring 单例协作者（无状态 Bean），"
+                + "Lombok 生成构造器直接持有引用是框架约定；返回副本会破坏代理与事务语义。")
 public class TradeService {
 
     private final TransactionRepository transactionRepository;

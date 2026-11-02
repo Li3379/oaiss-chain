@@ -158,6 +158,7 @@ public class FabricBlockchainService implements BlockchainServicePort {
         return value == null ? "" : value;
     }
 
+    @Override
     public String commitTradeToChain(Long tradeId, String tradeData) {
         try {
             log.info("[FABRIC] Committing trade to chain: tradeId={}", tradeId);

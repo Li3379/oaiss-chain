@@ -191,6 +191,75 @@ function checkRunnerPinning() {
   return problems
 }
 
+/**
+ * 校验 workflow 里引用的「仓库内」路径真实存在。
+ *
+ * 只检查两类高价值、低误报的位置：
+ *   1. `on.*.paths` 过滤项 —— 死路径 = 改完不触发，静默漏测
+ *   2. 仓库内 shell 步骤里的 `cp <repo-path>` —— 死路径 = 该步骤必失败
+ *
+ * 刻意不检查的范围（避免误报）：
+ *   - 远端路径（DEPLOY_TARGET_DIR、scp 目标、ssh 内执行的命令）
+ *   - 含 shell 变量的路径（$xxx、${xxx}）
+ *   - 依赖生成产物（target/、node_modules/、.deploy-bundle/）
+ */
+function checkReferencedPaths(files) {
+  const dead = []
+  const SKIP_PREFIX = ['target/', 'node_modules/', '.deploy-bundle/', 'dist/', '~', '/']
+  const CODE_EXT = /\.(sh|mjs|js|py|yml|yaml|ps1|json|toml|xml)$/
+
+  for (const file of files) {
+    const raw = readFileSync(join(WF_DIR, file), 'utf8')
+    const lines = raw.split(/\r?\n/)
+
+    // ssh 块内的命令在远端主机执行，路径是远端文件系统的，不能拿本地去校验。
+    // 识别方式：从含 `ssh ` 或 `ssh -p` 的行开始，直到该 heredoc/引号块结束。
+    let inRemoteBlock = false
+
+    // --- 1. trigger paths 过滤项 ---
+    for (const line of lines) {
+      const m = line.match(/^\s*-\s+'([^']+)'\s*$/)
+      if (!m) continue
+      const p = m[1]
+      // 跳过含通配符/变量的路径（它们在语义上不是「某个具体文件」）
+      if (/[*$]/.test(p)) continue
+      const bare = p.replace(/\/\*\*$/, '')
+      // 只校验仓库内已知顶层目录，避免把 actions 缓存路径之类算进来
+      if (!/^(oaiss-chain-|scripts|docs|deploy|tests|\.github|docker-compose)/.test(bare)) continue
+      if (!existsSync(join(ROOT, bare))) {
+        dead.push({ file, ref: p })
+      }
+    }
+
+    // --- 2. shell 步骤里的 cp <repo-path> ---
+    for (const line of lines) {
+      // 进入/离开远端执行块
+      if (/\bssh\s/.test(line)) inRemoteBlock = true
+      if (inRemoteBlock && /^\s{0,10}["']?\s*$/.test(line)) inRemoteBlock = false
+      if (inRemoteBlock) continue
+
+      const m = line.match(/\bcp\s+(?:-[a-zA-Z]+\s+)*'?([A-Za-z0-9_./-]+)'?\s+[^\s|;]+/)
+      if (!m) continue
+      const src = m[1]
+      if (!CODE_EXT.test(src) && !src.includes('/')) continue
+      if (SKIP_PREFIX.some((p) => src.startsWith(p))) continue
+      if (src.includes('$')) continue
+      if (!existsSync(join(ROOT, src))) {
+        dead.push({ file, ref: src })
+      }
+    }
+  }
+
+  // 去重（同一路径可能在 push/pull_request 两处各写一次——那是合理的重复，只报一次）
+  const seen = new Set()
+  return dead.filter((d) => {
+    const k = `${d.file}::${d.ref}`
+    if (seen.has(k)) return false
+    seen.add(k)
+    return true
+  })
+}
+
 function main() {
   console.log('=== GitHub Actions 工作流门禁 ===\n')
 
@@ -256,6 +325,23 @@ function main() {
     unpinned.forEach(p => console.log(`✗ ${p}`))
   } else {
     console.log('✓ 依赖 Playwright 的工作流已固定 runner 版本')
+  }
+
+  // 引用的仓库内路径是否存在
+  //
+  // 背景：deploy-release.yml 里 `cp docker-compose.release.yml` 在目录归整
+  // （文件移到 deploy/compose/）后变成永久失败。而 trigger paths 里的同款死路径
+  // 更隐蔽：改 compose 文件根本不会触发 e2e，等于静默漏测——
+  // YAML 依然合法，本地任何命令也都不报错。
+  console.log('\n--- 引用的仓库路径 ---')
+  const deadPaths = checkReferencedPaths(files)
+  if (deadPaths.length > 0) {
+    failures++
+    console.log(`✗ ${deadPaths.length} 处引用了不存在的仓库路径`)
+    deadPaths.forEach(d => console.log(`    ${d.file}: ${d.ref}`))
+    console.log('    触发 paths 指向不存在路径的后果是「改完不跑」——CI 永远绿，但什么都没测。')
+  } else {
+    console.log('✓ workflow 引用的仓库内路径均存在')
   }
 
   console.log('')

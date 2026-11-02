@@ -131,6 +131,10 @@ node scripts/role-matrix-verify.mjs
 # i18n 键引用断言（开发后必跑）——代码引用的键在 zh/en 均存在且两侧键集合一致
 node scripts/i18n-verify.mjs
 
+# GitHub Actions 工作流断言（改 .github/workflows/ 或移动 compose/脚本后必跑）
+# 三类静默失效：YAML 结构损坏 / 触发分支写错 / 引用路径已不存在（改完不跑，CI 恒绿）
+node scripts/gates/workflow-verify.mjs
+
 # 测试
 cd oaiss-chain-backend && mvn test          # 单元
 cd oaiss-chain-backend && mvn verify        # 集成(含95% JaCoCo gate)

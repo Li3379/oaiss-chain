@@ -34,6 +34,7 @@ public class MockBlockchainService implements BlockchainServicePort {
      * @param args 参数
      * @return 交易哈希
      */
+    @Override
     public String invokeChaincode(String channelName, String chaincodeName,
             String functionName, String... args) {
         log.info("[MOCK] Invoking chaincode: channel={}, chaincode={}, function={}", 
@@ -56,6 +57,7 @@ public class MockBlockchainService implements BlockchainServicePort {
      * @param args 参数
      * @return 查询结果
      */
+    @Override
     public String queryChaincode(String channelName, String chaincodeName,
             String functionName, String... args) {
         log.info("[MOCK] Querying chaincode: channel={}, chaincode={}, function={}", 
@@ -72,6 +74,7 @@ public class MockBlockchainService implements BlockchainServicePort {
      * @param reportData 报告数据
      * @return 交易哈希
      */
+    @Override
     public String commitReportToChain(Long reportId, String reportData) {
         log.info("[MOCK] Committing carbon report to chain: reportId={}", reportId);
 
@@ -128,6 +131,7 @@ public class MockBlockchainService implements BlockchainServicePort {
      * @param tradeData 交易数据
      * @return 交易哈希
      */
+    @Override
     public String commitTradeToChain(Long tradeId, String tradeData) {
         log.info("[MOCK] Committing trade to chain: tradeId={}", tradeId);
 
@@ -149,6 +153,7 @@ public class MockBlockchainService implements BlockchainServicePort {
      * @param blockNumber 区块号
      * @return 区块信息（JSON）
      */
+    @Override
     public String queryBlock(Long blockNumber) {
         log.info("[MOCK] Querying block: {}", blockNumber);
         return String.format("{\"blockNumber\":%d,\"txCount\":1,\"timestamp\":\"%s\"}", 
@@ -176,6 +181,7 @@ public class MockBlockchainService implements BlockchainServicePort {
      * @param publicKey 公钥
      * @return 是否验证通过
      */
+    @Override
     public boolean verifySignature(String data, String signature, String publicKey) {
         log.info("[MOCK] Verifying signature for data length: {}", data.length());
         // Mock环境默认验证通过
@@ -187,6 +193,7 @@ public class MockBlockchainService implements BlockchainServicePort {
      *
      * @return 连接状态
      */
+    @Override
     public Map<String, Object> checkConnection() {
         Map<String, Object> status = new HashMap<>();
         status.put("connected", true);
@@ -206,6 +213,7 @@ public class MockBlockchainService implements BlockchainServicePort {
      * @param size 每页大小
      * @return 交易列表
      */
+    @Override
     public Page<Map<String, Object>> listTransactions(Integer page, Integer size) {
         log.info("[MOCK] Listing transactions: page={}, size={}", page, size);
 
@@ -229,6 +237,7 @@ public class MockBlockchainService implements BlockchainServicePort {
      * @param size 每页大小
      * @return 区块列表
      */
+    @Override
     public Page<Map<String, Object>> listLatestBlocks(Integer page, Integer size) {
         log.info("[MOCK] Listing latest blocks: page={}, size={}", page, size);
 

@@ -26,6 +26,15 @@
     </properties>
     
     <dependencies>
+        <!-- SpotBugs 抑制注解（compile 期需要，运行时不需要）。
+             门禁规则：确属误报必须在代码里加精确抑制，而不是放宽基线。 -->
+        <dependency>
+            <groupId>com.github.spotbugs</groupId>
+            <artifactId>spotbugs-annotations</artifactId>
+            <version>4.8.6</version>
+            <scope>provided</scope>
+        </dependency>
+
         <!-- Spring Boot Starters -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -320,6 +329,9 @@
                     <effort>Max</effort>
                     <threshold>Medium</threshold>
                     <failOnError>false</failOnError>
+                    <!-- 精确排除清单：只收「确定的误报」（当前仅 Lombok @Builder 生成类），
+                         每条都必须写明判为误报的理由。 -->
+                    <excludeFilterFile>${project.basedir}/spotbugs-exclude.xml</excludeFilterFile>
                 </configuration>
             </plugin>
             <!-- JaCoCo for code coverage -->
