@@ -52,6 +52,10 @@ public class CarbonService {
     private static final String CERTIFY_DECISION_INVALID = "Invalid certification decision";
     private static final String CERTIFICATION_COMMENT_PREFIX = "Certification Comment: ";
 
+    /** 从核算周期里提取四位年份；范围限定 2000–2100，越界视为录入错误 */
+    private static final java.util.regex.Pattern YEAR_PATTERN =
+            java.util.regex.Pattern.compile("(?<!\\d)(20\\d{2}|19\\d{2})(?!\\d)");
+
     private final CarbonReportRepository carbonReportRepository;
     private final EnterpriseRepository enterpriseRepository;
     private final UserRepository userRepository;
@@ -938,15 +942,38 @@ public class CarbonService {
                 operatorUserId);
 
         // 第三步：评级
-        String ratingYear = report.getAccountingPeriod();
-        if (ratingYear == null || ratingYear.isEmpty()) {
-            ratingYear = String.valueOf(LocalDateTime.now().getYear());
-        } else if (ratingYear.length() > 4) {
-            ratingYear = ratingYear.substring(0, 4);
-        }
+        String ratingYear = extractYear(report.getAccountingPeriod());
         // D10：按**年度汇总**重算，而不是用「这一份报告的排放量」覆盖写。
         // 历史实现在同年多份报告时只有最后一份生效，「年度评级」名不副实。
         emissionRatingService.recalculateYearlyRating(enterpriseId, ratingYear, operatorUserId);
+    }
+
+    /**
+     * 从核算周期取四位年份（AC-22）。
+     *
+     * <p><b>为什么不直接 {@code substring(0, 4)}</b>：那样对 {@code Q4-2026}
+     * 会得到 {@code Q4-2}，随后被写进年度评级表——不报错、不告警，
+     * 只是那一年的评级从此再也算不进去。静默算错比明确报错危险得多。
+     *
+     * <p>从字符串中找**第一个**形如 19xx/20xx 的四位数字：这样
+     * {@code 2026-Q1}、{@code 2026}、{@code 2024-01-15} 都能取到正确年度；
+     * {@code Q4-2026} 也能靠搜索而非截断取到 2026。
+     * 解析不出来时退回当前年度并留日志，不让审核因为周期格式而失败。
+     */
+    static String extractYear(String accountingPeriod) {
+        if (accountingPeriod == null || accountingPeriod.isBlank()) {
+            return String.valueOf(LocalDateTime.now().getYear());
+        }
+        java.util.regex.Matcher m = YEAR_PATTERN.matcher(accountingPeriod);
+        if (m.find()) {
+            int year = Integer.parseInt(m.group());
+            // 越界值多半是数据录入错误，采纳会让评级表里出现 9999 年这种行
+            if (year >= 2000 && year <= 2100) {
+                return String.valueOf(year);
+            }
+        }
+        log.warn("核算周期无法解析出年度，退回当前年度: '{}'", accountingPeriod);
+        return String.valueOf(LocalDateTime.now().getYear());
     }
 
     private boolean isReviewerDecision(Integer decision) {

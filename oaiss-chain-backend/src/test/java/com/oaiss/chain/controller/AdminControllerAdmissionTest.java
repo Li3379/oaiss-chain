@@ -61,6 +61,11 @@ class AdminControllerAdmissionTest {
     @MockBean
     private com.oaiss.chain.service.ChainReconciliationService chainReconciliationService;
 
+    // 组件1：AdminController 构造器新增 IndustryBenchmarkService。
+    // @WebMvcTest 切片漏 bean 时的表现是「整个上下文起不来」，不是单条用例失败。
+    @MockBean
+    private com.oaiss.chain.service.IndustryBenchmarkService industryBenchmarkService;
+
     private EnterpriseAdmission testAdmission;
     private ReviewerQualification testQualification;
 
