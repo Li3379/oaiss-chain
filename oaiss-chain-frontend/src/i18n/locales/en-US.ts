@@ -645,6 +645,13 @@ export default {
     loadDetailFailed: 'Failed to load report detail',
     detailEmissionData: 'Emission Data',
     detailMethod: 'Calculation Method',
+    detailQuotaAllocated: 'Allocated Quota',
+    detailQuotaJudgement: 'Quota Verdict',
+    quotaJudgement: {
+      SURPLUS: 'Surplus',
+      SHORTFALL: 'Shortfall',
+      UNDETERMINED: 'Undetermined',
+    },
     detailReviewComment: 'Review Comment',
     detailUpdateTime: 'Updated At',
     stepDraft: 'Draft Preparation',

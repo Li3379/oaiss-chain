@@ -53,6 +53,15 @@ export interface CarbonReportResponse {
   attachments: string
   createdAt: string
   updatedAt: string
+  // ===== 组件1：配额发放结果（只读，由审核流程写入）=====
+  /** 本报告发放的配额量（吨）；未发放为 null */
+  quotaAllocatedAmount?: number | null
+  /** 发放状态机：NONE/ALLOCATED/REVOKED/PENDING_RETRY/REVOKE_FAILED；未发放为 null */
+  allocationState?: string | null
+  /** 盈余（正）或缺口（负），单位吨；judgement 为 UNDETERMINED 时为 null */
+  quotaSurplusOrGap?: number | null
+  /** 判定：SURPLUS/SHORTFALL/UNDETERMINED；未发放为 null */
+  quotaJudgement?: string | null
 }
 
 /** 审核请求 */

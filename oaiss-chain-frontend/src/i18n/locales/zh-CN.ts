@@ -645,6 +645,13 @@ export default {
     loadDetailFailed: '加载报告详情失败',
     detailEmissionData: '排放数据',
     detailMethod: '核算方法',
+    detailQuotaAllocated: '应得配额',
+    detailQuotaJudgement: '配额判定',
+    quotaJudgement: {
+      SURPLUS: '盈余',
+      SHORTFALL: '缺口',
+      UNDETERMINED: '无法判定',
+    },
     detailReviewComment: '审核意见',
     detailUpdateTime: '更新时间',
     stepDraft: '编制填报',
