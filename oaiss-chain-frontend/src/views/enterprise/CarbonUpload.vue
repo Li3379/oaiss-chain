@@ -30,6 +30,7 @@ import { ArrowRight, Clock, CopyDocument, Cpu, DataAnalysis, Document, Key, Link
 import { useI18n } from 'vue-i18n'
 import { getMyReports, createReport, updateReport, deleteReport, submitReport, getReport, getAiReportAnalysis, type AiReportAnalysisResponse } from '../../api/carbon'
 import { getKeyPair } from '../../api/signature'
+import { useCertificateStatus } from '../../composables/useCertificateStatus'
 import { getReportSnapshot } from '../../api/blockchain'
 import { uploadFile } from '../../api/file'
 import type { CarbonReportResponse, RsaKeyPairResponse } from '../../types'
@@ -45,6 +46,10 @@ import TermTip from '../../components/TermTip.vue'
 import EmptyHint from '../../components/EmptyHint.vue'
 
 const { t } = useI18n()
+
+// 准入证书门禁：无有效证书时禁止提交送审（后端以 7001 拒绝），
+// 创建草稿不拦——草稿不产生对外证据。
+const { admitted, blockReason } = useCertificateStatus()
 
 const aiAnalysisDialogVisible = ref(false)
 const aiAnalysisLoading = ref(false)
@@ -366,6 +371,10 @@ const confirmExecuteSubmit = async () => {
   if (!pendingSubmitReport.value || submitProcessing.value) return
   submitProcessing.value = true
   try {
+    if (!ensureAdmitted()) {
+      submitting.value = false
+      return
+    }
     await submitReport(pendingSubmitReport.value.id)
     ElMessage.success(`${t('carbonUpload.submitSuccess')} ${t('nextSteps.afterSubmitReport')}`)
     submitConfirmVisible.value = false
@@ -514,6 +523,7 @@ async function onBatchSubmit() {
   } catch {
     return
   }
+  if (!ensureAdmitted()) return
   batchSubmitting.value = true
   let ok = 0
   for (const id of [...selectedIds.value]) {
@@ -639,7 +649,27 @@ const onSubmitForm = async () => {
   }
 }
 
+/**
+ * 准入证书门禁前置检查。
+ *
+ * 后端对「无有效准入证书的企业提交报告」返回 7001。前端在三个提交入口
+ * （单条提交 / 批量送审 / 表单提交）统一前置拦截，避免用户填完再被拒。
+ * 注意：**创建草稿不拦**——草稿不产生对外证据，允许先起草。
+ */
+const ensureAdmitted = (): boolean => {
+  if (admitted.value) return true
+  ElMessage.warning(admissionBlockMessage.value)
+  return false
+}
+
+const admissionBlockMessage = computed(() => {
+  if (blockReason.value === 'expired') return t('admissionBanner.bodyExpired', { date: '-' })
+  if (blockReason.value === 'revoked') return t('admissionBanner.bodyRevoked')
+  return t('admissionBanner.bodyNone')
+})
+
 const onSubmitReport = async (row: CarbonReportResponse) => {
+  if (!ensureAdmitted()) return
   try {
     await ElMessageBox.confirm(t('carbonUpload.confirmSubmit') + ' ' + row.reportNo + '？', t('common.confirm'), { type: 'warning' })
     await submitReport(row.id)

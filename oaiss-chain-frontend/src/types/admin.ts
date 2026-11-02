@@ -9,6 +9,10 @@ export interface EnterpriseAdmissionResponse {
   issuedDate: string
   expiryDate: string
   status: number
+  /** 吊销时间（V19 起由后端写入；未吊销为 null） */
+  revokedAt?: string | null
+  /** 吊销原因（管理员吊销时填写，可选） */
+  revokeReason?: string | null
   createdAt: string
   updatedAt: string
 }

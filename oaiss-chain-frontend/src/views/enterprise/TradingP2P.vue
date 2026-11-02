@@ -25,6 +25,7 @@ import { useI18n } from "vue-i18n"
 import { ElMessage, ElMessageBox } from "element-plus"
 import { CircleCheck, Clock, Histogram, PriceTag } from "@element-plus/icons-vue"
 import { getMyTrades, createP2PTrade, cancelTrade, confirmTrade } from "../../api/trade"
+import { useCertificateStatus } from '../../composables/useCertificateStatus'
 import { searchEnterprises, type EnterpriseSearchItem } from "../../api/enterprise"
 import type { TradeIdentityFilter, TradeResponse } from "../../types"
 import { formatDateTime } from "../../utils/format"
@@ -38,6 +39,9 @@ import FilterBar from '../../components/pen/FilterBar.vue'
 import DataPanel from '../../components/pen/DataPanel.vue'
 
 const { t } = useI18n()
+
+// 准入证书门禁：无有效证书时不得发起 P2P 转让（后端以 7001 拒绝）
+const { admitted, blockReason } = useCertificateStatus()
 const appStore = useAppStore()
 
 const loading = ref(false)
@@ -182,9 +186,22 @@ async function buyerSearch(keyword: string): Promise<void> {
 }
 
 const openAddDialog = () => {
+  // 兜底拦截：无有效准入证书时后端会以 7001 拒绝，
+  // 前端在此拦住，避免用户填完表单才被拒。
+  if (!admitted.value) {
+    ElMessage.warning(admissionBlockMessage.value)
+    return
+  }
   resetDialogForm()
   dialogVisible.value = true
 }
+
+/** 无证书时的提示文案，按「未签发 / 已吊销 / 已过期」区分 */
+const admissionBlockMessage = computed(() => {
+  if (blockReason.value === 'expired') return t('admissionBanner.bodyExpired', { date: '-' })
+  if (blockReason.value === 'revoked') return t('admissionBanner.bodyRevoked')
+  return t('admissionBanner.bodyNone')
+})
 
 const onCancel = () => {
   dialogVisible.value = false
@@ -345,7 +362,18 @@ const p2pStats = computed(() => {
       </label>
 
       <el-button type="primary" @click="onQuery">{{ t('common.search') }}</el-button>
-      <el-button type="primary" @click="openAddDialog">{{ t('tradingP2P.dialogCreate') }}</el-button>
+      <el-tooltip :disabled="admitted" :content="admissionBlockMessage" placement="top">
+        <span>
+          <el-button
+            type="primary"
+            :disabled="!admitted"
+            data-testid="p2p-create-trade"
+            @click="openAddDialog"
+          >
+            {{ t('tradingP2P.dialogCreate') }}
+          </el-button>
+        </span>
+      </el-tooltip>
     </FilterBar>
 
     <DataPanel :title="t('tradingP2P.panelTitle')" :meta="t('common.total', { count: total })">

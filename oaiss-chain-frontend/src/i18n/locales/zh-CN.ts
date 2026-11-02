@@ -2427,4 +2427,17 @@ export default {
       OTHER: '其他',
     },
   },
+  admissionBanner: {
+    titleNone: '尚未签发准入证书',
+    titleRevoked: '准入证书已被吊销',
+    titleExpired: '准入证书已过期',
+    bodyNone: '平台要求企业持有有效的准入证书才能提交碳报告或参与碳交易。您当前还没有证书，请先联系平台管理员签发。',
+    bodyExpired: '您的准入证书已于 {date} 到期。到期后提交碳报告、发起挂单与成交结算都会被拒绝，请联系管理员续期。',
+    bodyRevoked: '您的准入证书已被平台吊销。在此期间，提交碳报告、发起 P2P / 拍卖挂单、成交结算与碳币充值都会被拒绝。已提交的报告与已成交的记录不受影响。',
+    certificateNo: '证书编号',
+    revokedAt: '吊销时间',
+    revokeReason: '吊销原因',
+    reasonUnspecified: '管理员未填写',
+    contactHint: '如对处理结果有异议，请联系平台管理员。',
+  },
 };

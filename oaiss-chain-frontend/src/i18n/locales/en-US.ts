@@ -2428,4 +2428,17 @@ export default {
       OTHER: 'Other',
     },
   },
+  admissionBanner: {
+    titleNone: 'No admission certificate issued',
+    titleRevoked: 'Admission certificate revoked',
+    titleExpired: 'Admission certificate expired',
+    bodyNone: 'The platform requires a valid admission certificate to submit carbon reports or trade. You do not have one yet — please contact the platform administrator to issue it.',
+    bodyExpired: 'Your admission certificate expired on {date}. After expiry, submitting carbon reports, placing orders, and trade settlement will all be rejected. Please contact the administrator to renew it.',
+    bodyRevoked: 'Your admission certificate has been revoked by the platform. During this period, submitting carbon reports, placing P2P / auction orders, trade settlement, and carbon coin recharge will be rejected. Reports already submitted and trades already completed are unaffected.',
+    certificateNo: 'Certificate No',
+    revokedAt: 'Revoked at',
+    revokeReason: 'Reason',
+    reasonUnspecified: 'Not provided by administrator',
+    contactHint: 'If you disagree with this decision, please contact the platform administrator.',
+  },
 };

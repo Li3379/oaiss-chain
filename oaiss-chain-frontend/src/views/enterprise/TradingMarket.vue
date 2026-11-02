@@ -37,6 +37,7 @@ import {
 } from '../../api/auction'
 import { getMyAccount } from '../../api/carbonCoin'
 import { getEnterpriseInfo } from '../../api/enterprise'
+import { useCertificateStatus } from '../../composables/useCertificateStatus'
 import type { AuctionOrderRequest, AuctionOrderResponse, MatchingResultResponse } from '../../types'
 import { formatDateTime, formatNumber } from '../../utils/format'
 import PageHint from '../../components/PageHint.vue'
@@ -46,6 +47,10 @@ import StatStrip from '../../components/pen/StatStrip.vue'
 import DataPanel from '../../components/pen/DataPanel.vue'
 
 const { t } = useI18n()
+
+// 准入证书门禁：无有效证书时不得发起挂单（后端会以 7001 拒绝）。
+// 前端据此禁用入口按钮并给出原因，避免用户点了才被拒。
+const { admitted, blockReason, refreshAdmission } = useCertificateStatus()
 
 interface TradingMarketForm {
   direction: number | null
@@ -235,10 +240,23 @@ const resetForm = () => {
 }
 
 const openAddDialog = () => {
+  // 兜底拦截：即使按钮未被禁用（例如证书状态拉取晚于页面渲染），
+  // 也不能让用户走到「填完表单再被服务器拒绝」这一步。
+  if (!admitted.value) {
+    ElMessage.warning(admissionBlockMessage.value)
+    return
+  }
   resetForm()
   loadUserAssets()
   dialogVisible.value = true
 }
+
+/** 无证书时的提示文案，按「未签发 / 已吊销 / 已过期」区分 */
+const admissionBlockMessage = computed(() => {
+  if (blockReason.value === 'expired') return t('admissionBanner.bodyExpired', { date: '-' })
+  if (blockReason.value === 'revoked') return t('admissionBanner.bodyRevoked')
+  return t('admissionBanner.bodyNone')
+})
 
 const getDirectionLabel = (direction: number) => {
   return direction === 1 ? t('tradingMarket.buy') : t('tradingMarket.sell')
@@ -414,9 +432,19 @@ const marketStats = computed(() => [
             </div>
           </div>
         </div>
-        <el-button type="primary" size="small" @click="openAddDialog">
-          {{ t('tradingMarket.dialogCreate') }}
-        </el-button>
+        <el-tooltip :disabled="admitted" :content="admissionBlockMessage" placement="top">
+          <span>
+            <el-button
+              type="primary"
+              size="small"
+              :disabled="!admitted"
+              data-testid="market-create-order"
+              @click="openAddDialog"
+            >
+              {{ t('tradingMarket.dialogCreate') }}
+            </el-button>
+          </span>
+        </el-tooltip>
       </div>
     </section>
 
@@ -431,7 +459,18 @@ const marketStats = computed(() => [
     <DataPanel :title="t('tradingMarket.panelTitle')">
       <template #actions>
         <el-button @click="onQuery">{{ t('common.search') }}</el-button>
-        <el-button type="primary" @click="openAddDialog">{{ t('tradingMarket.dialogCreate') }}</el-button>
+        <el-tooltip :disabled="admitted" :content="admissionBlockMessage" placement="top">
+          <span>
+            <el-button
+              type="primary"
+              :disabled="!admitted"
+              data-testid="market-create-order"
+              @click="openAddDialog"
+            >
+              {{ t('tradingMarket.dialogCreate') }}
+            </el-button>
+          </span>
+        </el-tooltip>
       </template>
 
       <div v-if="activeTab !== 'match'" class="table-tip">{{ t('common.total', { count: total }) }}</div>

@@ -113,6 +113,33 @@ describe('request response interceptor', () => {
     })).rejects.toBeTruthy()
     expect(ElMessage.error).toHaveBeenCalledWith('You do not have permission to perform this action')
 
+    // 证书门禁（7001/7002）虽然也返回 HTTP 403，但它是**业务原因**而非「无权限」。
+    // 后端已返回可读的中文说明（含吊销原因），前端必须透传，
+    // 否则用户只看到笼统的「无权限」，不知道是证书被吊销。
+    vi.clearAllMocks()
+    await expect(rejected({
+      response: {
+        status: 403,
+        data: { code: 7001, message: '该企业没有有效的准入证书（未签发、已吊销或已过期），暂不可提交碳报告或参与碳交易，请联系平台管理员' },
+      },
+      config: {},
+    })).rejects.toBeTruthy()
+    expect(ElMessage.error).toHaveBeenCalledWith(
+      '该企业没有有效的准入证书（未签发、已吊销或已过期），暂不可提交碳报告或参与碳交易，请联系平台管理员',
+    )
+
+    vi.clearAllMocks()
+    await expect(rejected({
+      response: {
+        status: 403,
+        data: { code: 7002, message: '该审核员没有有效的审核资格证（未签发、已吊销或已过期），暂不可执行审核，请联系平台管理员' },
+      },
+      config: {},
+    })).rejects.toBeTruthy()
+    expect(ElMessage.error).toHaveBeenCalledWith(
+      '该审核员没有有效的审核资格证（未签发、已吊销或已过期），暂不可执行审核，请联系平台管理员',
+    )
+
     vi.clearAllMocks()
 
     await expect(rejected({

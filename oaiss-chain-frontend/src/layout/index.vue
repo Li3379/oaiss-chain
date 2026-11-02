@@ -48,6 +48,7 @@ import { ElMessage } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 import { logout as apiLogout } from '../api/auth'
 import { useAppStore } from '../store'
+import AdmissionStatusBanner from '../components/AdmissionStatusBanner.vue'
 import { MENU_BY_ROLE, RAIL_BY_ROLE, ROLE, type MenuItem, type RailItem } from '../config/menu'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
 import NotificationBell from '../components/NotificationBell.vue'
@@ -448,6 +449,9 @@ onMounted(() => {
       </el-header>
 
       <el-main class="main-content">
+        <!-- 准入证书状态横幅：仅企业角色、且当前无有效证书时显示。
+             后端门禁（7001）已生效，这里把「事后被拒」变成「事先告知」。 -->
+        <AdmissionStatusBanner />
         <router-view />
       </el-main>
     </el-container>

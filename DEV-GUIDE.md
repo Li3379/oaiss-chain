@@ -175,8 +175,8 @@ bash ./scripts/stability-baseline.sh
 | Entities | 29 | 28 @Entity + BaseEntity（+IndustryBenchmark） |
 | Tables | 28 | 现存 28 张（曾创建 29 张，authenticator 在 V8 DROP 退场；+industry_benchmark） |
 | Repositories | 28 | `repository/*.java` 数（+IndustryBenchmarkRepository） |
-| Flyway 迁移 | V1-V26 | V3、V22 跳过（共 24 个版本；V23=单价口径注释，V24=信誉下市标记，V25=配额发放结构，V26=发电基准值种子） |
-| i18n 词条 | 2292 | zh-CN 与 en-US 严格镜像（`scripts/gates/i18n-verify.mjs` 实测；2026-11-01 新增成交审核与监管线索文案） |
+| Flyway 迁移 | V1-V27 | V3、V22 跳过（共 25 个版本；V23=单价口径注释，V24=信誉下市标记，V25=配额发放结构，V26=发电基准值种子，V27=报告周期唯一键） |
+| i18n 词条 | 2317 | zh-CN 与 en-US 严格镜像（`scripts/gates/i18n-verify.mjs` 实测；2026-11-02 链上管理页与证书吊销文案） |
 | 前端 API 模块 | 24 | `src/api/*.ts`（不含 request.ts 与 index.ts；2026-11-01 新增 tradeAudit / regulatoryFinding） |
 | 枚举 | 10 | `enums/*.java`（含新增 AllocationStateEnum；`doc-verify.mjs` 的 expectEnums 已同步） |
 | 角色 | 4 | ENTERPRISE/REVIEWER/THIRD_PARTY/ADMIN |
@@ -212,6 +212,18 @@ bash ./scripts/stability-baseline.sh
 - 错误码：`7001 ADMISSION_REQUIRED` / `7002 QUALIFICATION_REQUIRED`。
 - 吊销留痕：`revoked_at` + `revoke_reason`（V19 迁移，可选 `?reason=` ≤200 字）。
 - **不阻断登录与只读浏览**：吊销后果应当让人看见（横幅 + 写操作被拒），而不是把人锁在门外看不到原因。
+
+**前端表现**（2026-11-02 补齐）：
+
+| 层 | 实现 |
+|---|---|
+| 状态源 | `composables/useCertificateStatus.ts`（模块级单例，判定口径与后端一致：`status=1` 且有效期为空或 ≥ 今天，含当天） |
+| 全局横幅 | `components/AdmissionStatusBanner.vue`，挂在 `layout/index.vue` 的 `el-main` 内、`router-view` 之前，仅 ENTERPRISE 角色、且无有效证书时显示；区分「从未签发 / 已吊销 / 已过期」三种文案，已吊销时展示证书编号、吊销时间、吊销原因 |
+| 写操作禁用 | 交易大厅「发起挂单」、P2P「发起转让」按钮 `:disabled="!admitted"` + tooltip 说明原因 |
+| 提交拦截 | 填报页三条提交路径（单条提交 / 批量送审 / 表单提交）前置 `ensureAdmitted()`；**创建草稿不拦**（草稿不产生对外证据） |
+| 错误码透传 | `api/request.ts` 对 403 中的 `7001/7002` 透传后端文案，其余 403 仍用通用「无权限」，避免用户只看到笼统提示 |
+
+**实机验证**（2026-11-02，真实后端 + 真实 Fabric）：吊销后横幅显示「准入证书已被吊销 / 证书编号 EA-20261102-511625 / 吊销时间 2026-11-02 11:23:12 / 吊销原因 连续三期报告数据不合规」，交易大厅与 P2P 创建按钮 `disabled=true`，填报页横幅可见；重新签发后横幅消失、按钮恢复可用。
 
 ### 12.2 链上「还原」的边界
 

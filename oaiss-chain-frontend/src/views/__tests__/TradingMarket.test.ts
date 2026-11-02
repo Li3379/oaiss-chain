@@ -6,7 +6,25 @@ function vmOf(w: { vm: unknown }): Record<string, any> {
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import { createPinia, setActivePinia } from 'pinia'
+import { createPinia, getActivePinia, setActivePinia } from 'pinia'
+
+// 准入证书门禁：默认返回有效证书，个别用例改为空列表以验证禁用态
+vi.mock('../../api/enterprise', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../api/enterprise')>()
+  return {
+    ...actual,
+    getMyEnterpriseAdmission: vi.fn(() => Promise.resolve([{
+      id: 1,
+      enterpriseId: 1,
+      certificateNo: 'EA-20260101-000001',
+      issuedDate: '2026-01-01',
+      expiryDate: '2099-12-31',
+      status: 1,
+      createdAt: '2026-01-01T00:00:00',
+      updatedAt: '2026-01-01T00:00:00',
+    }])),
+  }
+})
 
 vi.mock('../../api/auction', () => ({
   submitBuyOrder: vi.fn(),
@@ -27,6 +45,8 @@ vi.mock('element-plus', async (importOriginal) => {
 
 import TradingMarket from '../enterprise/TradingMarket.vue'
 import { getAuctionOrders, getMatchResults, getMyOrders, submitBuyOrder, submitSellOrder } from '../../api/auction'
+import { getMyEnterpriseAdmission } from '../../api/enterprise'
+import { useCertificateStatus } from '../../composables/useCertificateStatus'
 import { ElMessage } from 'element-plus'
 
 const orderRows = [
@@ -143,9 +163,10 @@ const stubs = {
 }
 
 function mountComponent() {
+  // 复用 setActivePinia 的那个实例，否则组件读到的 store 与测试写入的不同
   return mount(TradingMarket, {
     global: {
-      plugins: [createPinia()],
+      plugins: [getActivePinia()!],
       stubs,
     },
   })
@@ -155,6 +176,8 @@ describe('TradingMarket.vue', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     setActivePinia(createPinia())
+    // composable 是模块级单例，用例之间必须清空，否则状态串场
+    useCertificateStatus().resetAdmission()
     vi.mocked(getAuctionOrders).mockResolvedValue({
       items: orderRows,
       total: 1,
@@ -295,6 +318,40 @@ describe('TradingMarket.vue', () => {
     expect(ElMessage.error).toHaveBeenCalledWith('获取数据失败')
     expect(vmOf(wrapper).tableData).toEqual([])
     expect(vmOf(wrapper).total).toBe(0)
+
+    wrapper.unmount()
+  })
+
+  it('无有效准入证书时禁用「发起挂单」按钮', async () => {
+    vi.mocked(getMyEnterpriseAdmission).mockResolvedValueOnce([] as never)
+
+    const wrapper = mountComponent()
+    await flushPromises()
+    // 触发证书状态拉取
+    await vmOf(wrapper).refreshAdmission?.()
+    await flushPromises()
+
+    const btn = wrapper.find('[data-testid="market-create-order"]')
+    expect(btn.exists()).toBe(true)
+    expect(btn.attributes('disabled')).toBeDefined()
+
+    wrapper.unmount()
+  })
+
+  it('无有效准入证书时点击挂单入口会被前置拦截，不打开弹窗', async () => {
+    vi.mocked(getMyEnterpriseAdmission).mockResolvedValueOnce([] as never)
+
+    const wrapper = mountComponent()
+    await flushPromises()
+    await vmOf(wrapper).refreshAdmission?.()
+    await flushPromises()
+
+    vmOf(wrapper).openAddDialog()
+    await flushPromises()
+
+    // 拦截：弹窗不打开，且给出原因提示
+    expect(vmOf(wrapper).dialogVisible).toBe(false)
+    expect(ElMessage.warning).toHaveBeenCalled()
 
     wrapper.unmount()
   })

@@ -20,6 +20,17 @@ const LOGIN_EXPIRED_MESSAGE = 'Login session expired, please sign in again'
 const REQUEST_FAILED_MESSAGE = 'Request failed'
 const SERVER_ERROR_MESSAGE = 'Server error'
 const FORBIDDEN_MESSAGE = 'You do not have permission to perform this action'
+
+/**
+ * 证书门禁错误码：HTTP 403 但语义是「业务原因」而非「无权限」。
+ *
+ * 后端 CertificateGateService 对「无有效准入证书 / 无有效审核资格证」
+ * 返回 403（而非 400，因为这是「没资格做这件事」而不是「参数写错」）。
+ * 但它同时返回了带原因的中文说明——前端若按通用 403 处理，
+ * 用户只会看到笼统的「无权限」，完全不知道是证书被吊销。
+ * 因此这两个码必须透传后端文案。
+ */
+const CERT_GATE_ERROR_CODES = new Set([7001, 7002])
 const NOT_FOUND_MESSAGE = 'Requested resource was not found'
 const NETWORK_ERROR_MESSAGE = 'Network error, please check your connection'
 
@@ -231,7 +242,14 @@ request.interceptors.response.use(
           showDeduplicatedError(msg)
         }
       } else if (status === 403) {
-        showDeduplicatedError(FORBIDDEN_MESSAGE)
+        // 证书门禁：透传后端给出的具体原因（含吊销/过期说明），
+        // 其余 403 仍用通用「无权限」文案，避免泄露内部细节。
+        const code = Number(data?.code)
+        if (CERT_GATE_ERROR_CODES.has(code) && msg) {
+          showDeduplicatedError(msg)
+        } else {
+          showDeduplicatedError(FORBIDDEN_MESSAGE)
+        }
       } else if (status === 404) {
         if (!config?.suppressErrorMessage) {
           showDeduplicatedError(NOT_FOUND_MESSAGE)
