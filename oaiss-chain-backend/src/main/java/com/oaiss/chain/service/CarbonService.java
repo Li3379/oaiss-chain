@@ -61,6 +61,21 @@ public class CarbonService {
     private final DigitalSignatureService digitalSignatureService;
     /** 证书门禁：企业无有效准入证书不得提交/认证，审核员无有效资格证不得审核 */
     private final CertificateGateService certificateGateService;
+    private final QuotaAllocationService quotaAllocationService;
+    private final com.oaiss.chain.repository.IndustryBenchmarkRepository industryBenchmarkRepository;
+
+    /**
+     * 配额发放总开关。
+     *
+     * <p><b>默认关闭</b>：存量报告没有产量/机组类型/核算年度字段（本轮才加），
+     * 若强开会让所有历史报告审核一律失败。上线时先回填数据，再把开关打开。
+     *
+     * <p>关闭时不校验也不发放，审核流程与改造前完全一致——保证改造可灰度、
+     * 可回退，不会因为新功能让整个审核停摆。
+     */
+    @org.springframework.beans.factory.annotation.Value(
+            "${app.quota.allocation.enabled:false}")
+    private boolean quotaAllocationEnabled;
 
     @Transactional
     public CarbonReportResponse createReport(JwtUserDetails currentUser, CarbonReportRequest request) {
@@ -244,12 +259,29 @@ public class CarbonService {
             // 原生需求 03-项目详细方案 D3.2 规定：审核不通过退回，系统自动扣除该企业一定信誉分
             applyRejectedReportSideEffects(report, currentUser.getUserId(), signatureValid);
         } else {
+            // ===== 配额发放前置校验（必须在任何写入之前，尤其在上链之前）=====
+            //
+            // 为什么必须在最前面：上链是不可逆的外部写入。若校验放在上链之后失败，
+            // 事务回滚会把 DB 的 txHash 清掉，但链上记录仍在；之后重试会被链码
+            // "report already exists" 硬拒，报告永久卡在 APPROVED，配额永远发不出去。
+            // Mock 模式下上链恒成功，这个缺陷在测试里看不见，只会在真实 Fabric 暴露。
+            if (quotaAllocationEnabled) {
+                quotaAllocationService.validatePrerequisites(report);
+                assertBenchmarkAvailable(report);
+            }
+
             // 方案 A（依据 docs/raw 原始需求）：「当数据审核员点击提交碳排放报告后，
             // 系统后台自动将该报告进行上链」——审核通过即自动上链，无第二道人工核准。
             report.setStatus(ReportStatusEnum.APPROVED.getCode());
             boolean chained = autoCommitToChain(report, currentUser.getUserId());
             if (chained) {
                 report.setStatus(ReportStatusEnum.ON_CHAIN.getCode());
+                // ===== 配额发放（上链成功后）=====
+                // 放在这里：链上有存证才认可这批减排；且此时所有会失败的校验都已提前做过，
+                // 留下的只有「不该失败」的 DB 写。失败不阻断审核（报告已是 ON_CHAIN）。
+                if (quotaAllocationEnabled) {
+                    allocateQuotaQuietly(report, currentUser.getUserId());
+                }
             }
         }
 
@@ -258,6 +290,53 @@ public class CarbonService {
                 report.getReportNo(), report.getStatus(), signatureValid,
                 Objects.equals(report.getStatus(), ReportStatusEnum.ON_CHAIN.getCode()));
         return toResponseWithSignature(report, signatureValid);
+    }
+
+    /**
+     * 基准值就绪校验——在**上链之前**确认该报告所属行业/机组类型/年度有基准值。
+     *
+     * <p>不在这里查的话，缺失会等到上链之后才发现，而那时链上已写入、DB 要回滚，
+     * 报告就会永久卡死（链码拒绝重复 reportId）。
+     */
+    private void assertBenchmarkAvailable(CarbonReport report) {
+        String unitType = report.getUnitType();
+        Integer year = report.getPeriodYear();
+        boolean present = industryBenchmarkRepository
+                .findByIndustryCodeAndUnitTypeAndBenchmarkYearAndBenchmarkKindAndDeletedFalse(
+                        com.oaiss.chain.entity.IndustryBenchmark.INDUSTRY_POWER,
+                        unitType, year,
+                        com.oaiss.chain.entity.IndustryBenchmark.KIND_GENERATION)
+                .isPresent();
+        if (!present) {
+            throw new com.oaiss.chain.exception.BusinessException(
+                    com.oaiss.chain.constant.ErrorCode.RESOURCE_NOT_FOUND,
+                    String.format("缺少 %d 年度 %s 类机组的行业基准值，无法发放配额。"
+                            + "请管理员先在系统配置中录入该年度基准值。", year, unitType));
+        }
+    }
+
+    /**
+     * 发放配额，失败不阻断审核。
+     *
+     * <p>此时报告已是 ON_CHAIN（链上存证成功），若让配额失败回滚整个事务，
+     * 就会出现「链上有、DB 无」的分歧且无法自愈。故失败只留痕 + 置
+     * {@code PENDING_RETRY}，由管理员通过重试端点补发。
+     */
+    private void allocateQuotaQuietly(CarbonReport report, Long operatorUserId) {
+        try {
+            quotaAllocationService.allocateForReport(report.getId(), operatorUserId);
+        } catch (Exception ex) {
+            log.error("[QUOTA] 报告 {} 配额发放失败，已置为待重试: {}",
+                    report.getReportNo(), ex.getMessage(), ex);
+            report.setAllocationState(
+                    com.oaiss.chain.enums.AllocationStateEnum.PENDING_RETRY.getCode());
+            try {
+                carbonReportRepository.save(report);
+            } catch (Exception saveEx) {
+                // 连标记都写不进去也只能记日志——不能让审核整体失败
+                log.error("[QUOTA] 标记待重试状态失败: {}", saveEx.getMessage());
+            }
+        }
     }
 
     /**

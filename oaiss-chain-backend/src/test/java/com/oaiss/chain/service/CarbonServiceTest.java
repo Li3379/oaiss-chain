@@ -83,6 +83,13 @@ class CarbonServiceTest {
     @Mock
     private CertificateGateService certificateGateService;
 
+    // 组件 1：配额发放依赖。既有用例大多不走到审核通过分支，故用 lenient stub
+    @Mock
+    private QuotaAllocationService quotaAllocationService;
+
+    @Mock
+    private com.oaiss.chain.repository.IndustryBenchmarkRepository industryBenchmarkRepository;
+
     @InjectMocks
     private CarbonService carbonService;
 

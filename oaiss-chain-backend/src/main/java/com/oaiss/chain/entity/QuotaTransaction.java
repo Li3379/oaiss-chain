@@ -92,6 +92,49 @@ public class QuotaTransaction extends BaseEntity {
     @Column(name = "related_trade_id")
     private Long relatedTradeId;
 
+    // ==================== 配额发放维度（V25） ====================
+
+    /**
+     * 关联碳报告ID（配额发放/冲正时填写）。
+     *
+     * <p>与 {@code relatedTradeId} 互斥：一笔流水要么源自交易，要么源自报告发放，
+     * 不会同时有两者。
+     */
+    @Column(name = "related_report_id")
+    private Long relatedReportId;
+
+    /**
+     * 变动前 {@code carbon_used}。
+     *
+     * <p>此前账本只记 tradable/frozen 的前后值，缺 used 维度，导致
+     * 「这次变动是否动过 used」无从判断。补上后，冲正保护可以直接读流水验证。
+     */
+    @Column(name = "used_before", precision = 15, scale = 4)
+    private java.math.BigDecimal usedBefore;
+
+    /**
+     * 变动后 {@code carbon_used}
+     */
+    @Column(name = "used_after", precision = 15, scale = 4)
+    private java.math.BigDecimal usedAfter;
+
+    /**
+     * 发放幂等键，格式 {@code reportId#seq}。
+     *
+     * <p><b>为什么带序号而不是裸 reportId</b>：冲正后重发会为同一报告再发一次，
+     * 裸 reportId 会撞唯一索引 {@code uk_quota_allocation}。
+     * 带序号后每次发放的键唯一，而**冲正行此列留 NULL**——MySQL 唯一索引
+     * 不约束 NULL，多行 NULL 可共存，正好只拦「同一序号被发两次」。
+     */
+    @Column(name = "allocation_key", length = 64)
+    private String allocationKey;
+
+    /**
+     * 该报告的发放序号，从 1 开始，冲正重发时递增
+     */
+    @Column(name = "allocation_seq")
+    private Integer allocationSeq;
+
     /**
      * 操作人用户ID（系统自动撮合时为撮合引擎）
      */

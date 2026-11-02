@@ -61,7 +61,11 @@ if (!/autoCommitToChain\(/.test(svc)) {
   errors.push('CarbonService 缺少 autoCommitToChain 调用——审核通过自动上链链路断裂（方案 A 核心行为）')
 } else {
   const reviewIdx = svc.indexOf('public CarbonReportResponse reviewReport')
-  const body = svc.slice(reviewIdx, reviewIdx + 3000)
+  // 窗口不能写死字数：注释越写越长会把调用点挤出窗口，导致门禁红在正确代码上。
+  // 改为截到**下一个方法声明**为止——那才是方法体的真实边界。
+  const nextMethodIdx = svc.indexOf('    private ', reviewIdx + 1)
+  const bodyEnd = nextMethodIdx > reviewIdx ? nextMethodIdx : reviewIdx + 8000
+  const body = svc.slice(reviewIdx, bodyEnd)
   if (!body.includes('autoCommitToChain(')) {
     errors.push('reviewReport 内未调用 autoCommitToChain——审核通过不会自动上链')
   } else {

@@ -249,11 +249,11 @@ check('枚举数量', enums.length, EXPECT.enums)
 const enumNames = enums.map(f => f.replace('.java', ''))
 const expectEnums = ['UserTypeEnum', 'ReportStatusEnum', 'TradeTypeEnum', 'TradeStatusEnum',
   'AuctionOrderStatusEnum', 'MatchingStatusEnum', 'CreditLevelEnum', 'CreditEventTypeEnum',
-  'QualificationStatusEnum']
+  'QualificationStatusEnum', 'AllocationStateEnum']
 const missingEnums = expectEnums.filter(e => !enumNames.includes(e))
 const extraEnums = enumNames.filter(e => !expectEnums.includes(e))
 if (missingEnums.length === 0 && extraEnums.length === 0) {
-  console.log(`✓ 核心枚举名单: 9 个全部匹配 (${enumNames.join(', ')})`)
+  console.log(`✓ 核心枚举名单: 10 个全部匹配 (${enumNames.join(', ')})`)
 } else {
   failures++
   console.log(`✗ 核心枚举名单: 期望 ${expectEnums.length} 个，缺 ${missingEnums.join(',') || '无'}，多 ${extraEnums.join(',') || '无'}`)

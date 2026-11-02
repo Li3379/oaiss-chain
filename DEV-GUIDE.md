@@ -159,14 +159,14 @@ bash ./scripts/stability-baseline.sh
 |------|-----|------|
 | Controllers | 25 | `controller/*.java` 数（2026-10-31 新增 RegulatoryFindingController、TradeAuditController） |
 | REST 端点 | 163 | `@Mapping` 注解总数（2026-11-01 新增 `/admin/blockchain/mark-historical-mock`、`/enterprise/search`，以及管理员端 2 个端点；+2 下市处罚端点（delist/repeal）） |
-| Services | 48 | 45 主包 + 3 ml/（2026-11-01 并行批次：企业检索服务） |
-| Entities | 28 | 27 @Entity + BaseEntity |
-| Tables | 27 | 现存 27 张（曾创建 28 张，authenticator 在 V8 DROP 退场） |
-| Repositories | 27 | `repository/*.java` 数 |
-| Flyway 迁移 | V1-V24 | V3、V22 跳过（共 22 个版本；V18=监管线索，V19=证书吊销留痕，V20=链上存证标记，V21=软删列名修复，V23=单价口径注释，V24=信誉下市标记） |
+| Services | 49 | 46 主包 + 3 ml/（2026-11-02 组件 1：QuotaAllocationService） |
+| Entities | 29 | 28 @Entity + BaseEntity（+IndustryBenchmark） |
+| Tables | 28 | 现存 28 张（曾创建 29 张，authenticator 在 V8 DROP 退场；+industry_benchmark） |
+| Repositories | 28 | `repository/*.java` 数（+IndustryBenchmarkRepository） |
+| Flyway 迁移 | V1-V26 | V3、V22 跳过（共 24 个版本；V23=单价口径注释，V24=信誉下市标记，V25=配额发放结构，V26=发电基准值种子） |
 | i18n 词条 | 2292 | zh-CN 与 en-US 严格镜像（`scripts/gates/i18n-verify.mjs` 实测；2026-11-01 新增成交审核与监管线索文案） |
 | 前端 API 模块 | 24 | `src/api/*.ts`（不含 request.ts 与 index.ts；2026-11-01 新增 tradeAudit / regulatoryFinding） |
-| 枚举 | 9 | `enums/*.java`（UserTypeEnum 等 9 个核心枚举） |
+| 枚举 | 10 | `enums/*.java`（含新增 AllocationStateEnum；`doc-verify.mjs` 的 expectEnums 已同步） |
 | 角色 | 4 | ENTERPRISE/REVIEWER/THIRD_PARTY/ADMIN |
 | JaCoCo 门槛 | 95% | PACKAGE 级 |
 | 上链触发者 | REVIEWER（系统自动） | 方案 A：审核通过即自动上链，见 §12 |

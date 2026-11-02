@@ -35,6 +35,19 @@ public interface QuotaTransactionRepository extends JpaRepository<QuotaTransacti
                                                     Pageable pageable);
 
     /**
+     * 统计某报告已发放的次数（只数发放行，冲正行的 allocationSeq 为 null 不计）。
+     *
+     * <p>用途：构造发放幂等键 {@code reportId#seq} 时确定下一个序号。
+     * 冲正后重发需要递增序号，否则会撞唯一索引 {@code uk_quota_allocation}。
+     */
+    long countByRelatedReportIdAndAllocationSeqIsNotNull(Long relatedReportId);
+
+    /**
+     * 查询某报告的全部流水（含发放与冲正），按时间正序——用于核对状态机轨迹
+     */
+    List<QuotaTransaction> findByRelatedReportIdAndDeletedFalseOrderByIdAsc(Long relatedReportId);
+
+    /**
      * 按交易归因：这笔交易动了多少额度
      */
     List<QuotaTransaction> findByRelatedTradeIdAndDeletedFalse(Long relatedTradeId);

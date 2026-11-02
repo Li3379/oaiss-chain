@@ -172,6 +172,87 @@ public class CarbonReport extends BaseEntity {
     @Column(name = "attachments", columnDefinition = "TEXT")
     private String attachments;
 
+    // ==================== 配额发放（V25） ====================
+
+    /**
+     * 产量（发电量，MWh）。
+     *
+     * <p>配额公式 {@code 配额 = 产量 × 基准值} 的乘数因子。与 {@code totalEmission}
+     * 是**不同量纲**，不能互相推导：排放是「排了多少 CO2」，产量是「发了多少电」。
+     */
+    @Column(name = "output_quantity", precision = 15, scale = 4)
+    private java.math.BigDecimal outputQuantity;
+
+    /**
+     * 产量单位。本轮固定 {@code MWh}
+     */
+    @Column(name = "output_unit", length = 20)
+    private String outputUnit;
+
+    /**
+     * 机组类别（I/II/III/IV），决定查哪一行基准值。
+     *
+     * <p>由企业填报时自选，本轮不做装机容量校验——真实市场按 300MW 容量分
+     * I/II 类，但项目无容量字段，故交由企业声明。
+     */
+    @Column(name = "unit_type", length = 32)
+    private String unitType;
+
+    /**
+     * 核算年份。从 {@code accountingPeriod} 解析而来（该字段是无格式约束的自由文本，
+     * 无法承载唯一性）。
+     *
+     * <p><b>软删除时置 NULL</b>：唯一键 {@code (enterprise_id, period_year, period_quarter, is_deleted)}
+     * 中 {@code is_deleted} 从 0 变 1 已能释放一个位，但若同一周期被反复删除重建，
+     * 仍会因历史行占用而冲突，故删除时同时清空周期字段。
+     */
+    @Column(name = "period_year")
+    private Integer periodYear;
+
+    /**
+     * 核算季度 1-4；年度报告为 NULL
+     */
+    @Column(name = "period_quarter")
+    private Integer periodQuarter;
+
+    /**
+     * 已发放配额量（本次发放值，非累计）
+     */
+    @Column(name = "quota_allocated_amount", precision = 15, scale = 4)
+    private java.math.BigDecimal quotaAllocatedAmount;
+
+    /**
+     * 发放时的 {@code carbon_used} 快照，作为冲正保护的比较基线。
+     *
+     * <p>为什么需要它：冲正要判断「企业是否已动用这批配额」。而
+     * {@code quota_transaction} 的历史流水没有 used 维度（V25 才补），
+     * 账本本身也不完整（23 处内联写点未迁移），无法靠流水回放重建 used。
+     * 故在发放那一刻把 used 快照下来，冲正时直接比。
+     */
+    @Column(name = "quota_used_snapshot", precision = 15, scale = 4)
+    private java.math.BigDecimal quotaUsedSnapshot;
+
+    /**
+     * 配额发放状态机。
+     *
+     * <p>三态设计的原因：{@code quotaAllocatedAmount} 单靠「非空即已发」无法区分
+     * 「已发放」与「已冲正待重发」——若冲正后置空，幂等失效；若不置空，
+     * 第二次审核永远发不出去（会命中幂等短路）。故显式引入状态机。
+     *
+     * @see com.oaiss.chain.enums.AllocationStateEnum
+     */
+    @Column(name = "allocation_state", length = 16)
+    private String allocationState;
+
+    /**
+     * 该报告的配额发放序号，从 1 开始；冲正重发时递增。
+     *
+     * <p>用于构造发放幂等键 {@code reportId#seq}——若用裸 reportId，
+     * 冲正后重发会撞唯一索引。
+     */
+    @Column(name = "allocation_seq")
+    private Integer allocationSeq;
+
     /**
      * 企业名称（非持久化，用于列表展示）
      */
