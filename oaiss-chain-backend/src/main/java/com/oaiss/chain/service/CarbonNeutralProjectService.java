@@ -17,6 +17,7 @@ import com.oaiss.chain.repository.UserRepository;
 import com.oaiss.chain.security.JwtUserDetails;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -32,6 +33,7 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -400,10 +402,16 @@ public class CarbonNeutralProjectService {
     }
 
     /**
-     * 完成认证
+     * 完成认证。
+     *
+     * <p>证书编号由服务端生成（D-05/D-06），客户端不提供输入面；
+     * 唯一索引冲突说明并发请求算出了同一序号，转 3007 让调用方重试。
+     *
+     * @param projectId  项目ID
+     * @param operatorId 操作人用户ID（认证动作的 REVIEWER/ADMIN）
      */
     @Transactional
-    public CarbonNeutralProjectResponse completeCertification(Long projectId, String certNo) {
+    public CarbonNeutralProjectResponse completeCertification(Long projectId, Long operatorId) {
         CarbonNeutralProject project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new BusinessException(3002, "项目不存在"));
 
@@ -411,13 +419,46 @@ public class CarbonNeutralProjectService {
             throw new BusinessException(3003, "项目不在待认证状态");
         }
 
+        String certNo = project.getCertNo();
+        if (certNo == null || certNo.isBlank()) {
+            certNo = generateCertNo();
+        }
+
         project.setCertStatus(CERT_STATUS_CERTIFIED);
         project.setCertNo(certNo);
         project.setCertDate(LocalDate.now());
-        project = projectRepository.save(project);
+        try {
+            project = projectRepository.save(project);
+        } catch (DataIntegrityViolationException e) {
+            // uk_cnp_cert_no 兜底：并发请求算出了同一序号
+            throw new BusinessException(3007, "证书编号生成冲突，请重试");
+        }
 
         log.info("Project certified: {} -> {}", project.getProjectNo(), certNo);
         return toResponse(project);
+    }
+
+    /**
+     * 生成证书编号 {@code CNE-{四位年份}-{六位序号}}，同一年的序号连续递增。
+     */
+    private String generateCertNo() {
+        String prefix = "CNE-" + LocalDate.now().getYear() + "-";
+        int next = 1;
+
+        Optional<CarbonNeutralProject> latest =
+                projectRepository.findTopByCertNoStartingWithAndDeletedFalseOrderByCertNoDesc(prefix);
+        if (latest.isPresent()) {
+            String latestCertNo = latest.get().getCertNo();
+            try {
+                next = Integer.parseInt(latestCertNo.substring(prefix.length())) + 1;
+            } catch (RuntimeException e) {
+                // 历史数据格式非预期：不阻塞发证，从头计数并留痕
+                log.warn("Unexpected cert no format, restarting sequence at 1: {}", latestCertNo);
+                next = 1;
+            }
+        }
+
+        return String.format("%s%06d", prefix, next);
     }
 
     /**

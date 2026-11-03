@@ -21,6 +21,12 @@ public interface CarbonNeutralProjectRepository extends JpaRepository<CarbonNeut
 
     Optional<CarbonNeutralProject> findByProjectNo(String projectNo);
 
+    /**
+     * 取某一前缀（如 {@code CNE-2026-}）下序号最大的证书，用于生成下一个证书编号。
+     * 按 cert_no 字符串降序即可，因为序号定长补零、年份定长四位。
+     */
+    Optional<CarbonNeutralProject> findTopByCertNoStartingWithAndDeletedFalseOrderByCertNoDesc(String certNoPrefix);
+
     Page<CarbonNeutralProject> findByOwnerIdAndDeletedFalse(Long ownerId, Pageable pageable);
 
     Page<CarbonNeutralProject> findByProjectTypeAndDeletedFalse(Integer projectType, Pageable pageable);

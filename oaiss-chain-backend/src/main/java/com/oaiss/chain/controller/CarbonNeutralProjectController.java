@@ -362,7 +362,7 @@ public class CarbonNeutralProjectController {
      */
     @AuditLog(module = "碳中和项目", action = "COMPLETECERTIFICATION", description = "碳中和项目 COMPLETECERTIFICATION")
     @PostMapping("/{id}/certify")
-    @Operation(summary = "完成认证", description = "认证机构完成项目认证")
+    @Operation(summary = "完成认证", description = "认证机构完成项目认证，证书编号由系统生成")
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "认证成功"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "项目不在待认证状态"),
@@ -372,9 +372,9 @@ public class CarbonNeutralProjectController {
     @SecurityRequirement(name = "Bearer Authentication")
     @PreAuthorize("hasRole('REVIEWER') or hasRole('ADMIN')")
     public ApiResponse<CarbonNeutralProjectResponse> completeCertification(
-            @Parameter(description = "项目ID", required = true, example = "1") @PathVariable Long id,
-            @Valid @RequestBody CompleteCertificationRequest request) {
-        return ApiResponse.success(projectService.completeCertification(id, request.getCertNo()));
+            @AuthenticationPrincipal JwtUserDetails reviewer,
+            @Parameter(description = "项目ID", required = true, example = "1") @PathVariable Long id) {
+        return ApiResponse.success(projectService.completeCertification(id, reviewer.getUserId()));
     }
 
     /**
