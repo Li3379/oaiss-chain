@@ -254,6 +254,20 @@ public class CarbonReport extends BaseEntity {
     private Integer allocationSeq;
 
     /**
+     * 已用碳信用抵扣的超排缺口（吨）。
+     *
+     * <p>缺口 = {@code scope1Emission − quotaAllocatedAmount}；抵扣后此列增加，
+     * 剩余缺口 = {@code scope1Emission − quotaAllocatedAmount − shortfallOffset}。
+     *
+     * <p><b>为什么记在报告上</b>：缺口本身就是报告属性（配额 − 实排），
+     * 抵扣也是针对同一份报告，放同一行比拉关联表更直白，
+     * 也让「这份报告还差多少」一次查询即可得到。
+     */
+    @Column(name = "shortfall_offset", precision = 15, scale = 4)
+    @Builder.Default
+    private java.math.BigDecimal shortfallOffset = java.math.BigDecimal.ZERO;
+
+    /**
      * 企业名称（非持久化，用于列表展示）
      */
     @Transient

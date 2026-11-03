@@ -262,7 +262,7 @@ public class CarbonNeutralProjectController {
             @AuthenticationPrincipal JwtUserDetails currentUser,
             @Parameter(description = "项目ID", required = true, example = "1") @PathVariable Long id,
             @Valid @RequestBody UseCreditsRequest request) {
-        return ApiResponse.success(projectService.useCredits(currentUser, id, request.getAmount()));
+        return ApiResponse.success(projectService.useCredits(currentUser, id, request.getAmount(), request.getRelatedReportId()));
     }
 
     

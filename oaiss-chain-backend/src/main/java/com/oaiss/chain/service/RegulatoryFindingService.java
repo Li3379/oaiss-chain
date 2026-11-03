@@ -198,4 +198,43 @@ public class RegulatoryFindingService {
     private BigDecimal nz(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
     }
+
+    /**
+     * 未履约清单：实排超出配额、且碳信用抵扣后仍有缺口的报告。
+     *
+     * <p>与线索列表的分工：线索回答「有没有问题」，清单回答「差多少」。
+     * 监管催缴与处罚依据的是后者。
+     *
+     * <p>缺口 = {@code scope1Emission − quotaAllocatedAmount − shortfallOffset}。
+     * 未结算（配额为空）的报告不参与——它们还没有可比基准。
+     */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> listShortfalls() {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (com.oaiss.chain.entity.CarbonReport r : carbonReportRepository.findByDeletedFalse()) {
+            BigDecimal allocated = r.getQuotaAllocatedAmount();
+            if (allocated == null) {
+                continue;
+            }
+            BigDecimal gap = nz(r.getScope1Emission())
+                    .subtract(allocated)
+                    .subtract(nz(r.getShortfallOffset()));
+            if (gap.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("reportId", r.getId());
+            row.put("reportNo", r.getReportNo());
+            row.put("enterpriseId", r.getEnterpriseId());
+            row.put("periodYear", r.getPeriodYear());
+            row.put("periodQuarter", r.getPeriodQuarter());
+            row.put("quotaAllocatedAmount", allocated);
+            row.put("scope1Emission", nz(r.getScope1Emission()));
+            row.put("shortfallOffset", nz(r.getShortfallOffset()));
+            row.put("remainingShortfall", gap.setScale(2, java.math.RoundingMode.HALF_UP));
+            result.add(row);
+        }
+        log.info("未履约清单查询完成: {} 份报告仍有缺口", result.size());
+        return result;
+    }
 }

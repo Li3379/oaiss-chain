@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.oaiss.chain.dto.CarbonNeutralProjectRequest;
 import com.oaiss.chain.dto.CarbonNeutralProjectResponse;
 import com.oaiss.chain.dto.ProjectVerificationRequest;
+import com.oaiss.chain.entity.CarbonReport;
 import com.oaiss.chain.entity.CarbonNeutralProject;
 import com.oaiss.chain.entity.Enterprise;
 import com.oaiss.chain.entity.Reviewer;
@@ -64,6 +65,8 @@ public class CarbonNeutralProjectService {
     private final ReviewerRepository reviewerRepository;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
+    /** 碳信用抵扣缺口时要写报告的 shortfall_offset，故需报告仓库 */
+    private final com.oaiss.chain.repository.CarbonReportRepository carbonReportRepository;
 
     // ==================== 项目状态常量 ====================
     public static final int STATUS_DRAFT = 0;          // 筹备/草稿
@@ -293,6 +296,30 @@ public class CarbonNeutralProjectService {
      */
     @Transactional
     public CarbonNeutralProjectResponse useCredits(JwtUserDetails currentUser, Long projectId, BigDecimal amount) {
+        return useCredits(currentUser, projectId, amount, null);
+    }
+
+    /**
+     * 消耗碳信用，可选择抵扣某份报告的超排缺口。
+     *
+     * <p><b>为什么需要 relatedReportId</b>：碳信用原来只改项目自己的
+     * {@code usedCredits}，不关联任何业务对象——于是「用碳信用抵消了排放」
+     * 这句话在数据上无从验证：不知道抵消的是哪份报告的哪个缺口、抵消了多少。
+     *
+     * <p>接上之后，抵扣会写入报告的 {@code shortfallOffset}，
+     * 「这份报告还差多少吨」因此可以算出来：
+     * <pre>
+     * 剩余缺口 = scope1Emission − quotaAllocatedAmount − shortfallOffset
+     * </pre>
+     *
+     * <p>抵扣上限是当前缺口：超过缺口会让「已抵消」大于「该抵消」，
+     * 多出的部分凭空消失，账面上看不出异常。
+     *
+     * @param relatedReportId 要抵扣缺口的报告；null 表示仅消耗信用、不关联报告
+     */
+    @Transactional
+    public CarbonNeutralProjectResponse useCredits(JwtUserDetails currentUser, Long projectId,
+                                                   BigDecimal amount, Long relatedReportId) {
         CarbonNeutralProject project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new BusinessException(3002, "项目不存在"));
 
@@ -301,6 +328,26 @@ public class CarbonNeutralProjectService {
         BigDecimal available = project.getIssuedCredits().subtract(project.getUsedCredits());
         if (available.compareTo(amount) < 0) {
             throw new BusinessException(3004, "可用碳信用不足");
+        }
+
+        // 关联报告时校验抵扣上限：不允许抵扣超过该报告的实际缺口
+        if (relatedReportId != null) {
+            CarbonReport report = carbonReportRepository.findByIdAndDeletedFalse(relatedReportId)
+                    .orElseThrow(() -> new BusinessException(3002, "碳报告不存在: " + relatedReportId));
+            BigDecimal gap = currentShortfall(report);
+            if (gap.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BusinessException(3005, "该报告没有超排缺口，无需抵扣");
+            }
+            if (amount.compareTo(gap) > 0) {
+                throw new BusinessException(3005,
+                        String.format("抵扣量超过缺口：当前缺口 %s 吨，本次抵扣 %s 吨",
+                                gap.toPlainString(), amount.toPlainString()));
+            }
+            report.setShortfallOffset(nz(report.getShortfallOffset()).add(amount));
+            carbonReportRepository.save(report);
+            log.info("Shortfall offset: report={}, amount={}, remaining={}",
+                    relatedReportId, amount.toPlainString(),
+                    currentShortfall(report).toPlainString());
         }
 
         project.setUsedCredits(project.getUsedCredits().add(amount));
@@ -713,5 +760,28 @@ public class CarbonNeutralProjectService {
         }
 
         return context.userRealNamesById().get(verifierUserId);
+    }
+
+    /**
+     * 某报告当前剩余的超排缺口。
+     *
+     * <pre>
+     * 缺口 = scope1Emission − quotaAllocatedAmount − shortfallOffset
+     * </pre>
+     * 未结算（配额为空）或已抵扣完时返回 0。
+     */
+    public BigDecimal currentShortfall(CarbonReport report) {
+        BigDecimal allocated = report.getQuotaAllocatedAmount();
+        if (allocated == null) {
+            return BigDecimal.ZERO; // 未结算的报告判不了缺口
+        }
+        BigDecimal gap = nz(report.getScope1Emission())
+                .subtract(allocated)
+                .subtract(nz(report.getShortfallOffset()));
+        return gap.compareTo(BigDecimal.ZERO) > 0 ? gap : BigDecimal.ZERO;
+    }
+
+    private static BigDecimal nz(BigDecimal v) {
+        return v == null ? BigDecimal.ZERO : v;
     }
 }
