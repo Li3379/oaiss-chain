@@ -59,6 +59,7 @@ public class AdminController {
     private final CreditScoreService creditScoreService;
     private final ChainReconciliationService chainReconciliationService;
     private final com.oaiss.chain.service.IndustryBenchmarkService industryBenchmarkService;
+    private final com.oaiss.chain.service.QuotaAllocationService quotaAllocationService;
 
     /**
      * 【业务功能】：分页多条件查询系统全量用户列表（支持按角色、启用状态、用户名检索）
@@ -650,6 +651,34 @@ public class AdminController {
     public ApiResponse<Void> deleteBenchmark(
             @Parameter(description = "基准值主键", required = true, example = "1") @PathVariable Long id) {
         industryBenchmarkService.delete(id);
+        return ApiResponse.success(null);
+    }
+
+    // ==================== 配额冲正：失败重试 ====================
+
+    /**
+     * 【业务功能】：冲正失败重试（回收已发放但未收回的配额）
+     * 【对应前端页面】：views/admin/ChainOps.vue（配额冲正待办区块）
+     * 【可见UI操作】：列表操作列点击【重试冲正】
+     *
+     * <p><b>为什么需要这个入口</b>：{@code CarbonService.revokeQuietly} 在冲正失败时
+     * 把报告置为 {@code REVOKE_FAILED} 并记日志，但全仓此前**没有任何重试入口**——
+     * 这意味着「报告已驳回、配额却仍留在企业账上」的状态会永久卡住。
+     * 实测库中报告 263 就处于该状态（已发放 985.8024 吨未收回）。</p>
+     *
+     * <p>只接受 {@code REVOKE_FAILED}（以及幂等的 {@code ALLOCATED}）状态；
+     * 冲正本身有 protecting 条件（已动用/存在冻结配额时拒绝），此处不绕过它们。</p>
+     */
+    @AuditLog(module = "配额冲正", action = "RETRY_REVOKE", description = "重试配额冲正")
+    @PostMapping("/quota/{reportId}/revoke-retry")
+    @Operation(summary = "重试配额冲正",
+            description = "对 REVOKE_FAILED 状态的报告重新执行冲正，回收已发放配额")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ApiResponse<Void> retryQuotaRevoke(
+            @Parameter(description = "碳报告主键", required = true, example = "263")
+            @PathVariable Long reportId,
+            @Parameter(hidden = true) @AuthenticationPrincipal JwtUserDetails currentUser) {
+        quotaAllocationService.revokeForReport(reportId, currentUser.getUserId());
         return ApiResponse.success(null);
     }
 }

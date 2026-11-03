@@ -1,6 +1,6 @@
 #!/bin/bash
-# 05-04: Blockchain Explorer - Status/Blocks/Transactions mock data + format validation
-# Requirements: BLOCK-01, BLOCK-02, BLOCK-03
+# 05-04: Blockchain Explorer - Status/Blocks/Transactions + admin chain ops
+# Requirements: BLOCK-01, BLOCK-02, BLOCK-03, ADMIN-CHAIN-01/02
 #
 # Required seed data:
 #   - Users: admin (password from TEST_PASSWORD env, default: admin123)
@@ -15,7 +15,7 @@ echo "=== 05-04: Blockchain Explorer (BLOCK-01~03) ==="
 echo ""
 
 # --- Authentication (WR-01: validate tokens) ---
-echo "[1/7] Authenticating..."
+echo "[1/9] Authenticating..."
 
 RESP_ADMIN=$(login_user "admin")
 TOKEN_ADMIN=$(extract_token "$RESP_ADMIN" "admin")
@@ -23,7 +23,7 @@ echo "  admin token: ${TOKEN_ADMIN:0:20}..."
 echo ""
 
 # --- BLOCK-01: Connection status ---
-echo "[2/7] BLOCK-01: Blockchain connection status..."
+echo "[2/9] BLOCK-01: Blockchain connection status..."
 
 RESP_STATUS=$(curl -s "$BASE_URL/blockchain/status" \
     -H "Authorization: Bearer $TOKEN_ADMIN")
@@ -49,7 +49,7 @@ fi
 echo ""
 
 # --- BLOCK-02: Latest blocks ---
-echo "[3/7] BLOCK-02: Latest blocks..."
+echo "[3/9] BLOCK-02: Latest blocks..."
 
 RESP_BLOCKS=$(curl -s "$BASE_URL/blockchain/blocks/latest?page=1&size=5" \
     -H "Authorization: Bearer $TOKEN_ADMIN")
@@ -96,7 +96,7 @@ fi
 echo ""
 
 # --- Block detail (IN-05: track SKIP counter) ---
-echo "[4/7] BLOCK-02: Block detail..."
+echo "[4/9] BLOCK-02: Block detail..."
 
 if [ -n "$FIRST_BLOCK" ]; then
     RESP_BLOCK_DETAIL=$(curl -s "$BASE_URL/blockchain/block/$FIRST_BLOCK" \
@@ -113,7 +113,7 @@ fi
 echo ""
 
 # --- BLOCK-03: Transactions ---
-echo "[5/7] BLOCK-03: Transaction list..."
+echo "[5/9] BLOCK-03: Transaction list..."
 
 RESP_TXS=$(curl -s "$BASE_URL/blockchain/transactions?page=1&size=5" \
     -H "Authorization: Bearer $TOKEN_ADMIN")
@@ -145,31 +145,81 @@ else
 fi
 echo ""
 
-# --- Transaction detail (IN-05: track SKIP counter) ---
-echo "[6/7] BLOCK-03: Transaction detail..."
+# --- Report on-chain snapshot (BLOCK-04; replaces the removed detail endpoint) ---
+# 2026-11-02 同步：/blockchain/transaction/{txHash} 详情端点已随
+# Blockchain.vue 交易哈希查询面板一并移除。链上数据的可读入口改为
+# /blockchain/report/{reportId}（读回 v2 快照，用于与本地库对账）。
+echo "[6/9] BLOCK-04: Report on-chain snapshot..."
 
-if [ -n "$FIRST_TX" ]; then
-    RESP_TX_DETAIL=$(curl -s "$BASE_URL/blockchain/transaction/$FIRST_TX" \
-        -H "Authorization: Bearer $TOKEN_ADMIN")
-    echo "  Transaction detail response: $(echo "$RESP_TX_DETAIL" | head -c 400)"
+SNAPSHOT_REPORT_ID=""
+SNAPSHOT_PROBE=$(curl -s "$BASE_URL/blockchain/report/1" -H "Authorization: Bearer $TOKEN_ADMIN")
+# 报告 1 未必上链过，逐个探测最近若干 ID 直到命中一条真实快照
+for rid in 1 2 3 4 5 27 100 200; do
+    PROBE=$(curl -s "$BASE_URL/blockchain/report/$rid" -H "Authorization: Bearer $TOKEN_ADMIN")
+    if echo "$PROBE" | grep -q '"code":200'; then
+        SNAPSHOT_REPORT_ID="$rid"
+        SNAPSHOT_PROBE="$PROBE"
+        break
+    fi
+done
 
-    assert_code_200 "Transaction detail returns 200" "$RESP_TX_DETAIL"
-
-    # Check status field (mock transactions should have VALID status)
-    assert_contains "Transaction has status VALID" "$RESP_TX_DETAIL" 'VALID'
-else
-    TEST_ID=$((TEST_ID + 1))
+TEST_ID=$((TEST_ID + 1))
+if [ -z "$SNAPSHOT_REPORT_ID" ]; then
+    echo "  [SKIP] Test $TEST_ID: no report with an on-chain v2 snapshot reachable"
     SKIP=$((SKIP + 1))
-    echo "  [SKIP] Test $TEST_ID: No txHash available for detail query"
+else
+    echo "  Snapshot response (report $SNAPSHOT_REPORT_ID): $(echo "$SNAPSHOT_PROBE" | head -c 300)"
+    echo "  [PASS] Test $TEST_ID: On-chain snapshot readable for report $SNAPSHOT_REPORT_ID"
+    PASS=$((PASS + 1))
+
+    TEST_ID=$((TEST_ID + 1))
+    if echo "$SNAPSHOT_PROBE" | grep -q 'schemaVersion'; then
+        echo "  [PASS] Test $TEST_ID: Snapshot carries schemaVersion marker"
+        PASS=$((PASS + 1))
+    else
+        echo "  [SKIP] Test $TEST_ID: snapshot without schemaVersion (v1 record)"
+        SKIP=$((SKIP + 1))
+    fi
 fi
 echo ""
 
 # --- Pagination check ---
-echo "[7/7] Pagination: page=2&size=2..."
+echo "[7/9] Pagination: page=2&size=2..."
 
 RESP_PAGE2=$(curl -s "$BASE_URL/blockchain/transactions?page=2&size=2" \
     -H "Authorization: Bearer $TOKEN_ADMIN")
 assert_code_200 "Pagination returns 200" "$RESP_PAGE2"
+echo ""
+
+# --- ADMIN chain ops: reconciliation (added 2026-10-31, page /admin/blockchain) ---
+echo "[8/9] ADMIN-CHAIN-01: Chain reconciliation..."
+
+RESP_RECON=$(curl -s "$BASE_URL/admin/blockchain/reconciliation?page=1&size=10" \
+    -H "Authorization: Bearer $TOKEN_ADMIN")
+echo "  Reconciliation response: $(echo "$RESP_RECON" | head -c 400)"
+
+assert_code_200 "Reconciliation returns 200" "$RESP_RECON"
+assert_contains "Reconciliation has summary counters" "$RESP_RECON" '"checkedGlobal"'
+assert_contains "Reconciliation has detail rows" "$RESP_RECON" '"details"'
+TEST_ID=$((TEST_ID + 1))
+if echo "$RESP_RECON" | grep -qE 'MATCHED|MISSING_ON_CHAIN|CONTENT_MISMATCH|UNVERIFIABLE'; then
+    echo "  [PASS] Test $TEST_ID: Reconciliation classifies rows"
+    PASS=$((PASS + 1))
+else
+    echo "  [SKIP] Test $TEST_ID: no classified rows yet (empty ledger slice)"
+    SKIP=$((SKIP + 1))
+fi
+echo ""
+
+# --- ADMIN chain ops: dead-letter queue (added 2026-10-31) ---
+echo "[9/9] ADMIN-CHAIN-02: Dead-letter queue..."
+
+RESP_DEAD=$(curl -s "$BASE_URL/admin/outbox/dead-letters?page=1&size=10" \
+    -H "Authorization: Bearer $TOKEN_ADMIN")
+echo "  Dead-letter response: $(echo "$RESP_DEAD" | head -c 400)"
+
+assert_code_200 "Dead-letter list returns 200" "$RESP_DEAD"
+assert_contains "Dead-letter list is paginated" "$RESP_DEAD" '"content"'
 echo ""
 
 # --- Summary ---

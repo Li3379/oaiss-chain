@@ -30,12 +30,17 @@ class MarketService:
     def __init__(self) -> None:
         self.model_version = "1.0.0"
 
-    def predict(self, request: MarketForecastRequest) -> MarketForecastResponse:
+    def predict(
+        self, request: MarketForecastRequest, include_volumes: bool = False
+    ) -> MarketForecastResponse:
         """Generate carbon market price forecast using Prophet + XGBoost.
 
         Args:
             request: Market forecast request with historical dates, prices,
                      volumes, and forecast horizon.
+            include_volumes: True 时一并返回 XGBoost 的成交量预测。
+                只有 `/predict/market/supply-demand` 需要；价格类端点
+                传 False 以免把成交量混进价格语义。
 
         Returns:
             MarketForecastResponse with forecast dates, prices, confidence
@@ -60,20 +65,22 @@ class MarketService:
 
         # XGBoost volume forecast.
         #
-        # 注意：该结果当前**没有出现在响应里**——MarketForecastResponse 只有
-        # forecast_prices / lower_bound / upper_bound / trend，没有成交量字段。
-        # 保留计算是为了后续真正把成交量信号接入响应；用下划线前缀标明
-        # 「有意暂存、尚未对外」，避免被误读成遗漏。
-        _forecast_volumes = self._xgboost_forecast(volumes, horizon)
+        # 历史实现算完即弃（`_forecast_volumes`），导致「供需预测」端点
+        # 返回的其实是价格预测——名字与结果不符。现在成交量真正进入响应，
+        # 由 include_volumes 控制：只有 supply-demand 端点需要它。
+        forecast_volumes = (
+            self._xgboost_forecast(volumes, horizon) if include_volumes else []
+        )
 
         # Determine trend direction
         trend = self._classify_trend(forecast_prices)
 
         duration = time.time() - start_time
         logger.info(
-            "Market prediction completed: trend=%s, horizon=%d, duration=%.2fs",
+            "Market prediction completed: trend=%s, horizon=%d, volumes=%s, duration=%.2fs",
             trend,
             horizon,
+            "included" if forecast_volumes else "omitted",
             duration,
         )
 
@@ -84,6 +91,8 @@ class MarketService:
             upper_bound=upper_bound,
             trend=trend,
             model_version=self.model_version,
+            forecast_volumes=forecast_volumes,
+            forecast_volume_unit="tCO2e" if forecast_volumes else None,
         )
 
     def _validate_input(self, request: MarketForecastRequest) -> None:

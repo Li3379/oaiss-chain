@@ -15,7 +15,6 @@
  *   - ThirdPartyController:
  *     * GET /api/v1/third-party/statistics     -> getStatistics() 监管宏观统计指标（含交易维度聚合）
  *     * GET /api/v1/third-party/org-info       -> getOrgInfo() 获取监管机构档案
- *     * PUT /api/v1/third-party/contact        -> updateContact() 更新监管机构联系人
  *     * GET /api/v1/third-party/carbon-reports -> getCarbonReports() 穿透查询企业碳报告
  *   - TradeController:
  *     * GET /api/v1/trade/list                 -> listTrades() 穿透查询全市场交易流水
@@ -25,7 +24,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CircleCheck, Clock, DataAnalysis, Money, OfficeBuilding, TrendCharts, Warning } from '@element-plus/icons-vue'
-import { getCarbonReports, getOrgInfo, getStatistics, updateContact } from '../../api/thirdParty'
+import { getCarbonReports, getOrgInfo, getStatistics } from '../../api/thirdParty'
 import { listTrades } from '../../api/trade'
 import { listFindings, resolveFinding, type RegulatoryFindingRecord } from '../../api/regulatoryFinding'
 import { formatDateTime, formatNumber } from '../../utils/format'
@@ -51,7 +50,6 @@ const statistics = ref<ThirdPartyStatistics>({
 
 const orgInfo = ref<ThirdPartyOrg | null>(null)
 const orgLoading = ref(false)
-const savingContact = ref(false)
 
 const searchForm = reactive<{
   enterpriseId: string
@@ -61,11 +59,6 @@ const searchForm = reactive<{
   enterpriseId: '',
   keyword: '',
   status: '',
-})
-
-const contactForm = reactive({
-  contactPerson: '',
-  contactPhone: '',
 })
 
 const approvalRate = computed(() => {
@@ -160,8 +153,6 @@ const loadOrgInfo = async () => {
     orgLoading.value = true
     const result = await getOrgInfo()
     orgInfo.value = result
-    contactForm.contactPerson = result?.contactPerson || ''
-    contactForm.contactPhone = result?.contactPhone || ''
   } catch {
     orgInfo.value = null
     ElMessage.error(t('monitor.loadOrgFailed'))
@@ -205,42 +196,6 @@ const onReset = () => {
   loadReports()
 }
 
-const saveContact = async () => {
-  const contactPerson = contactForm.contactPerson.trim()
-  const contactPhone = contactForm.contactPhone.trim()
-
-  if (!contactPerson || !contactPhone) {
-    ElMessage.warning(t('monitor.contactSaveFailed'))
-    return
-  }
-
-  if (!/^\d{7,20}$/.test(contactPhone)) {
-    ElMessage.warning(t('monitor.contactSaveFailed'))
-    return
-  }
-
-  try {
-    savingContact.value = true
-    await updateContact({
-      contactPerson,
-      contactPhone,
-    })
-    ElMessage.success(t('monitor.contactSaveSuccess'))
-    await loadOrgInfo()
-  } catch (error: unknown) {
-    const maybeError = error as {
-      response?: { data?: { data?: string[]; message?: string } }
-      message?: string
-    }
-    const backendMessage =
-      maybeError?.response?.data?.data?.[0] ||
-      maybeError?.response?.data?.message ||
-      maybeError?.message
-    ElMessage.error(backendMessage || t('monitor.contactSaveFailed'))
-  } finally {
-    savingContact.value = false
-  }
-}
 
 const onSizeChange = (size: number) => {
   pageSize.value = size
@@ -452,20 +407,8 @@ onMounted(() => {
           <div><strong>{{ t('monitor.contactPerson') }}:</strong> {{ orgInfo.contactPerson || '-' }}</div>
           <div><strong>{{ t('monitor.contactPhone') }}:</strong> {{ orgInfo.contactPhone || '-' }}</div>
         </div>
-
-        <el-form :inline="true" class="contact-form">
-          <el-form-item :label="t('monitor.contactPerson')">
-            <el-input v-model="contactForm.contactPerson" />
-          </el-form-item>
-          <el-form-item :label="t('monitor.contactPhone')">
-            <el-input v-model="contactForm.contactPhone" />
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" :loading="savingContact" @click="saveContact">
-              {{ t('common.save') }}
-            </el-button>
-          </el-form-item>
-        </el-form>
+        <!-- 联系人编辑表单已移除：监管角色按方案 A 定稿为「只读监督 + 定期核查」，
+             不参与任何业务写。修改联系方式属平台运维职责，由管理员承担。 -->
       </div>
     </DataPanel>
 

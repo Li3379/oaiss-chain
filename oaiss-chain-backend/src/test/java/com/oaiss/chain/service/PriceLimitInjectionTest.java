@@ -61,19 +61,15 @@ class PriceLimitInjectionTest {
     }
 
     @Test
-    @DisplayName("AC-10：TradeService 的两个写入口都调用了限价校验")
+    @DisplayName("AC-10：TradeService 的 P2P 写入口调用了限价校验")
     void tradeService_bothEntryPointsValidate() {
         String src = readSource(TRADE_SERVICE);
 
-        List<String> entryPoints = new ArrayList<>();
-        entryPoints.add("public TradeResponse createP2PTrade(");
-        entryPoints.add("public TradeResponse createAuctionOrder(");
-
-        for (String sig : entryPoints) {
-            String body = methodBody(src, sig);
-            assertTrue(body.contains("priceLimitService.validate("),
-                    sig + " 的方法体内缺少 priceLimitService.validate 调用");
-        }
+        // W2：createAuctionOrder 已删除（拍卖统一走 DoubleAuctionService 的 AuctionOrder 单轨），
+        // 此处只校验仍存在的 P2P 入口。
+        String body = methodBody(src, "public TradeResponse createP2PTrade(");
+        assertTrue(body.contains("priceLimitService.validate("),
+                "createP2PTrade 的方法体内缺少 priceLimitService.validate 调用");
     }
 
     @Test
@@ -94,10 +90,6 @@ class PriceLimitInjectionTest {
         String p2p = methodBody(src, "public TradeResponse createP2PTrade(");
         assertTrue(p2p.indexOf("priceLimitService.validate(") < p2p.indexOf("setCarbonTradable("),
                 "createP2PTrade：限价校验必须早于 setCarbonTradable（冻结）");
-
-        String auction = methodBody(src, "public TradeResponse createAuctionOrder(");
-        assertTrue(auction.indexOf("priceLimitService.validate(") < auction.indexOf("setCarbonTradable("),
-                "createAuctionOrder：限价校验必须早于 setCarbonTradable（冻结）");
     }
 
     @Test

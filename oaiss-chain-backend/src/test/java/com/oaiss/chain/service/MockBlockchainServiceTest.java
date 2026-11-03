@@ -27,7 +27,7 @@ class MockBlockchainServiceTest {
     }
 
     @Test
-    @DisplayName("测试链码调用")
+    @DisplayName("W0：Mock 模式不得伪造交易哈希（历史上 tx_mock_ 会被当成真实存证）")
     void testInvokeChaincode() {
         String txHash = blockchainService.invokeChaincode(
                 "carbon-channel",
@@ -36,9 +36,9 @@ class MockBlockchainServiceTest {
                 "arg1", "arg2"
         );
 
-        assertNotNull(txHash);
-        assertTrue(txHash.startsWith("tx_mock_"));
-        assertTrue(txHash.contains("_"));
+        // 语义已反转：此前断言 txHash 以 tx_mock_ 开头，等于把「伪造存证」写进契约。
+        // 现在必须断言 null——调用方据此让报告停留在「审核通过」而非「已上链」。
+        assertNull(txHash, "Mock 模式必须不产出哈希，否则会污染 blockchain_tx_hash");
     }
 
     @Test
@@ -57,27 +57,25 @@ class MockBlockchainServiceTest {
     }
 
     @Test
-    @DisplayName("测试碳报告上链")
+    @DisplayName("W0：碳报告上链不产出哈希")
     void testCommitReportToChain() {
         Long reportId = 1L;
         String reportData = "{\"reportNo\":\"CR20240101001\",\"totalEmission\":1000.00}";
 
         String txHash = blockchainService.commitReportToChain(reportId, reportData);
 
-        assertNotNull(txHash);
-        assertTrue(txHash.startsWith("tx_mock_"));
+        assertNull(txHash, "Mock 模式不产出 txHash，报告应停留 APPROVED 而非 ON_CHAIN");
     }
 
     @Test
-    @DisplayName("测试交易记录上链")
+    @DisplayName("W0：交易记录上链不产出哈希")
     void testCommitTradeToChain() {
         Long tradeId = 1L;
         String tradeData = "{\"tradeNo\":\"TX20240101001\",\"quantity\":100.00}";
 
         String txHash = blockchainService.commitTradeToChain(tradeId, tradeData);
 
-        assertNotNull(txHash);
-        assertTrue(txHash.startsWith("tx_mock_"));
+        assertNull(txHash, "Mock 模式不产出 txHash，避免 trade 记录被误认为已存证");
     }
 
     @Test
@@ -129,16 +127,14 @@ class MockBlockchainServiceTest {
     }
 
     @Test
-    @DisplayName("测试交易列表分页")
+    @DisplayName("W0：链上交易列表返回空页而非编造流水")
     void testListTransactions() {
         Page<Map<String, Object>> page = blockchainService.listTransactions(2, 3);
 
-        assertEquals(3, page.getContent().size());
-        assertEquals(100, page.getTotalElements());
-        assertEquals(1, page.getNumber());
-        assertEquals(3, page.getSize());
-        assertTrue(page.getContent().get(0).containsKey("txHash"));
-        assertTrue(page.getContent().get(0).containsKey("blockNumber"));
+        // 语义已反转：历史实现编造 size 条 tx_mock_ 流水、总数恒为 100，
+        // 区块链浏览器在 Mock 模式下因此显示一屏假交易，演示时会被当成真实存证核对。
+        assertTrue(page.getContent().isEmpty(), "Mock 模式必须无链上数据，不得编造流水");
+        assertEquals(0, page.getTotalElements());
     }
 
     @Test

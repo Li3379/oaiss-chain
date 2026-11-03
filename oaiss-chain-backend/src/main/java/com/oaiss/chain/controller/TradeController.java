@@ -77,44 +77,6 @@ public class TradeController {
     }
 
     /**
-     * 【业务功能】：发起公开市场挂牌拍卖订单
-     * 【对应前端页面】：views/enterprise/TradingMarket.vue (/enterprise/trading/market)
-     * 【对应前端API】：api/trade.ts -> createAuctionTrade()
-     * 【可见UI操作】：在交易市场点击【挂牌出让】或【挂牌求购】按钮
-     */
-    @AuditLog(module = "碳交易", action = "创建拍卖挂单", description = "碳交易 创建拍卖挂单")
-    @PostMapping("/auction")
-    @Operation(
-        summary = "创建拍卖挂单", 
-        description = "创建碳配额拍卖挂单。卖方挂出碳配额，买方竞价购买。",
-        security = @SecurityRequirement(name = "Bearer Authentication")
-    )
-    @ApiResponses(value = {
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(
-            responseCode = "200", 
-            description = "挂单创建成功",
-            content = @Content(mediaType = "application/json", 
-                schema = @Schema(implementation = TradeResponse.class))
-        ),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(
-            responseCode = "400", 
-            description = "请求参数错误或碳配额不足"
-        ),
-        @io.swagger.v3.oas.annotations.responses.ApiResponse(
-            responseCode = "403", 
-            description = "无权限，仅企业用户可创建"
-        )
-    })
-    @PreAuthorize("hasRole('ENTERPRISE')")
-    @DataIsolation
-    public ApiResponse<TradeResponse> createAuctionOrder(
-            @Parameter(hidden = true) @AuthenticationPrincipal JwtUserDetails currentUser,
-            @Parameter(description = "拍卖挂单请求", required = true)
-            @Valid @RequestBody TradeRequest request) {
-        return ApiResponse.success(tradeService.createAuctionOrder(currentUser, request), "挂单创建成功");
-    }
-
-    /**
      * 【业务功能】：交易对手方确认成交，触发原子化配额划转与碳币资金结算
      * 【对应前端页面】：views/enterprise/TradingP2P.vue (/enterprise/trading/p2p), views/enterprise/OrdersManage.vue
      * 【对应前端API】：api/trade.ts -> confirmTrade()

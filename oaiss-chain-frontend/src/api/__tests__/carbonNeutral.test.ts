@@ -15,8 +15,6 @@ vi.mock('../request', () => ({
 }))
 
 import {
-  applyCertification,
-  completeCertification,
   createProject,
   getMyProjects,
   getPendingVerification,
@@ -25,12 +23,8 @@ import {
   reviewProject,
   startProject,
   submitProject,
-  submitVerification,
-  terminateProject,
-  updateMonitoring,
   updateProject,
   useCredits,
-  verifyProject,
 } from '../carbonNeutral'
 
 describe('carbonNeutral api contract', () => {
@@ -48,15 +42,9 @@ describe('carbonNeutral api contract', () => {
     expect(typeof updateProject).toBe('function')
     expect(typeof submitProject).toBe('function')
     expect(typeof startProject).toBe('function')
-    expect(typeof submitVerification).toBe('function')
-    expect(typeof updateMonitoring).toBe('function')
-    expect(typeof applyCertification).toBe('function')
-    expect(typeof terminateProject).toBe('function')
     expect(typeof getMyProjects).toBe('function')
     expect(typeof reviewProject).toBe('function')
-    expect(typeof verifyProject).toBe('function')
     expect(typeof useCredits).toBe('function')
-    expect(typeof completeCertification).toBe('function')
     expect(typeof getPendingVerification).toBe('function')
   })
 
@@ -85,40 +73,18 @@ describe('carbonNeutral api contract', () => {
     expect(requestMocks.putMock).toHaveBeenCalledWith('/carbon-neutral/42', { projectName: 'Updated' })
   })
 
-  it('forwards lifecycle actions to correct endpoints', async () => {
+  it('forwards the two retained lifecycle actions to correct endpoints', async () => {
+    // W6 收口：生命周期只保留「提交立项」与「启动实施」。
+    // 申请核证 / 申请认证 / 终止 的前端函数与后端端点均已移除，不再断言它们。
     await submitProject(1)
     await startProject(1)
-    await applyCertification(1, { certOrg: 'CNCA' })
-    await terminateProject(1, { reason: 'budget' })
 
     expect(requestMocks.postMock).toHaveBeenNthCalledWith(1, '/carbon-neutral/1/submit')
     expect(requestMocks.postMock).toHaveBeenNthCalledWith(2, '/carbon-neutral/1/start')
-    expect(requestMocks.postMock).toHaveBeenNthCalledWith(3, '/carbon-neutral/1/apply-certification', { certOrg: 'CNCA' })
-    expect(requestMocks.postMock).toHaveBeenNthCalledWith(4, '/carbon-neutral/1/terminate', { reason: 'budget' })
-  })
-
-  it('forwards verification and monitoring to correct endpoints', async () => {
-    // 后端 SubmitVerificationRequest 只接受 verifierId；核证结果走 verifyProject
-    await submitVerification(1, { verifierId: 4 })
-    await updateMonitoring(1, { monitoringData: { co2: 100 } })
-
-    expect(requestMocks.postMock).toHaveBeenCalledWith('/carbon-neutral/1/submit-verification', { verifierId: 4 })
-    expect(requestMocks.putMock).toHaveBeenCalledWith('/carbon-neutral/1/monitoring', { monitoringData: { co2: 100 } })
-  })
-
-  it('sends the certificate number required by the certify endpoint', async () => {
-    await completeCertification(1, { certNo: 'CERT-001' })
-
-    expect(requestMocks.postMock).toHaveBeenCalledWith('/carbon-neutral/1/certify', { certNo: 'CERT-001' })
   })
 
   it('rejects reviewProject when projectId is falsy', async () => {
     await expect(reviewProject(0 as unknown as number, { approved: true, comment: 'ok' }))
-      .rejects.toThrow('项目ID不能为空')
-  })
-
-  it('rejects verifyProject when projectId is missing', async () => {
-    await expect(verifyProject({ projectId: 0 } as import('../../types').ProjectVerificationRequest))
       .rejects.toThrow('项目ID不能为空')
   })
 
@@ -127,8 +93,4 @@ describe('carbonNeutral api contract', () => {
       .rejects.toThrow('项目ID不能为空')
   })
 
-  it('rejects completeCertification when projectId is falsy', async () => {
-    await expect(completeCertification(0 as unknown as number, { certNo: 'CERT-001' }))
-      .rejects.toThrow('项目ID不能为空')
-  })
 })

@@ -10,6 +10,7 @@ import com.oaiss.chain.entity.User;
 import com.oaiss.chain.exception.BusinessException;
 import com.oaiss.chain.repository.UserRepository;
 import com.oaiss.chain.security.JwtTokenProvider;
+import com.oaiss.chain.security.JwtUserDetails;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -76,6 +77,11 @@ class AdminControllerTest {
     // ——41 个用例一起红，报错指向「第九个构造参数没有候选 bean」。
     @MockBean
     private com.oaiss.chain.service.IndustryBenchmarkService industryBenchmarkService;
+
+    // W4b：新增 /admin/quota/{reportId}/revoke-retry 端点，构造器再多一个依赖。
+    // 同样的坑再踩一次：@WebMvcTest 的 bean 集合由构造器决定，漏了整类红。
+    @MockBean
+    private com.oaiss.chain.service.QuotaAllocationService quotaAllocationService;
 
     private User testUser1;
     private User testUser2;
@@ -883,5 +889,46 @@ class AdminControllerTest {
                 .andExpect(jsonPath("$.code").value(200));
 
         verify(creditScoreService, times(1)).restoreEnterpriseByUser(eq(7L), any());
+    }
+
+    // ==================== W4b：配额冲正重试 ====================
+
+    @Test
+    @DisplayName("配额冲正重试-成功调用冲正服务并传当前管理员 id")
+    void testRetryQuotaRevokeSuccess() throws Exception {
+        // 该端点是 AdminController 里唯一需要操作人 id 的（冲正要记 operatorId），
+        // 其它端点不取 principal，所以本类没有统一认证 setup，这里显式注入。
+        var admin = JwtUserDetails.builder().userId(1L).username("admin")
+                .roles(java.util.List.of("ADMIN"))
+                .build();
+        org.springframework.security.core.context.SecurityContextHolder.getContext()
+                .setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                        admin, null, admin.getAuthorities()));
+
+        mockMvc.perform(post("/admin/quota/263/revoke-retry"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+
+        verify(quotaAllocationService, times(1)).revokeForReport(eq(263L), eq(1L));
+    }
+
+    @Test
+    @DisplayName("配额冲正重试-冲正保护抛出时透传业务错误码")
+    void testRetryQuotaRevokeProtectionRejects() throws Exception {
+        var admin = JwtUserDetails.builder().userId(1L).username("admin")
+                .roles(java.util.List.of("ADMIN"))
+                .build();
+        org.springframework.security.core.context.SecurityContextHolder.getContext()
+                .setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                        admin, null, admin.getAuthorities()));
+
+        // 冲正本体有保护条件（已动用/存在冻结配额时拒绝），端点不得绕过，
+        // 只负责把错误原样透传给运维看到原因。
+        doThrow(new BusinessException(1001, "该企业存在冻结配额 155 吨（挂单待售中），不可冲正"))
+                .when(quotaAllocationService).revokeForReport(eq(262L), any());
+
+        mockMvc.perform(post("/admin/quota/262/revoke-retry"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(1001));
     }
 }

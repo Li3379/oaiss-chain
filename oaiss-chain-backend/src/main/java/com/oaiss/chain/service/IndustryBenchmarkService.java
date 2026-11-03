@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 行业基准值维护服务。
@@ -77,10 +78,10 @@ public class IndustryBenchmarkService {
         List<IndustryBenchmark> found = benchmarkRepository
                 .findByIndustryCodeAndBenchmarkYearAndDeletedFalse(
                         IndustryBenchmark.INDUSTRY_POWER, year);
-        java.util.Set<String> presentUnitTypes = found.stream()
+        Set<String> presentUnitTypes = found.stream()
                 .filter(b -> IndustryBenchmark.KIND_GENERATION.equals(b.getBenchmarkKind()))
                 .map(IndustryBenchmark::getUnitType)
-                .collect(java.util.stream.Collectors.toSet());
+                .collect(Collectors.toSet());
 
         List<String> missing = VALID_UNIT_TYPES.stream()
                 .filter(ut -> !presentUnitTypes.contains(ut))
@@ -130,9 +131,11 @@ public class IndustryBenchmarkService {
         BigDecimal old = existing.getBenchmarkValue();
         existing.setBenchmarkValue(newValue);
         IndustryBenchmark saved = benchmarkRepository.save(existing);
-        log.info("[BENCHMARK] 更新基准值 id={} {} {} {}: {} -> {}",
-                id, existing.getIndustryCode(), existing.getUnitType(),
-                existing.getBenchmarkYear(), old, newValue);
+        if (log.isInfoEnabled()) {
+            log.info("[BENCHMARK] 更新基准值 id={} {} {} {}: {} -> {}",
+                    id, existing.getIndustryCode(), existing.getUnitType(),
+                    existing.getBenchmarkYear(), old, newValue);
+        }
         return saved;
     }
 
@@ -149,8 +152,10 @@ public class IndustryBenchmarkService {
                         "基准值记录不存在: " + id));
         existing.setDeleted(true);
         benchmarkRepository.save(existing);
-        log.warn("[BENCHMARK] 软删除基准值 id={} {} {} {}", id,
-                existing.getIndustryCode(), existing.getUnitType(), existing.getBenchmarkYear());
+        if (log.isWarnEnabled()) {
+            log.warn("[BENCHMARK] 软删除基准值 id={} {} {} {}", id,
+                    existing.getIndustryCode(), existing.getUnitType(), existing.getBenchmarkYear());
+        }
     }
 
     // ==================== 内部方法 ====================

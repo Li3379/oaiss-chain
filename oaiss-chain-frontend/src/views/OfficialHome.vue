@@ -367,7 +367,14 @@ const heroBlockCount = computed(() => {
 
 const heroMetricItems = computed(() => [
   { value: heroBlockCount.value, label: t('officialHome.heroMetricBlocks') },
-  { value: formatNumber(marketOverview.value?.totalCarbonReports ?? 41), label: t('officialHome.heroMetricReports') },
+  // 无数据时显示「—」而非编造 41：官网首页的数字是访客第一眼看到的东西，
+  // 用一个固定的假值会让「已有 41 份报告」看起来像真实统计。
+  {
+    value: marketOverview.value?.totalCarbonReports != null
+      ? formatNumber(marketOverview.value.totalCarbonReports)
+      : '—',
+    label: t('officialHome.heroMetricReports'),
+  },
   { value: '4', label: t('officialHome.heroMetricRoles') },
 ])
 

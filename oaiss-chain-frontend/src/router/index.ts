@@ -108,12 +108,6 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'AI市场预测', roles: [ROLE.ENTERPRISE] },
       },
       {
-        path: 'enterprise/enterprise-inference',
-        name: 'EnterpriseEnterpriseInference',
-        component: () => import('../views/enterprise/EnterpriseInference.vue'),
-        meta: { title: 'AI企业推理', roles: [ROLE.ENTERPRISE] },
-      },
-      {
         path: 'enterprise/carbon-formula',
         name: 'EnterpriseCarbonFormula',
         component: () => import('../views/enterprise/CarbonFormulaCalculator.vue'),

@@ -97,6 +97,22 @@ public class SecurityStartupValidator {
     @Value("${ops.grafana.admin-password:}")
     private String grafanaAdminPassword;
 
+    /**
+     * 显式逃生门：允许在没有 fabric profile 的环境下启动。
+     *
+     * <p><b>为什么需要它</b>：{@code MockBlockchainService} 用 {@code @Profile("!fabric")} 生效，
+     * 意味着只要没激活 fabric 就会静默用假链——历史上这条路径往库里写入了 11 份
+     * {@code tx_mock_} 哈希的报告，而对账页把它们当成「已上链」。默认必须拒绝启动，
+     * 否则「全真」只是一句口号。</p>
+     *
+     * <p><b>为什么不能一刀切</b>：单元测试用 H2 跑，没有 Fabric 网络可用；
+     * 本地开发者做业务逻辑调试也不需要起整套 Fabric。所以保留一个**显式**开关：
+     * 必须由人主动设置 {@code OAISS_ALLOW_MOCK_CHAIN=true} 才放行，并且此时
+     * Mock 服务不再产出假哈希（报告停留在「审核通过」而非「已上链」）。</p>
+     */
+    @Value("${OAISS_ALLOW_MOCK_CHAIN:false}")
+    private boolean allowMockChain;
+
     private final Environment environment;
 
     public SecurityStartupValidator(Environment environment) {
@@ -247,9 +263,24 @@ public class SecurityStartupValidator {
                     + "Set SPRING_PROFILES_ACTIVE to include 'fabric' so production does not fall back to MockBlockchainService.");
         }
 
-        if (isProduction && !fabricProfileActive) {
-            throw new SecurityException("FATAL: SECURITY WARNING: Production/staging startup requires the Spring 'fabric' profile. "
-                    + "MockBlockchainService is only allowed in dev/test environments.");
+        if (!fabricProfileActive && !allowMockChain) {
+            // 非 fabric 且未显式放行：拒绝启动。
+            //
+            // 此前只有生产环境才拦（见下方 isProduction 分支的历史实现），
+            // 后果是 docker-compose 默认的 "docker" profile（不含 fabric）
+            // 会静默加载 MockBlockchainService，把 tx_mock_ 哈希写进库里，
+            // 而对账页把它们当作已上链——这正是「全真」要消除的假数据来源。
+            throw new SecurityException(
+                    "FATAL: 未激活 'fabric' profile，区块链将退化为 MockBlockchainService（伪造 tx_mock_ 哈希）。\n"
+                            + "  真实链上存证：在 SPRING_PROFILES_ACTIVE 中加入 'fabric'。\n"
+                            + "  仅本地开发/单元测试：显式设置 OAISS_ALLOW_MOCK_CHAIN=true（此模式下不再产出假哈希，"
+                            + "报告停留在「审核通过」而不标记为「已上链」）。");
+        }
+
+        if (!fabricProfileActive) {
+            log.warn("Mock chain mode active via OAISS_ALLOW_MOCK_CHAIN=true: "
+                    + "no tx hash will be produced and reports will stay in APPROVED state. "
+                    + "This mode must never be used for demonstration or production.");
         }
     }
 

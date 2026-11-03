@@ -92,47 +92,9 @@ export function startProject(projectId: number): Promise<void> {
   return request.post(`/carbon-neutral/${projectId}/start`)
 }
 
-/**
- * 【业务功能】：企业向第三方专业核证机构提交现场核查申请
- * 【对应前端页面】：CarbonNeutralDetail.vue, CarbonNeutral.vue
- * 【界面触发操作】：实施阶段完成周期监测后，点击【申请第三方核证】
- * 【后端对应端点】：CarbonNeutralProjectController -> POST /carbon-neutral/{id}/submit-verification
- * 注意：后端 SubmitVerificationRequest 只接收 verifierId（项目ID 走路径参数），缺失会 400。
- */
-export function submitVerification(projectId: number, data: SubmitVerificationRequest): Promise<void> {
-  return request.post(`/carbon-neutral/${projectId}/submit-verification`, data)
-}
 
-/**
- * 【业务功能】：录入或追加项目监测期实测数据（实测发电量、造林存活率、生物质利用量等）
- * 【对应前端页面】：CarbonNeutralDetail.vue
- * 【界面触发操作】：在“监测数据记录”区块点击【追加监测数据】录入并保存
- * 【后端对应端点】：CarbonNeutralProjectController -> PUT /carbon-neutral/{id}/monitoring
- */
-export function updateMonitoring(projectId: number, data: { monitoringData: Record<string, unknown> | string }): Promise<void> {
-  return request.put(`/carbon-neutral/${projectId}/monitoring`, data)
-}
 
-/**
- * 【业务功能】：申请官方机构进行项目最终认证与减排量（碳信用）签发
- * 【对应前端页面】：CarbonNeutralDetail.vue
- * 【界面触发操作】：核证合格后，点击【申请签发碳信用】
- * 【后端对应端点】：CarbonNeutralProjectController -> POST /carbon-neutral/{id}/apply-certification
- * 注意：后端 ApplyCertificationRequest.certOrg 为 @NotBlank，缺失会 400。
- */
-export function applyCertification(projectId: number, data: ApplyCertificationRequest): Promise<void> {
-  return request.post(`/carbon-neutral/${projectId}/apply-certification`, data)
-}
 
-/**
- * 【业务功能】：非正常终止或废止碳中和项目（不可抗力或未达标）
- * 【对应前端页面】：CarbonNeutralDetail.vue
- * 【界面触发操作】：点击【终止项目】按钮，填写终止原因并确认
- * 【后端对应端点】：CarbonNeutralProjectController -> POST /carbon-neutral/{id}/terminate
- */
-export function terminateProject(projectId: number, data: { reason: string }): Promise<void> {
-  return request.post(`/carbon-neutral/${projectId}/terminate`, data)
-}
 
 /**
  * 【业务功能】：企业用户查询自身申报的所有碳中和项目列表
@@ -155,16 +117,6 @@ export function reviewProject(projectId: number, data: { approved: boolean; comm
   return request.post(`/carbon-neutral/${projectId}/review`, data)
 }
 
-/**
- * 【业务功能】：第三方核证机构录入核证减排量结果并出具核证结论
- * 【对应前端页面】：ProjectReview.vue (/auditor/project/review)
- * 【界面触发操作】：核查员录入实际核减排量、核证机构信息并点击【提交核证结论】
- * 【后端对应端点】：CarbonNeutralProjectController -> POST /carbon-neutral/verify
- */
-export function verifyProject(data: ProjectVerificationRequest): Promise<void> {
-  if (!data?.projectId) return Promise.reject(new Error('项目ID不能为空'))
-  return request.post('/carbon-neutral/verify', data)
-}
 
 /**
  * 【业务功能】：企业使用/注销项目签发的碳信用抵消自身的超额碳排放
@@ -177,17 +129,6 @@ export function useCredits(projectId: number, data: { amount: number }): Promise
   return request.post(`/carbon-neutral/${projectId}/use-credits`, data)
 }
 
-/**
- * 【业务功能】：官方主管机构完成最终认证，向项目签发正式减排量资产证书
- * 【对应前端页面】：ProjectReview.vue, CertificateManage.vue
- * 【界面触发操作】：点击【完成最终认证签发】
- * 【后端对应端点】：CarbonNeutralProjectController -> POST /carbon-neutral/{id}/certify
- * 注意：后端 CompleteCertificationRequest.certNo 为 @NotBlank，缺失会 400。
- */
-export function completeCertification(projectId: number, data: CompleteCertificationRequest): Promise<void> {
-  if (!projectId) return Promise.reject(new Error('项目ID不能为空'))
-  return request.post(`/carbon-neutral/${projectId}/certify`, data)
-}
 
 /**
  * 【业务功能】：查询待第三方核证机构处理的碳中和项目工单池

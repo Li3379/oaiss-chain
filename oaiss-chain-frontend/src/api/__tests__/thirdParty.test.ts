@@ -12,7 +12,7 @@ vi.mock('../request', () => ({
   },
 }))
 
-import { getCarbonReports, getOrgInfo, getStatistics, updateContact } from '../thirdParty'
+import { getCarbonReports, getOrgInfo, getStatistics } from '../thirdParty'
 
 describe('thirdParty api contract', () => {
   beforeEach(() => {
@@ -25,7 +25,6 @@ describe('thirdParty api contract', () => {
     expect(typeof getCarbonReports).toBe('function')
     expect(typeof getStatistics).toBe('function')
     expect(typeof getOrgInfo).toBe('function')
-    expect(typeof updateContact).toBe('function')
   })
 
   it('forwards GET requests to correct endpoints', async () => {
@@ -40,20 +39,4 @@ describe('thirdParty api contract', () => {
     expect(requestMocks.getMock).toHaveBeenNthCalledWith(3, '/third-party/org-info')
   })
 
-  it('forwards updateContact with params', async () => {
-    await updateContact({ contactPerson: 'Zhang', contactPhone: '13800000000' })
-    expect(requestMocks.putMock).toHaveBeenCalledWith('/third-party/contact', null, {
-      params: { contactPerson: 'Zhang', contactPhone: '13800000000' },
-    })
-  })
-
-  it('rejects updateContact without contact person', async () => {
-    await expect(updateContact({ contactPerson: '', contactPhone: '13800000000' }))
-      .rejects.toThrow('Contact person is required')
-  })
-
-  it('rejects updateContact without contact phone', async () => {
-    await expect(updateContact({ contactPerson: 'Zhang', contactPhone: '' }))
-      .rejects.toThrow('Contact phone is required')
-  })
 })

@@ -45,24 +45,17 @@ export function getMyTrades(params?: MyTradesQuery): Promise<TradePageResult> {
 }
 
 /**
- * 【业务功能】：发起公开市场挂牌拍卖订单
- * 【对应前端页面】：TradingMarket.vue (/enterprise/trading/market)
- * 【界面触发操作】：在交易市场点击【挂牌出让】或【挂牌求购】
- * 【后端对应端点】：TradeController -> POST /trade/auction
- */
-export function createAuctionTrade(data: TradeRequest): Promise<TradeResponse> {
-  if (!data?.quantity || data.quantity <= 0) return Promise.reject(new Error('碳配额数量必须大于0'))
-  if (!data?.unitPrice || data.unitPrice <= 0) return Promise.reject(new Error('价格必须大于0'))
-  return request.post('/trade/auction', data)
-}
-
-/**
- * 【业务功能】：交易对手方确认成交，触发原子化配额划转与碳币资金结算
+ * 【业务功能】：交易对手方确认成交
+ *
+ * <p><b>返回值必须带回响应体</b>：W3 起 P2P 确认与拍卖同口径走风控分流，
+ * 命中则交易停在待审核、资产仍在冻结态。调用方需要读 {@code auditStatus}
+ * 才能区分「已完成」与「已提交审核」——返回 void 会让两种情况显示同一句话。</p>
+ *
  * 【对应前端页面】：TradingP2P.vue (/enterprise/trading/p2p), OrdersManage.vue
  * 【界面触发操作】：买方企业在收到的待确认转让订单卡片上点击【确认承接/支付】
  * 【后端对应端点】：TradeController -> POST /trade/{id}/confirm
  */
-export function confirmTrade(tradeId: number): Promise<void> {
+export function confirmTrade(tradeId: number): Promise<TradeResponse> {
   if (!tradeId) return Promise.reject(new Error('交易ID不能为空'))
   return request.post(`/trade/${tradeId}/confirm`)
 }

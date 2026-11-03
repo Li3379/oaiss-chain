@@ -66,6 +66,10 @@ class AdminControllerAdmissionTest {
     @MockBean
     private com.oaiss.chain.service.IndustryBenchmarkService industryBenchmarkService;
 
+    // W4b：构造器新增 QuotaAllocationService（冲正重试端点）。
+    @MockBean
+    private com.oaiss.chain.service.QuotaAllocationService quotaAllocationService;
+
     private EnterpriseAdmission testAdmission;
     private ReviewerQualification testQualification;
 

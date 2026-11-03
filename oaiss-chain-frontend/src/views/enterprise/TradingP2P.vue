@@ -270,8 +270,14 @@ const onConfirmTrade = async (row: TradeResponse) => {
       type: "warning",
     })
 
-    await confirmTrade(row.id)
-    ElMessage.success(t("tradingP2P.confirmSuccess"))
+    // W3：命中风控时交易停在待审核、资产仍在冻结态。
+    // 必须据此区分提示语——否则用户看到「交易完成」会以为配额与碳币已到账。
+    const result = await confirmTrade(row.id)
+    if (result?.auditStatus === 1) {
+      ElMessage.warning(t("tradingP2P.confirmPendingAudit"))
+    } else {
+      ElMessage.success(t("tradingP2P.confirmSuccess"))
+    }
     await loadTrades()
   } catch (error) {
     if (error !== "cancel") {

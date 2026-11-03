@@ -23,7 +23,6 @@ vi.mock('../../api/thirdParty', () => ({
     contactPerson: 'Alice',
     contactPhone: '13800138000',
   })),
-  updateContact: vi.fn(() => Promise.resolve()),
 }))
 
 vi.mock('../../api/trade', () => ({
@@ -51,7 +50,7 @@ vi.mock('element-plus', async (importOriginal) => {
 })
 
 import Monitor from '../third-party/Monitor.vue'
-import { getCarbonReports, getOrgInfo, getStatistics, updateContact } from '../../api/thirdParty'
+import { getCarbonReports, getOrgInfo, getStatistics } from '../../api/thirdParty'
 import { listTrades } from '../../api/trade'
 import { ElMessage } from 'element-plus'
 
@@ -136,9 +135,11 @@ describe('Monitor.vue', () => {
     const wrapper = mountComponent()
     await flushPromises()
 
+    // 联系人编辑表单移除后，筛选栏成为页面上**唯一**的输入区，
+    // 企业ID 与关键词分别是第 1、第 2 个输入框（此前是第 3、第 4 个）。
     const inputs = wrapper.findAll('input')
-    await inputs[2].setValue('12')
-    await inputs[3].setValue('annual')
+    await inputs[0].setValue('12')
+    await inputs[1].setValue('annual')
     await wrapper.find('select').setValue('3')
     ;(wrapper.vm as unknown as { onSearch: () => void }).onSearch()
     await flushPromises()
@@ -171,25 +172,6 @@ describe('Monitor.vue', () => {
     wrapper.unmount()
   })
 
-  it('saves contact info and refreshes org info on success', async () => {
-    const wrapper = mountComponent()
-    await flushPromises()
-
-    const inputs = wrapper.findAll('input')
-    await inputs[0].setValue('Bob')
-    await inputs[1].setValue('13900139000')
-    await wrapper.findAll('button')[0].trigger('click')
-    await flushPromises()
-
-    expect(updateContact).toHaveBeenCalledWith({
-      contactPerson: 'Bob',
-      contactPhone: '13900139000',
-    })
-    expect(ElMessage.success).toHaveBeenCalledWith('monitor.contactSaveSuccess')
-    expect(getOrgInfo).toHaveBeenCalledTimes(2)
-    wrapper.unmount()
-  })
-
   it('shows an error message when report loading fails', async () => {
     vi.mocked(getCarbonReports).mockRejectedValueOnce(new Error('network error'))
     const wrapper = mountComponent()
@@ -198,20 +180,6 @@ describe('Monitor.vue', () => {
     wrapper.unmount()
   })
 
-  it('blocks invalid contact submissions before calling the backend', async () => {
-    const wrapper = mountComponent()
-    await flushPromises()
-
-    const inputs = wrapper.findAll('input')
-    await inputs[0].setValue('')
-    await inputs[1].setValue('abc')
-    await wrapper.findAll('button')[0].trigger('click')
-    await flushPromises()
-
-    expect(updateContact).not.toHaveBeenCalled()
-    expect(ElMessage.warning).toHaveBeenCalledWith('monitor.contactSaveFailed')
-    wrapper.unmount()
-  })
 
   it('renders the regulator trade ledger with full trade detail columns', async () => {
     vi.mocked(listTrades).mockResolvedValueOnce({

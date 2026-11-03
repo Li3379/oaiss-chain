@@ -44,14 +44,3 @@ export function getOrgInfo(): Promise<ThirdPartyOrg> {
   return request.get('/third-party/org-info')
 }
 
-/**
- * 【业务功能】：修改第三方监管机构的联系人与应急联络电话
- * 【对应前端页面】：Monitor.vue (/third-party/monitor)
- * 【界面触发操作】：在“机构联系人”表单修改后点击【保存联系人】
- * 【后端对应端点】：ThirdPartyController -> PUT /third-party/contact
- */
-export function updateContact(data: { contactPerson: string; contactPhone: string }): Promise<void> {
-  if (!data?.contactPerson) return Promise.reject(new Error('Contact person is required'))
-  if (!data?.contactPhone) return Promise.reject(new Error('Contact phone is required'))
-  return request.put('/third-party/contact', null, { params: data })
-}

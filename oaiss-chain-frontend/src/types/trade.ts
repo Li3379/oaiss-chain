@@ -43,6 +43,13 @@ export interface TradeResponse {
   blockchainTxHash: string
   completedAt: string
   createdAt: string
+  /**
+   * 成交审核态：null/0=无需审核，1=待审核，2=已通过，3=已驳回。
+   *
+   * <p>W3 起 P2P 确认与拍卖同口径走风控分流：命中时交易停在待审核，
+   * 配额与碳币仍在冻结态。前端据此区分「已完成」与「已提交审核」。</p>
+   */
+  auditStatus?: number | null
 }
 
 export interface TradePageResult {

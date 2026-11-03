@@ -52,6 +52,13 @@ function readIfExists(p) {
  */
 const ATTR = (name) => new RegExp(`\\b${name}=['"]([^'"]+)['"]`, 'g')
 
+/** 本地时区的 YYYY-MM-DD（不用 toISOString，它是 UTC）。 */
+function localDate() {
+  const d = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
 function parsePmd(xml) {
   const total = (xml.match(/<violation\b/g) || []).length
   const byRule = {}
@@ -116,7 +123,9 @@ if (UPDATE) {
     pmd: current.pmd ?? baseline.pmd ?? 0,
     spotbugs: current.spotbugs ?? baseline.spotbugs ?? 0,
     spotbugsHigh: current.spotbugsHigh ?? baseline.spotbugsHigh ?? 0,
-    updatedAt: new Date().toISOString().slice(0, 10),
+    // 用本地日期而非 UTC：toISOString() 在 UTC+8 的凌晨会把日期算成前一天，
+    // 基线里的 updatedAt 因此整体偏一天，读的人会误判「昨天才收紧过」。
+    updatedAt: localDate(),
   }
   writeFileSync(BASELINE_PATH, `${JSON.stringify(next, null, 2)}\n`, 'utf8')
   console.log(`\n已收紧基线 → ${BASELINE_PATH}`)

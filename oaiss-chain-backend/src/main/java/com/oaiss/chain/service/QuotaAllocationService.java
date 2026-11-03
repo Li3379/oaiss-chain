@@ -109,7 +109,9 @@ public class QuotaAllocationService {
         // ---- 幂等：已发放直接返回既有结果 ----
         AllocationStateEnum state = AllocationStateEnum.fromCode(report.getAllocationState());
         if (state != null && state.isAllocated()) {
-            log.info("[QUOTA] 报告 {} 已发放过配额 {}，幂等跳过", reportId, report.getQuotaAllocatedAmount());
+            if (log.isInfoEnabled()) {
+                log.info("[QUOTA] 报告 {} 已发放过配额 {}，幂等跳过", reportId, report.getQuotaAllocatedAmount());
+            }
             return buildResult(report, report.getQuotaAllocatedAmount(), true);
         }
 
@@ -163,9 +165,13 @@ public class QuotaAllocationService {
         report.setAllocationSeq(seq);
         reportRepository.save(report);
 
-        log.info("[QUOTA] 报告 {} 发放配额 {} 吨（{} × {}，机组类型 {}，年度 {}，序号 {}）",
-                reportId, quota.toPlainString(), report.getOutputQuantity().toPlainString(),
-                benchmark.getBenchmarkValue().toPlainString(), unitType, year, seq);
+        // 参数含 toPlainString() 等调用，无论日志级别都会求值；
+        // 加守卫既满足 PMD GuardLogStatement，也避免高频路径上的无谓字符串化。
+        if (log.isInfoEnabled()) {
+            log.info("[QUOTA] 报告 {} 发放配额 {} 吨（{} × {}，机组类型 {}，年度 {}，序号 {}）",
+                    reportId, quota.toPlainString(), report.getOutputQuantity().toPlainString(),
+                    benchmark.getBenchmarkValue().toPlainString(), unitType, year, seq);
+        }
 
         return buildResult(report, quota, false);
     }
@@ -247,7 +253,9 @@ public class QuotaAllocationService {
         report.setQuotaUsedSnapshot(null);
         reportRepository.save(report);
 
-        log.info("[QUOTA] 报告 {} 冲正配额 {} 吨", reportId, amount.toPlainString());
+        if (log.isInfoEnabled()) {
+            log.info("[QUOTA] 报告 {} 冲正配额 {} 吨", reportId, amount.toPlainString());
+        }
     }
 
     /**

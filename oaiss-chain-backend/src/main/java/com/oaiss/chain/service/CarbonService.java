@@ -36,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -369,7 +370,7 @@ public class CarbonService {
             certificateGateService.assertReviewerQualifiedByUserId(currentUser.getUserId());
             Enterprise reviewerEnterprise = enterpriseRepository.findByUserId(currentUser.getUserId()).orElse(null);
             if (reviewerEnterprise != null && reviewerEnterprise.getId().equals(report.getEnterpriseId())) {
-                throw new com.oaiss.chain.exception.BusinessException(com.oaiss.chain.constant.ErrorCode.PERMISSION_DENIED, "审核回避原则：禁止审核本企业提交的碳报告");
+                throw new BusinessException(ErrorCode.PERMISSION_DENIED, "审核回避原则：禁止审核本企业提交的碳报告");
             }
         }
 
@@ -465,8 +466,8 @@ public class CarbonService {
                         com.oaiss.chain.entity.IndustryBenchmark.KIND_GENERATION)
                 .isPresent();
         if (!present) {
-            throw new com.oaiss.chain.exception.BusinessException(
-                    com.oaiss.chain.constant.ErrorCode.RESOURCE_NOT_FOUND,
+            throw new BusinessException(
+                    ErrorCode.RESOURCE_NOT_FOUND,
                     String.format("缺少 %d 年度 %s 类机组的行业基准值，无法发放配额。"
                             + "请管理员先在系统配置中录入该年度基准值。", year, unitType));
         }
@@ -681,8 +682,8 @@ public class CarbonService {
 
         int successCount = 0;
         int failureCount = 0;
-        java.util.List<Long> successIds = new java.util.ArrayList<>();
-        java.util.List<String> errorMessages = new java.util.ArrayList<>();
+        List<Long> successIds = new ArrayList<>();
+        List<String> errorMessages = new ArrayList<>();
 
         for (Long reportId : request.getReportIds()) {
             try {

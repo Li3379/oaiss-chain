@@ -61,12 +61,18 @@ TRANSFER_RESP=$(curl -s $CURL_OPTS -X POST "$BASE_URL/carbon-coin/transfer" \
     -H "Content-Type: application/json" \
     -d '{"counterpartId":3,"amount":500,"remark":"transfer feature removed"}')
 TRANSFER_CODE=$(extract_field "$TRANSFER_RESP" "code")
+TRANSFER_HTTP=$(curl -s -o /dev/null -w "%{http_code}" $CURL_OPTS -X POST "$BASE_URL/carbon-coin/transfer" \
+    -H "Authorization: Bearer $TOKEN_E1" \
+    -H "Content-Type: application/json" \
+    -d '{"counterpartId":3,"amount":500,"remark":"transfer feature removed"}')
 TEST_ID=$((TEST_ID + 1))
-if [[ "$TRANSFER_CODE" == "404" ]]; then
-    echo "  [PASS] Test $TEST_ID: Transfer endpoint removed (code=404)"
+# 端点删除后由 NoResourceFoundException 兜底：HTTP 404 →
+# 统一响应体业务码 1002（error.resource.not.found），不是字面量 "404"。
+if [[ "$TRANSFER_HTTP" == "404" && "$TRANSFER_CODE" == "1002" ]]; then
+    echo "  [PASS] Test $TEST_ID: Transfer endpoint removed (HTTP 404 / code=1002)"
     PASS=$((PASS + 1))
 else
-    echo "  [FAIL] Test $TEST_ID: Transfer endpoint should be removed (code=$TRANSFER_CODE)"
+    echo "  [FAIL] Test $TEST_ID: Transfer endpoint should be removed (HTTP=$TRANSFER_HTTP code=$TRANSFER_CODE)"
     FAIL=$((FAIL + 1))
 fi
 
