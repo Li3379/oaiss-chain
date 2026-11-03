@@ -107,6 +107,14 @@ jobs:
       REDIS_PASSWORD: ""
       JWT_SECRET: e2e-test-jwt-secret-key-minimum-32-characters
       SPRING_PROFILES_ACTIVE: docker
+      # 区块链 fail-closed（2026-11-03 起）：未激活 fabric profile 时启动会直接抛
+      # SecurityException，除非显式放行 mock 链。
+      #
+      # CI 的 e2e 起不了完整 Fabric 网络（peer/orderer 不在 runner 上），
+      # 所以这里必须显式声明逃生门。语义上这是「允许启动」，不是「伪造存证」：
+      # MockBlockchainService 在该模式下不产出任何 txHash，报告停在「审核通过」，
+      # e2e 用例也不应该断言 tx_mock_ 之类的假哈希。
+      OAISS_ALLOW_MOCK_CHAIN: "true"
       MINIO_ENDPOINT: http://localhost:9000
       MINIO_ACCESS_KEY: minio-test-access
       MINIO_SECRET_KEY: minio-test-secret-key

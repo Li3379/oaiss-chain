@@ -79,6 +79,9 @@ jobs:
       REDIS_PASSWORD: ""
       JWT_SECRET: ci-full-matrix-jwt-secret-min-32-chars-000000
       SPRING_PROFILES_ACTIVE: docker
+      # 与 e2e-tests.yml 同因：区块链 fail-closed 要求 fabric profile，
+      # CI 跑不起完整 Fabric 网络，故显式放行 mock 链（该模式不产 txHash）。
+      OAISS_ALLOW_MOCK_CHAIN: "true"
       MINIO_ENDPOINT: http://localhost:9000
       MINIO_ACCESS_KEY: ci-test-access
       MINIO_SECRET_KEY: ci-test-secret-key
