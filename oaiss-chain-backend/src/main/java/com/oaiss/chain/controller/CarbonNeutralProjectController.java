@@ -310,6 +310,97 @@ public class CarbonNeutralProjectController {
     }
 
     /**
+     * 【业务功能】：录入或追加项目监测期实测数据（实测发电量、造林存活率、生物质利用量等）
+     * 【对应前端页面】：views/enterprise/CarbonNeutralDetail.vue
+     * 【对应前端API】：api/carbonNeutral.ts -> updateMonitoring()
+     * 【可见UI操作】：在“监测数据记录”区块点击【追加监测数据】录入并保存
+     */
+    @AuditLog(module = "碳中和项目", action = "UPDATEMONITORING", description = "碳中和项目 UPDATEMONITORING")
+    @PutMapping("/{id}/monitoring")
+    @Operation(summary = "更新监测数据", description = "更新项目监测数据")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "更新成功"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "未授权访问"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "项目不存在")
+    })
+    @SecurityRequirement(name = "Bearer Authentication")
+    public ApiResponse<CarbonNeutralProjectResponse> updateMonitoring(
+            @AuthenticationPrincipal JwtUserDetails currentUser,
+            @Parameter(description = "项目ID", required = true, example = "1") @PathVariable Long id,
+            @Valid @RequestBody MonitoringUpdateRequest request) {
+        return ApiResponse.success(projectService.updateMonitoring(currentUser, id, request.getMonitoringData()));
+    }
+
+    /**
+     * 【业务功能】：申请官方机构进行项目最终认证与减排量（碳信用）签发
+     * 【对应前端页面】：views/enterprise/CarbonNeutralDetail.vue
+     * 【对应前端API】：api/carbonNeutral.ts -> applyCertification()
+     * 【可见UI操作】：核证合格后，点击【申请签发碳信用】按钮
+     */
+    @AuditLog(module = "碳中和项目", action = "APPLYFORCERTIFICATION", description = "碳中和项目 APPLYFORCERTIFICATION")
+    @PostMapping("/{id}/apply-certification")
+    @Operation(summary = "申请认证", description = "向认证机构申请项目认证")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "申请成功"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "项目需先完成核证"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "未授权访问"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "项目不存在")
+    })
+    @SecurityRequirement(name = "Bearer Authentication")
+    public ApiResponse<CarbonNeutralProjectResponse> applyForCertification(
+            @AuthenticationPrincipal JwtUserDetails currentUser,
+            @Parameter(description = "项目ID", required = true, example = "1") @PathVariable Long id,
+            @Valid @RequestBody ApplyCertificationRequest request) {
+        return ApiResponse.success(projectService.applyForCertification(currentUser, id, request.getCertOrg()));
+    }
+
+    /**
+     * 【业务功能】：官方主管机构完成最终认证，向项目签发正式减排量资产证书
+     * 【对应前端页面】：views/auditor/ProjectReview.vue, views/admin/CertificateManage.vue
+     * 【对应前端API】：api/carbonNeutral.ts -> completeCertification()
+     * 【可见UI操作】：点击【完成最终认证签发】按钮
+     */
+    @AuditLog(module = "碳中和项目", action = "COMPLETECERTIFICATION", description = "碳中和项目 COMPLETECERTIFICATION")
+    @PostMapping("/{id}/certify")
+    @Operation(summary = "完成认证", description = "认证机构完成项目认证")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "认证成功"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "项目不在待认证状态"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "无权限"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "项目不存在")
+    })
+    @SecurityRequirement(name = "Bearer Authentication")
+    @PreAuthorize("hasRole('REVIEWER') or hasRole('ADMIN')")
+    public ApiResponse<CarbonNeutralProjectResponse> completeCertification(
+            @Parameter(description = "项目ID", required = true, example = "1") @PathVariable Long id,
+            @Valid @RequestBody CompleteCertificationRequest request) {
+        return ApiResponse.success(projectService.completeCertification(id, request.getCertNo()));
+    }
+
+    /**
+     * 【业务功能】：非正常终止或废止碳中和项目（不可抗力或未达标）
+     * 【对应前端页面】：views/enterprise/CarbonNeutralDetail.vue
+     * 【对应前端API】：api/carbonNeutral.ts -> terminateProject()
+     * 【可见UI操作】：点击【终止项目】按钮，填写终止原因并确认
+     */
+    @AuditLog(module = "碳中和项目", action = "TERMINATE", description = "碳中和项目 TERMINATE")
+    @PostMapping("/{id}/terminate")
+    @Operation(summary = "终止项目", description = "终止项目实施")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "终止成功"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "项目状态不允许终止"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "未授权访问"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "项目不存在")
+    })
+    @SecurityRequirement(name = "Bearer Authentication")
+    public ApiResponse<CarbonNeutralProjectResponse> terminate(
+            @AuthenticationPrincipal JwtUserDetails currentUser,
+            @Parameter(description = "项目ID", required = true, example = "1") @PathVariable Long id,
+            @Valid @RequestBody TerminateProjectRequest request) {
+        return ApiResponse.success(projectService.terminateProject(currentUser, id, request.getReason()));
+    }
+
+    /**
      * 【业务功能】：查询待第三方核证机构处理的碳中和项目工单池
      * 【对应前端页面】：views/auditor/ProjectReview.vue (/auditor/project/review)
      * 【对应前端API】：api/carbonNeutral.ts -> getPendingVerification()
