@@ -37,16 +37,26 @@ public class TradeRequest {
     private Long sellerId;
 
     /**
-     * 碳配额数量（吨CO2当量）
+     * 数量。
+     *
+     * <p>语义随交易类型变化：
+     * <ul>
+     *   <li><b>P2P</b>：碳币枚数（1 枚 = 1 吨排放权）</li>
+     *   <li><b>拍卖</b>：配额吨数</li>
+     * </ul>
      */
     @NotNull(message = "交易数量不能为空")
     @Positive(message = "交易数量必须为正数")
     private BigDecimal quantity;
 
     /**
-     * 单价（碳币/吨）
+     * 单价（碳币/吨）。
+     *
+     * <p><b>P2P 已不使用</b>：P2P 改为「碳币换碳币」，1 枚换 1 枚，无价格维度。
+     * 后端在 P2P 路径忽略此字段（按 1 处理），前端也不再展示单价输入。
+     * 保留字段是为了不改 `TradeRequest` 契约——拍卖仍需单价，
+     * 且 60 个既有测试依赖它。
      */
-    @NotNull(message = "单价不能为空")
     @Positive(message = "单价必须为正数")
     private BigDecimal unitPrice;
 

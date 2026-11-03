@@ -172,14 +172,18 @@ class TradeServiceTest {
     }
 
     @Test
-    @DisplayName("创建P2P交易失败-配额不足")
+    @DisplayName("创建P2P交易失败-碳币不足（2026-11-03 起挂单冻的是碳币，不是配额）")
     void testCreateP2PTradeFailInsufficientQuota() {
         // Given
-        tradeRequest.setQuantity(new BigDecimal("1000.00")); // More than tradable (500)
+        tradeRequest.setQuantity(new BigDecimal("1000.00"));
         when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(sellerEnterprise));
+        // 碳币不足在 CarbonCoinService.freezeBalance 内抛出，这里模拟
+        org.mockito.Mockito.doThrow(new com.oaiss.chain.exception.BusinessException(4005, "碳币余额不足"))
+                .when(carbonCoinService).freezeBalance(org.mockito.ArgumentMatchers.anyLong(),
+                        org.mockito.ArgumentMatchers.any());
 
         // When & Then
-        assertThrows(TradeException.class, () -> tradeService.createP2PTrade(currentUser, tradeRequest));
+        assertThrows(RuntimeException.class, () -> tradeService.createP2PTrade(currentUser, tradeRequest));
         verify(transactionRepository, never()).save(any());
     }
 
@@ -191,17 +195,17 @@ class TradeServiceTest {
         when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(sellerEnterprise));
         when(enterpriseRepository.findByUserId(2L)).thenReturn(Optional.of(buyerEnterprise));
         when(transactionRepository.save(any(Transaction.class))).thenReturn(testTransaction);
-        when(enterpriseRepository.save(any(Enterprise.class))).thenReturn(sellerEnterprise);
 
         // When
         TradeResponse response = tradeService.confirmTrade(1L, 1L);
 
         // Then
         assertNotNull(response);
-        verify(enterpriseRepository, times(2)).save(any(Enterprise.class));
         verify(transactionRepository, times(2)).save(any(Transaction.class)); // PROCESSING + COMPLETED
-        verify(carbonCoinService, times(1)).buyQuota(eq(2L), any(), any(), eq(1L));
-        verify(carbonCoinService, times(1)).sellQuota(eq(1L), any(), any(), eq(1L));
+        // 2026-11-03：P2P 改为转让碳币（卖方冻结 → 买方余额），不再用 buyQuota/sellQuota
+        verify(carbonCoinService, times(1)).transferFrozen(eq(1L), eq(2L), any(), eq(1L));
+        verify(carbonCoinService, never()).buyQuota(anyLong(), any(), any(), anyLong());
+        verify(carbonCoinService, never()).sellQuota(anyLong(), any(), any(), anyLong());
         verify(eventPublisher, times(1)).publishEvent(any(com.oaiss.chain.event.TradeCompletedEvent.class));
     }
 
@@ -404,7 +408,6 @@ class TradeServiceTest {
         when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(sellerEnterprise));
         when(enterpriseRepository.findByUserId(2L)).thenReturn(Optional.of(buyerEnterprise));
         when(transactionRepository.save(any(Transaction.class))).thenReturn(testTransaction);
-        when(enterpriseRepository.save(any(Enterprise.class))).thenReturn(sellerEnterprise);
 
         // When & Then: should succeed
         TradeResponse response = tradeService.confirmTrade(1L, 1L);
@@ -790,7 +793,6 @@ class TradeServiceTest {
         when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(sellerEnterprise));
         when(enterpriseRepository.findByUserId(2L)).thenReturn(Optional.of(buyerEnterprise));
         when(transactionRepository.save(any(Transaction.class))).thenReturn(testTransaction);
-        when(enterpriseRepository.save(any(Enterprise.class))).thenReturn(sellerEnterprise);
 
         TradeResponse response = tradeService.confirmTrade(1L, 2L); // buyer confirms
         assertNotNull(response);
@@ -1078,9 +1080,8 @@ class TradeServiceTest {
 
         assertEquals(TradeStatusEnum.COMPLETED.getCode(), response.getStatus());
         verify(tradeAuditService, never()).createPendingAudit(any(), any());
-        verify(enterpriseRepository, times(2)).save(any(Enterprise.class));
-        verify(carbonCoinService).buyQuota(eq(2L), any(), any(), eq(1L));
-        verify(carbonCoinService).sellQuota(eq(1L), any(), any(), eq(1L));
+        // 2026-11-03：P2P 改为转让碳币，配额侧不再变动
+        verify(carbonCoinService).transferFrozen(eq(1L), eq(2L), any(), eq(1L));
     }
 
     @Test

@@ -97,20 +97,18 @@ public class TradeService {
         // 信誉分风控闸门：被限制交易或账户冻结的发起方不得创建 P2P 交易
         assertTradeAllowed(sellerEnterprise.getId());
 
-        // 平台限价：必须在任何资源冻结之前——否则注定失败的请求会先冻结配额再被拒
-        priceLimitService.validate(request.getUnitPrice(), LocalDateTime.now());
+        // P2P 语义（2026-11-03）：卖方转让的是**碳币**，不是配额。
+        //
+        // 配额已退出资产层（只算不发），碳币成为唯一可交易资产。
+        // P2P 因此退化为「碳币换碳币」——1 枚换 1 枚，无价格维度。
+        // 单价字段仍保留在 DTO 里（拍卖要用），但 P2P 路径按 1 处理并忽略入参。
+        BigDecimal transferAmount = request.getQuantity();
+        BigDecimal unitPrice = BigDecimal.ONE;
 
-        if (sellerEnterprise.getCarbonTradable().compareTo(request.getQuantity()) < 0) {
-            throw TradeException.insufficientQuota(sellerEnterprise.getCarbonTradable(), request.getQuantity());
-        }
+        // 冻结卖方的碳币（不是配额），防止超额挂单与双花透支
+        carbonCoinService.freezeBalance(sellerId, transferAmount);
 
-        // 挂单时冻结卖方可交易配额，防止超额挂单与双花透支
-        sellerEnterprise.setCarbonTradable(sellerEnterprise.getCarbonTradable().subtract(request.getQuantity()));
-        BigDecimal currentFrozen = sellerEnterprise.getCarbonFrozen() != null ? sellerEnterprise.getCarbonFrozen() : BigDecimal.ZERO;
-        sellerEnterprise.setCarbonFrozen(currentFrozen.add(request.getQuantity()));
-        enterpriseRepository.save(sellerEnterprise);
-
-        BigDecimal totalAmount = request.getQuantity().multiply(request.getUnitPrice());
+        BigDecimal totalAmount = transferAmount.multiply(unitPrice);
 
         Transaction trade = Transaction.builder()
                 .tradeNo(CommonUtils.generateTradeId())
@@ -118,7 +116,7 @@ public class TradeService {
                 .sellerId(sellerId)
                 .buyerId(buyerId)
                 .quantity(request.getQuantity())
-                .unitPrice(request.getUnitPrice())
+                .unitPrice(unitPrice)
                 .totalAmount(totalAmount)
                 .reportId(request.getReportId())
                 .status(TradeStatusEnum.PENDING.getCode())
@@ -128,7 +126,7 @@ public class TradeService {
         trade = transactionRepository.save(trade);
 
         log.info("P2P trade created: {} ({} -> {}, qty: {}, price: {})", 
-                trade.getTradeNo(), sellerId, buyerId, request.getQuantity(), request.getUnitPrice());
+                trade.getTradeNo(), sellerId, buyerId, request.getQuantity(), unitPrice);
 
         return toResponse(trade);
     }
@@ -203,36 +201,24 @@ public class TradeService {
         trade.setStatus(TradeStatusEnum.PROCESSING.getCode());
         transactionRepository.save(trade);
 
-        // 卖方核减冻结配额并计入已售出
-        BigDecimal currentFrozen = sellerEnterprise.getCarbonFrozen() != null ? sellerEnterprise.getCarbonFrozen() : BigDecimal.ZERO;
-        if (currentFrozen.compareTo(tradeQuantity) < 0) {
-            // 兼容性保护：若此前挂单未走冻结，则从可用余额扣除并严格校验余额，杜绝负数穿透
-            BigDecimal available = sellerEnterprise.getCarbonTradable().add(currentFrozen);
-            if (available.compareTo(tradeQuantity) < 0) {
-                throw TradeException.insufficientQuota(available, tradeQuantity);
-            }
-            BigDecimal remainingDeduct = tradeQuantity.subtract(currentFrozen);
-            sellerEnterprise.setCarbonFrozen(BigDecimal.ZERO);
-            sellerEnterprise.setCarbonTradable(sellerEnterprise.getCarbonTradable().subtract(remainingDeduct));
-        } else {
-            sellerEnterprise.setCarbonFrozen(currentFrozen.subtract(tradeQuantity));
-        }
-        sellerEnterprise.setCarbonUsed(sellerEnterprise.getCarbonUsed().add(tradeQuantity));
+        // P2P 成交结算（2026-11-03）：转让碳币，不动配额。
+        //
+        // 原实现是 DVP 双向：买方 buyQuota（扣碳币）+ 卖方 sellQuota（收碳币），
+        // 同时卖方 carbonFrozen 核减、买方 carbonTradable 增加——即「用币买配额」。
+        //
+        // 现在配额已退出资产层（只算不发），P2P 退化为「碳币换碳币」：
+        // 卖方挂单时已冻结 N 枚，成交时这 N 枚转给买方，卖方不再收到任何币。
+        // 因此这里只需一进一出，不能再用 buyQuota/sellQuota（那是双向计价语义）。
+        BigDecimal transferAmount = trade.getQuantity();
+        carbonCoinService.transferFrozen(trade.getSellerId(), trade.getBuyerId(),
+                transferAmount, trade.getId());
 
-        // 买方增加配额
-        buyerEnterprise.setCarbonQuota(buyerEnterprise.getCarbonQuota().add(tradeQuantity));
-        buyerEnterprise.setCarbonTradable(buyerEnterprise.getCarbonTradable().add(tradeQuantity));
-
-        enterpriseRepository.save(sellerEnterprise);
-        enterpriseRepository.save(buyerEnterprise);
+        // 配额侧完全不动：carbonTradable / carbonFrozen / carbonUsed 均不修改。
+        // 但这三列的历史语义仍需保留在库中供审计，故不做清零。
 
         trade.setStatus(TradeStatusEnum.COMPLETED.getCode());
         trade.setCompletedAt(LocalDateTime.now());
         trade = transactionRepository.save(trade);
-
-        // 碳币货款两讫结算 (DVP): 买方扣除碳币，卖方增加碳币
-        carbonCoinService.buyQuota(trade.getBuyerId(), trade.getTotalAmount(), trade.getQuantity(), trade.getId());
-        carbonCoinService.sellQuota(trade.getSellerId(), trade.getTotalAmount(), trade.getQuantity(), trade.getId());
 
         // 发布交易完成事件，驱动异步区块链存证
         String tradeDataJson = String.format(
@@ -275,19 +261,10 @@ public class TradeService {
         trade.setStatus(TradeStatusEnum.CANCELLED.getCode());
         trade = transactionRepository.save(trade);
 
-        // 撤单解冻卖方配额
+        // 撤单解冻卖方的碳币（2026-11-03：挂单冻的是碳币，不是配额）
         final BigDecimal cancelQty = trade.getQuantity();
         final Long sellerUserId = trade.getSellerId();
-        enterpriseRepository.findByUserId(sellerUserId).ifPresent(seller -> {
-            BigDecimal currentFrozen = seller.getCarbonFrozen() != null ? seller.getCarbonFrozen() : BigDecimal.ZERO;
-            if (currentFrozen.compareTo(cancelQty) < 0) {
-                seller.setCarbonFrozen(BigDecimal.ZERO);
-            } else {
-                seller.setCarbonFrozen(currentFrozen.subtract(cancelQty));
-            }
-            seller.setCarbonTradable(seller.getCarbonTradable().add(cancelQty));
-            enterpriseRepository.save(seller);
-        });
+        carbonCoinService.unfreezeBalance(sellerUserId, cancelQty);
 
         // 通知对手方：订单已取消
         Long counterpartyId = currentUser.getUserId().equals(trade.getSellerId()) ? trade.getBuyerId() : trade.getSellerId();

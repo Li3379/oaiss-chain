@@ -467,6 +467,53 @@ public class CarbonCoinService {
         return toResponse(account);
     }
 
+    /**
+     * 转让冻结中的碳币：卖方 frozen → 买方 balance。
+     *
+     * <p>P2P 成交专用。卖方挂单时已通过 {@link #freezeBalance} 冻结了 N 枚，
+     * 成交时这 N 枚直接转给买方——卖方不再收到任何币，因为 P2P 是
+     * 「碳币换碳币」，不存在计价关系。
+     *
+     * <p><b>不能用 {@code buyQuota}/{@code sellQuota} 组合</b>：那两个方法是
+     * 「买方扣币 + 卖方进币」的双向计价语义，用在这里会让卖方凭空多收一笔。
+     */
+    @Transactional
+    public void transferFrozen(Long sellerUserId, Long buyerUserId,
+                               BigDecimal amount, Long tradeId) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException(4001, "转让数量必须为正数");
+        }
+
+        CarbonCoinAccount seller = getAccountEntity(sellerUserId);
+        CarbonCoinAccount buyer = getOrCreateAccountEntity(buyerUserId);
+
+        BigDecimal frozen = nz(seller.getFrozenBalance());
+        if (frozen.compareTo(amount) < 0) {
+            throw new BusinessException(4008,
+                    String.format("冻结碳币不足：已冻结 %s 枚，本次需转让 %s 枚",
+                            frozen.toPlainString(), amount.toPlainString()));
+        }
+
+        // 卖方：冻结减少（币已转出，不回到可用余额）
+        seller.setFrozenBalance(frozen.subtract(amount));
+        accountRepository.save(seller);
+
+        BigDecimal buyerBefore = buyer.getBalance();
+        BigDecimal buyerAfter = buyerBefore.add(amount);
+        buyer.setBalance(buyerAfter);
+        accountRepository.save(buyer);
+
+        saveTransaction(sellerUserId, TX_TYPE_SELL_QUOTA, amount,
+                nz(seller.getBalance()), nz(seller.getBalance()), null, tradeId,
+                String.format("P2P 转让碳币 %s 枚（冻结转出）", amount.toPlainString()));
+        saveTransaction(buyerUserId, TX_TYPE_BUY_QUOTA, amount,
+                buyerBefore, buyerAfter, null, tradeId,
+                String.format("P2P 接收碳币 %s 枚", amount.toPlainString()));
+
+        log.info("[COIN] P2P 转让 {} 枚碳币：seller={} → buyer={}（trade={}）",
+                amount.toPlainString(), sellerUserId, buyerUserId, tradeId);
+    }
+
     /** 报告 → 企业 → userId 两跳解析 */
     private Long resolveOwnerUserId(Long enterpriseId) {
         return enterpriseRepository.findById(enterpriseId)
