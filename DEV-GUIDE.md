@@ -174,12 +174,12 @@ bash ./scripts/stability-baseline.sh
 | 事实 | 值 | 说明 |
 |------|-----|------|
 | Controllers | 25 | `controller/*.java` 数（2026-10-31 新增 RegulatoryFindingController、TradeAuditController） |
-| REST 端点 | 160 | `@Mapping` 注解总数（2026-11-02 组件 1：+5 个基准值端点 `/admin/benchmarks` CRUD + readiness） |
+| REST 端点 | 161 | `@Mapping` 注解总数（2026-11-03 碳币闭环：+1 `POST /carbon-coin/redeem-quota`） |
 | Services | 50 | 47 主包 + 3 ml/（2026-11-02 组件 1：QuotaAllocationService、IndustryBenchmarkService） |
 | Entities | 29 | 28 @Entity + BaseEntity（+IndustryBenchmark） |
 | Tables | 28 | 现存 28 张（曾创建 29 张，authenticator 在 V8 DROP 退场；+industry_benchmark） |
 | Repositories | 28 | `repository/*.java` 数（+IndustryBenchmarkRepository） |
-| Flyway 迁移 | V1-V27 | V3、V22 跳过（共 25 个版本；V23=单价口径注释，V24=信誉下市标记，V25=配额发放结构，V26=发电基准值种子，V27=报告周期唯一键） |
+| Flyway 迁移 | V1-V28 | V3、V22 跳过（共 26 个版本；V23=单价口径注释，V24=信誉下市标记，V25=配额发放结构，V26=发电基准值种子，V27=报告周期唯一键，V28=碳币发放结构） |
 | i18n 词条 | 2246 | zh-CN 与 en-US 严格镜像（`scripts/gates/i18n-verify.mjs` 实测；2026-11-02 链上管理页、证书吊销与配额判定文案） |
 | 前端 API 模块 | 23 | `src/api/*.ts`（不含 request.ts 与 index.ts；2026-11-01 新增 tradeAudit / regulatoryFinding） |
 | 枚举 | 10 | `enums/*.java`（含新增 AllocationStateEnum；`doc-verify.mjs` 的 expectEnums 已同步） |
