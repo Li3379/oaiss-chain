@@ -29,17 +29,59 @@
 
 | # | 规则 | 违反后果 | 由谁强制 |
 |---|---|---|---|
-| 1 | **一个任务 = 一个分支 = 一个 worktree** | 两个会话互相覆盖未提交文件 | `pre-push` + 流程 |
+| 1 | **一个任务 = 一个分支 = 一个 worktree** | 两个会话互相覆盖未提交文件 | `scripts/agent/preflight.mjs` + 流程 |
 | 2 | **改动前取得路径租约** | 版本号/接口撞车，合并时才发现 | `scripts/agent/lease.mjs` |
 | 3 | **禁止直推 main，只走 PR** | CI 在合并后才发现红，修复成本翻倍 | `.githooks/pre-push` + 分支保护 |
+| 4 | **动手前必须基线同步** | 两侧各自实现同一需求，合并时冲突密集 | `preflight` + `pre-push` 护栏 4 |
+
+### 1.1 这些规则现在是被自动执行的，不是自觉
+
+2026-11-04 复盘发现一个反复出现的失效模式：**工具全都有，但没人调用**。
+
+当时的真实状态是：本地 `main` 上积压了 26 个提交（2026-11-02~11-03），
+它们从未经过一次 CI；与此同时远端 `main` 已经通过 PR #2/#3 推进。
+两边各自独立实现了同一批需求（配额语义改造、`V27` 迁移、三个测试类），
+一个 `git merge-tree` 试合并直接暴露 **8 个冲突文件，其中 3 个是 add/add**。
+
+三道旧护栏为什么全都漏过去了：
+
+| 旧护栏 | 检查时机 | 为什么漏掉本次事故 |
+|---|---|---|
+| `commit-msg` | 新建提交时 | 只校验信息格式，与内容冲突无关 |
+| `pre-push` 护栏 1-3 | 推送时 | 本地 main **从未推送**，等于永不触发 |
+| `lease.mjs` | 人工调用 | 全仓没有任何脚本/CI 调用它 |
+
+所以补了两处**自动**执行：
+
+- **`scripts/agent/preflight.mjs`**：开工前跑，只读、不改状态。
+  它以 `BEHIND_ORIGIN` / `DIVERGED` / `OVERLAPPING_FILES` 三个码直接阻断
+  「在漂移基线上开工 + 已产生冲突面」这一组合。
+- **`pre-push` 护栏 4**：推送前复查基线漂移。默认只警告（避免逼人 `--no-verify`），
+  CI 与发布流程用 `REQUIRE_UP_TO_DATE=1` 硬拦。
+
+两条都有可执行的反向测试：`node scripts/agent/concurrency-sim.mjs`。
 
 ---
 
 ## 2. 标准作业流程（Agent 必须逐步执行）
 
-### 2.1 认领任务：先建 worktree
+### 2.1 认领任务：先跑预检，再建 worktree
 
-**不要**在共享工作区直接开工。每个任务一个独立目录：
+**不要**在共享工作区直接开工。先回答一个问题：**这个目录现在还有谁在用？**
+
+```bash
+node scripts/agent/preflight.mjs      # 只读，不改任何状态
+```
+
+三种典型输出与处置：
+
+| 输出 | 含义 | 处置 |
+|---|---|---|
+| `ON_MAIN` | 你在主分支上 | 停手，按下一节建 worktree |
+| `BEHIND_ORIGIN` | 基线已过期 | `git fetch origin`，rebase/merge 到最新再动手 |
+| `OVERLAPPING_FILES` | 你和远端已各自改了同一批文件 | **停手**，先合并并跑通测试，再开新任务 |
+
+预检通过后再建独立目录：
 
 ```bash
 # 从最新 main 起分支
@@ -199,6 +241,9 @@ git worktree list                     # 有哪些并行工作区
 ## 7. 快速命令卡
 
 ```bash
+# 0. 预检（只读）——先确认这个目录还有谁在用、基线是否过期
+node scripts/agent/preflight.mjs
+
 # 开工
 git fetch origin && git worktree add ../t-<id> -b feat/<slug> origin/main && cd ../t-<id>
 node scripts/agent/lease.mjs acquire --task "feat/<slug>" --paths "<dirs>"
@@ -206,10 +251,31 @@ node scripts/agent/lease.mjs acquire --task "feat/<slug>" --paths "<dirs>"
 # 自检
 node scripts/gates/doc-verify.mjs && npm run type-check --prefix oaiss-chain-frontend
 
-# 交付
+# 交付（护栏 4 会提示基线漂移；发布前用 REQUIRE_UP_TO_DATE=1 硬拦）
 git push -u origin feat/<slug> && gh pr create --fill && gh pr checks --watch
 
 # 收尾
 node scripts/agent/lease.mjs release --task "feat/<slug>"
 gh pr merge --squash --delete-branch && git worktree remove ../t-<id>
 ```
+
+---
+
+## 8. 机制自检
+
+怀疑护栏是否真的生效时，不要在文档里找答案，直接跑反向验证：
+
+```bash
+node scripts/agent/concurrency-sim.mjs          # 4 个真实场景，全部在临时沙盒里跑
+node scripts/agent/concurrency-sim.mjs --only S3 # 单场景
+```
+
+| 场景 | 验证的事 | 期望 |
+|---|---|---|
+| S1 | 两个 Agent 改不相交文件 | 合并零冲突（证明路径隔离充分） |
+| S2 | 两个 Agent 改同一 i18n 文件 | **确实冲突**（证明独占租约不是多余门槛） |
+| S3 | 两侧各自 +1 到同一迁移版本号 | `pre-push` 以 Flyway 水位线拦截 |
+| S4 | 在落后远端的基线上开工 | `preflight` 以 `BEHIND_ORIGIN` 阻断 |
+
+S2 的期望结果是「冲突」，这一点容易误读：我们的策略是**禁止同改**（高危路径独占），
+不是**解决同改**。S2 证明冲突真实存在，从而证明那条禁令不是形式主义。

@@ -223,5 +223,48 @@ if [ "$fail" -ne 0 ]; then
   exit 1
 fi
 
+# ------------------------------------------------------------------
+# 护栏 4：远端基线漂移（提交前预检）
+# ------------------------------------------------------------------
+# 2026-11-04 事故：本地 main 积压 26 个提交且未 fetch，远端同期经 PR 推进。
+# 两侧各自独立实现了同一批需求，试合并产生 8 处冲突（含 3 个 add/add）。
+#
+# 前面三道护栏都拦不住这种形态：
+#   1 只看「推到哪个分支」，不看基线是否过期
+#   2 只看「迁移版本号」，不看同一需求被两边各写一遍
+#   3 只看「信息格式」，不看内容是否已与他人分叉
+#
+# 所以推之前再问一次「你是不是在过期基线上工作」。
+# 默认只对非 main 分支提示、不阻塞：这是「早发现」不是「晚拦截」，
+# 真正需要硬拦时用 REQUIRE_UP_TO_DATE=1（CI/发布前推荐）。
+PREFLIGHT="scripts/agent/preflight.mjs"
+if command -v node >/dev/null 2>&1 && [ -f "$PREFLIGHT" ]; then
+  behind_detail="$(node "$PREFLIGHT" --json 2>/dev/null || true)"
+  if [ -n "$behind_detail" ]; then
+    behind_count="$(printf '%s' "$behind_detail" | node -e '
+      let s = ""
+      process.stdin.on("data", (d) => (s += d)).on("end", () => {
+        try { console.log(JSON.parse(s).divergence?.behind ?? 0) } catch { console.log(0) }
+      })
+    ' 2>/dev/null || echo 0)"
+    if [ "${behind_count:-0}" -gt 0 ]; then
+      echo "" >&2
+      echo "⚠ 当前分支落后 origin/main ${behind_count} 个提交。" >&2
+      echo "  在漂移的基线上开发，容易与远端已合并的改动各自实现同一件事" >&2
+      echo "  （本仓 2026-11-04 就因此产生过 8 处合并冲突）。" >&2
+      echo "  建议：git fetch origin && git rebase origin/main" >&2
+      echo "" >&2
+      if [ "${REQUIRE_UP_TO_DATE:-0}" = "1" ]; then
+        echo "✗ REQUIRE_UP_TO_DATE=1，拒绝在过期基线上推送。" >&2
+        fail=1
+      fi
+    fi
+  fi
+fi
+
+if [ "$fail" -ne 0 ]; then
+  exit 1
+fi
+
 echo "✓ pre-push 检查通过（分支保护 / Flyway 水位线 / 提交信息）"
 exit 0
