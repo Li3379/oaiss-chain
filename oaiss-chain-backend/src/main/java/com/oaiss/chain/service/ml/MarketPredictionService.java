@@ -164,8 +164,10 @@ public class MarketPredictionService {
             volumes.add(dayVolume.doubleValue());
         }
 
-        log.info("Forecast request built for {}: {} trades over {} trading days ({} .. {})",
-                purpose, trades.size(), byDay.size(), dates.get(0), dates.get(dates.size() - 1));
+        if (log.isInfoEnabled()) {
+            log.info("Forecast request built for {}: {} trades over {} trading days ({} .. {})",
+                    purpose, trades.size(), byDay.size(), dates.get(0), dates.get(dates.size() - 1));
+        }
 
         return MarketForecastRequest.builder()
                 .dates(dates)

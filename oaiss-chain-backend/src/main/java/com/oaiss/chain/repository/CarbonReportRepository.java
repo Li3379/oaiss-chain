@@ -106,7 +106,7 @@ public interface CarbonReportRepository extends JpaRepository<CarbonReport, Long
      * <p>用途：监管未履约清单需要跨企业扫描全部已结算报告算缺口。
      * 数据量级为百份量级，一次全取比逐企业分页再合并更简单。
      */
-    java.util.List<CarbonReport> findByDeletedFalse();
+    List<CarbonReport> findByDeletedFalse();
 
     /**
      * 综合搜索

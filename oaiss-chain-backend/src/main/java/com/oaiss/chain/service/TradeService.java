@@ -250,7 +250,7 @@ public class TradeService {
                 || (trade.getSellerId() != null && trade.getSellerId().equals(currentUser.getUserId()))
                 || (trade.getBuyerId() != null && trade.getBuyerId().equals(currentUser.getUserId())));
         if (!isParticipant) {
-            throw new com.oaiss.chain.exception.BusinessException(com.oaiss.chain.constant.ErrorCode.PERMISSION_DENIED, "无权取消非本人参与的交易");
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "无权取消非本人参与的交易");
         }
 
         TradeStatusEnum status = TradeStatusEnum.fromCode(trade.getStatus());
@@ -311,7 +311,7 @@ public class TradeService {
      */
     public Page<TradeResponse> listMyTrades(JwtUserDetails currentUser,
             Integer tradeType, Integer status, String tradeNo, String keyword, String identity,
-            java.time.LocalDateTime startTime, java.time.LocalDateTime endTime,
+            LocalDateTime startTime, LocalDateTime endTime,
             Integer page, Integer size) {
         size = CommonUtils.sanitizePageSize(size);
         Pageable pageable = PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "createdAt"));
@@ -426,15 +426,18 @@ public class TradeService {
             referencePrice = transactionRepository.findAverageUnitPriceSince(
                     LocalDateTime.now().minusDays(
                             tradeRiskAssessor.getProperties().getPriceReferenceDays()));
-            java.util.Map<Long, Integer> scores =
+            Map<Long, Integer> scores =
                     creditScoreService.getScoresByUserIds(
-                            java.util.Set.of(trade.getSellerId(), trade.getBuyerId()));
+                            Set.of(trade.getSellerId(), trade.getBuyerId()));
             if (scores != null) {
                 sellerCredit = scores.get(trade.getSellerId());
                 buyerCredit = scores.get(trade.getBuyerId());
             }
         } catch (Exception e) {
-            log.warn("[AUDIT] P2P 风险分流取数失败，降级评估: {}", e.getMessage());
+            // 参数含 e.getMessage()，显式守卫既满足 PMD GuardLogStatement，也避免异常路径上的无谓求值
+            if (log.isWarnEnabled()) {
+                log.warn("[AUDIT] P2P 风险分流取数失败，降级评估: {}", e.getMessage());
+            }
         }
         // P2P 没有撮合环节，不存在自成交/洗售嫌疑，该维度传 false。
         return tradeRiskAssessor.assess(trade, referencePrice, buyerCredit, sellerCredit, false);

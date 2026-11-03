@@ -436,13 +436,17 @@ public class CarbonNeutralProjectService {
         try {
             project = projectRepository.save(project);
         } catch (DataIntegrityViolationException e) {
-            // uk_cnp_cert_no 兜底：并发请求算出了同一序号
-            throw new BusinessException(3007, "证书编号生成冲突，请重试");
+            // uk_cnp_cert_no 兜底：并发请求算出了同一序号。
+            // 保留 cause：否则日志里只剩一句「编号冲突」，看不出到底是唯一键
+            // 冲突还是别的完整性违规（例如非空约束），排查时会被误导。
+            throw new BusinessException(3007, "证书编号生成冲突，请重试", e);
         }
 
         awardCarbonNeutralCredit(project, certNo, operatorId);
 
-        log.info("Project certified: {} -> {}", project.getProjectNo(), certNo);
+        if (log.isInfoEnabled()) {
+            log.info("Project certified: {} -> {}", project.getProjectNo(), certNo);
+        }
         return toResponse(project);
     }
 
@@ -457,8 +461,10 @@ public class CarbonNeutralProjectService {
         boolean alreadyAwarded = creditEventRepository.existsByEnterpriseIdAndEventTypeAndDeletedFalse(
                 project.getOwnerId(), CreditEventTypeEnum.CARBON_NEUTRAL_CERTIFIED.getCode());
         if (alreadyAwarded) {
-            log.info("Carbon neutral credit already awarded for enterprise {}, skip project {}",
-                    project.getOwnerId(), project.getProjectNo());
+            if (log.isInfoEnabled()) {
+                log.info("Carbon neutral credit already awarded for enterprise {}, skip project {}",
+                        project.getOwnerId(), project.getProjectNo());
+            }
             return;
         }
 
@@ -512,7 +518,9 @@ public class CarbonNeutralProjectService {
         project.setReviewComment("项目终止: " + reason);
         project = projectRepository.save(project);
 
-        log.info("Project terminated: {} - {}", project.getProjectNo(), reason);
+        if (log.isInfoEnabled()) {
+            log.info("Project terminated: {} - {}", project.getProjectNo(), reason);
+        }
         return toResponse(project);
     }
 

@@ -48,7 +48,6 @@ public class TradeAuditService {
     private final TransactionRepository transactionRepository;
     private final TradeAuditRepository tradeAuditRepository;
     private final EnterpriseRepository enterpriseRepository;
-    private final QuotaLedgerService quotaLedgerService;
     private final CreditScoreService creditScoreService;
     private final CarbonCoinService carbonCoinService;
     private final NotificationService notificationService;
@@ -114,10 +113,6 @@ public class TradeAuditService {
         requireRemark(remark);
 
         BigDecimal quantity = trade.getQuantity();
-        BigDecimal amount = trade.getTotalAmount();
-
-        Long sellerEnterpriseId = resolveEnterpriseId(trade.getSellerId());
-        Long buyerEnterpriseId = resolveEnterpriseId(trade.getBuyerId());
 
         // 2026-11-03 模型变更：配额退出资产层，结算对象改为碳币。
         //
@@ -162,8 +157,8 @@ public class TradeAuditService {
         requireRemark(remark);
 
         BigDecimal quantity = trade.getQuantity();
-        BigDecimal amount = trade.getTotalAmount();
 
+        // 信誉扣分按 enterpriseId 记账，需从 userId 换算（仅驳回路径使用）
         Long sellerEnterpriseId = resolveEnterpriseId(trade.getSellerId());
         Long buyerEnterpriseId = resolveEnterpriseId(trade.getBuyerId());
 
@@ -224,7 +219,7 @@ public class TradeAuditService {
         }
     }
 
-    /** 交易里存的是 userId，额度账本按 enterpriseId 记账，需换算 */
+    /** 交易里存的是 userId，信誉账本按 enterpriseId 记账，需换算（驳回路径专用） */
     private Long resolveEnterpriseId(Long userId) {
         Enterprise enterprise = enterpriseRepository.findByUserIdAndDeletedFalse(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND,

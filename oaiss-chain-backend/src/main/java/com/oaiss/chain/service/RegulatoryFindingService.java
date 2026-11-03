@@ -59,7 +59,8 @@ public class RegulatoryFindingService {
      */
     @Transactional
     public List<RegulatoryFinding> scanEnterprise(Long enterpriseId) {
-        Enterprise enterprise = enterpriseRepository.findById(enterpriseId)
+        // 存在性校验：只为 404 语义，不持有返回值（后续全部按 enterpriseId 查询）
+        enterpriseRepository.findById(enterpriseId)
                 .orElseThrow(() -> new com.oaiss.chain.exception.BusinessException(
                         com.oaiss.chain.constant.ErrorCode.RESOURCE_NOT_FOUND,
                         "企业不存在: " + enterpriseId));
@@ -234,7 +235,9 @@ public class RegulatoryFindingService {
             row.put("remainingShortfall", gap.setScale(2, java.math.RoundingMode.HALF_UP));
             result.add(row);
         }
-        log.info("未履约清单查询完成: {} 份报告仍有缺口", result.size());
+        if (log.isInfoEnabled()) {
+            log.info("未履约清单查询完成: {} 份报告仍有缺口", result.size());
+        }
         return result;
     }
 }

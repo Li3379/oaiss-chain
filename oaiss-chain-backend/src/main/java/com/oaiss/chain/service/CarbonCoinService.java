@@ -375,8 +375,11 @@ public class CarbonCoinService {
                 null, null, reportId, seq,
                 String.format("碳报告 %s 减排盈余发放（第 %d 次）", report.getReportNo(), seq));
 
-        log.info("[COIN] 报告 {} 发放碳币 {} 枚给 userId={}（盈余 {}，序号 {}）",
-                reportId, amount.toPlainString(), ownerUserId, surplus.toPlainString(), seq);
+        // 参数含 toPlainString()，无论日志级别都会求值；显式守卫避免无谓字符串化
+        if (log.isInfoEnabled()) {
+            log.info("[COIN] 报告 {} 发放碳币 {} 枚给 userId={}（盈余 {}，序号 {}，操作人 {}）",
+                    reportId, amount.toPlainString(), ownerUserId, surplus.toPlainString(), seq, operatorId);
+        }
     }
 
     /**
@@ -424,8 +427,10 @@ public class CarbonCoinService {
                 null, null, reportId, null,
                 String.format("碳报告 %s 驳回，回收已发碳币", report.getReportNo()));
 
-        log.info("[COIN] 报告 {} 回收碳币 {} 枚（userId={}）",
-                reportId, issued.toPlainString(), ownerUserId);
+        if (log.isInfoEnabled()) {
+            log.info("[COIN] 报告 {} 回收碳币 {} 枚（userId={}）",
+                    reportId, issued.toPlainString(), ownerUserId);
+        }
     }
 
     /**
@@ -470,8 +475,10 @@ public class CarbonCoinService {
         saveTransaction(userId, TX_TYPE_REDEEM_QUOTA, amount, before, after,
                 quotaAmount, null, "碳币兑换配额");
 
-        log.info("[COIN] userId={} 兑换 {} 枚碳币 → {} 吨配额", userId,
-                amount.toPlainString(), quotaAmount.toPlainString());
+        if (log.isInfoEnabled()) {
+            log.info("[COIN] userId={} 兑换 {} 枚碳币 → {} 吨配额", userId,
+                    amount.toPlainString(), quotaAmount.toPlainString());
+        }
         return toResponse(account);
     }
 
@@ -518,14 +525,16 @@ public class CarbonCoinService {
                 buyerBefore, buyerAfter, null, tradeId,
                 String.format("P2P 接收碳币 %s 枚", amount.toPlainString()));
 
-        log.info("[COIN] P2P 转让 {} 枚碳币：seller={} → buyer={}（trade={}）",
-                amount.toPlainString(), sellerUserId, buyerUserId, tradeId);
+        if (log.isInfoEnabled()) {
+            log.info("[COIN] P2P 转让 {} 枚碳币：seller={} → buyer={}（trade={}）",
+                    amount.toPlainString(), sellerUserId, buyerUserId, tradeId);
+        }
     }
 
     /** 报告 → 企业 → userId 两跳解析 */
     private Long resolveOwnerUserId(Long enterpriseId) {
         return enterpriseRepository.findById(enterpriseId)
-                .map(com.oaiss.chain.entity.Enterprise::getUserId)
+                .map(Enterprise::getUserId)
                 .orElseThrow(() -> new BusinessException(4007, "企业不存在: " + enterpriseId));
     }
 

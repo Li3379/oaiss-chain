@@ -129,7 +129,7 @@ public class SecurityStartupValidator {
         validateMinioCredentials(isProduction);
         validateRsaKek(isProduction);
         validateCorsOrigins(isProduction);
-        validateFabricProfileAlignment(isProduction);
+        validateFabricProfileAlignment();
         validateFabricCa(isProduction);
         validateMlServiceSecret(isProduction);
         validateOpsSecrets(isProduction);
@@ -255,7 +255,7 @@ public class SecurityStartupValidator {
         }
     }
 
-    private void validateFabricProfileAlignment(boolean isProduction) {
+    private void validateFabricProfileAlignment() {
         boolean fabricProfileActive = isProfileActive("fabric");
 
         if (fabricEnabled && !fabricProfileActive) {

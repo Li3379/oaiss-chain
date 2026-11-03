@@ -4,7 +4,6 @@ import com.oaiss.chain.dto.ApiResponse;
 import com.oaiss.chain.dto.ApplyCertificationRequest;
 import com.oaiss.chain.dto.CarbonNeutralProjectRequest;
 import com.oaiss.chain.dto.CarbonNeutralProjectResponse;
-import com.oaiss.chain.dto.CompleteCertificationRequest;
 import com.oaiss.chain.dto.MonitoringUpdateRequest;
 import com.oaiss.chain.dto.ProjectReviewRequest;
 import com.oaiss.chain.dto.ProjectVerificationRequest;
