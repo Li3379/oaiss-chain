@@ -560,6 +560,7 @@ public class CarbonCoinService {
                 .balance(account.getBalance())
                 .frozenBalance(account.getFrozenBalance())
                 .totalRecharged(account.getTotalRecharged())
+                .totalIssued(account.getTotalIssued())
                 .totalSpent(account.getTotalSpent())
                 .status(account.getStatus())
                 .build();

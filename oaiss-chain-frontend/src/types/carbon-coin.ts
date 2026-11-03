@@ -4,7 +4,11 @@ export interface CarbonCoinAccountResponse {
   id: number
   userId: number
   balance: number
+  frozenBalance?: number
+  /** 累计充值——充值端点已下线，该值不再增长（历史遗留） */
   totalRecharged: number
+  /** 累计发放——减排成果发放的核心指标，回收不减少 */
+  totalIssued?: number
   totalSpent: number
   status: number
 }

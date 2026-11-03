@@ -184,10 +184,12 @@ const accountStats = computed(() => {
       icon: CircleCheck,
     },
     {
-      label: t('carbonCoin.totalRecharge'),
-      value: Number((acc?.totalRecharged || 0).toFixed(2)),
+      // 2026-11-03：充值端点已下线，「累计充值」永远停在历史值，
+      // 换成本轮新增的「累计发放」——它才是碳币模型的真实来源指标。
+      label: t('carbonCoin.totalIssued'),
+      value: Number((acc?.totalIssued || 0).toFixed(2)),
       unit: t('carbonCoin.unit'),
-      delta: t('carbonCoin.statRechargeHint'),
+      delta: t('carbonCoin.statIssuedHint'),
       tone: 'pos' as const,
       icon: TrendCharts,
     },
