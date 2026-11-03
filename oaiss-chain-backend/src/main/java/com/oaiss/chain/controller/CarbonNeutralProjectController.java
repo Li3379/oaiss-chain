@@ -241,8 +241,52 @@ public class CarbonNeutralProjectController {
         return ApiResponse.success(projectService.startImplementation(currentUser, id));
     }
 
-    
-    
+    /**
+     * 【业务功能】：企业向第三方专业核证机构提交现场核查申请
+     * 【对应前端页面】：views/enterprise/CarbonNeutralDetail.vue
+     * 【对应前端API】：api/carbonNeutral.ts -> submitVerification()
+     * 【可见UI操作】：实施阶段完成周期监测后，点击【申请第三方核证】按钮
+     */
+    @AuditLog(module = "碳中和项目", action = "SUBMITFORVERIFICATION", description = "碳中和项目 SUBMITFORVERIFICATION")
+    @PostMapping("/{id}/submit-verification")
+    @Operation(summary = "申请核证", description = "提交项目给第三方核证机构进行减排量核证")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "申请成功"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "项目状态不允许核证"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "未授权访问"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "项目不存在")
+    })
+    @SecurityRequirement(name = "Bearer Authentication")
+    public ApiResponse<CarbonNeutralProjectResponse> submitForVerification(
+            @AuthenticationPrincipal JwtUserDetails currentUser,
+            @Parameter(description = "项目ID", required = true, example = "1") @PathVariable Long id,
+            @Valid @RequestBody SubmitVerificationRequest request) {
+        return ApiResponse.success(projectService.submitForVerification(currentUser, id, request.getVerifierId()));
+    }
+
+    /**
+     * 【业务功能】：第三方核证机构录入核证减排量结果并出具核证结论
+     * 【对应前端页面】：views/auditor/ProjectReview.vue (/auditor/project/review)
+     * 【对应前端API】：api/carbonNeutral.ts -> verifyProject()
+     * 【可见UI操作】：核查员录入实际核定减排量、核证机构信息并点击【提交核证结论】
+     */
+    @AuditLog(module = "碳中和项目", action = "VERIFY", description = "碳中和项目 VERIFY")
+    @PostMapping("/verify")
+    @Operation(summary = "核证项目", description = "第三方核证机构对项目减排量进行核证")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "核证成功"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "项目不在待核证状态"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "无权限"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "项目不存在")
+    })
+    @SecurityRequirement(name = "Bearer Authentication")
+    @PreAuthorize("hasRole('REVIEWER') or hasRole('ADMIN')")
+    public ApiResponse<CarbonNeutralProjectResponse> verify(
+            @AuthenticationPrincipal JwtUserDetails verifier,
+            @Valid @RequestBody ProjectVerificationRequest request) {
+        return ApiResponse.success(projectService.verifyProject(verifier, request));
+    }
+
     /**
      * 【业务功能】：企业使用/注销项目签发的碳信用抵消自身的超额碳排放
      * 【对应前端页面】：views/enterprise/CarbonNeutralDetail.vue
@@ -265,8 +309,29 @@ public class CarbonNeutralProjectController {
         return ApiResponse.success(projectService.useCredits(currentUser, id, request.getAmount(), request.getRelatedReportId()));
     }
 
-    
-    
-    
-    
+    /**
+     * 【业务功能】：查询待第三方核证机构处理的碳中和项目工单池
+     * 【对应前端页面】：views/auditor/ProjectReview.vue (/auditor/project/review)
+     * 【对应前端API】：api/carbonNeutral.ts -> getPendingVerification()
+     * 【可见UI操作】：审核员进入“项目核证”页面加载待审任务列表
+     */
+    @AuditLog(module = "碳中和项目", action = "GETPENDINGVERIFICATION", description = "碳中和项目 GETPENDINGVERIFICATION")
+    @GetMapping("/pending-verification")
+    @Operation(summary = "待核证项目", description = "获取分配给当前核证机构的待核证项目列表")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "查询成功"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "无权限")
+    })
+    @SecurityRequirement(name = "Bearer Authentication")
+    @PreAuthorize("hasRole('REVIEWER') or hasRole('ADMIN')")
+    public ApiResponse<Page<CarbonNeutralProjectResponse>> getPendingVerification(
+            @AuthenticationPrincipal JwtUserDetails verifier,
+            @Parameter(description = "页码（从1开始）", example = "1") @RequestParam(defaultValue = "1") Integer page,
+            @Parameter(description = "每页大小", example = "20") @RequestParam(defaultValue = "20") Integer size) {
+        // ADMIN 是监督者而非被指派人：走全局池，否则 userId 不在 verifier_id 集合内恒为空
+        if (verifier.isAdmin() && !verifier.isReviewer()) {
+            return ApiResponse.success(projectService.getAllPendingVerificationProjects(page, size));
+        }
+        return ApiResponse.success(projectService.getPendingVerificationProjects(verifier.getUserId(), page, size));
     }
+}
