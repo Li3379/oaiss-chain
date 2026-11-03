@@ -9,8 +9,10 @@ import com.oaiss.chain.entity.CarbonNeutralProject;
 import com.oaiss.chain.entity.Enterprise;
 import com.oaiss.chain.entity.Reviewer;
 import com.oaiss.chain.entity.User;
+import com.oaiss.chain.enums.CreditEventTypeEnum;
 import com.oaiss.chain.exception.BusinessException;
 import com.oaiss.chain.repository.CarbonNeutralProjectRepository;
+import com.oaiss.chain.repository.CreditEventRepository;
 import com.oaiss.chain.repository.EnterpriseRepository;
 import com.oaiss.chain.repository.ReviewerRepository;
 import com.oaiss.chain.repository.UserRepository;
@@ -69,6 +71,10 @@ public class CarbonNeutralProjectService {
     private final ObjectMapper objectMapper;
     /** 碳信用抵扣缺口时要写报告的 shortfall_offset，故需报告仓库 */
     private final com.oaiss.chain.repository.CarbonReportRepository carbonReportRepository;
+    /** 碳中和认证加分的幂等判据（每企业只加一次） */
+    private final CreditEventRepository creditEventRepository;
+    /** 认证通过后发放信誉分奖励 */
+    private final CreditScoreService creditScoreService;
 
     // ==================== 项目状态常量 ====================
     public static final int STATUS_DRAFT = 0;          // 筹备/草稿
@@ -434,8 +440,34 @@ public class CarbonNeutralProjectService {
             throw new BusinessException(3007, "证书编号生成冲突，请重试");
         }
 
+        awardCarbonNeutralCredit(project, certNo, operatorId);
+
         log.info("Project certified: {} -> {}", project.getProjectNo(), certNo);
         return toResponse(project);
+    }
+
+    /**
+     * 认证通过时发放碳中和信誉分奖励（D-07..D-11）。
+     *
+     * <p>每企业只加一次：该企业已存在 {@code event_type=9} 的事件则跳过（D-09）。
+     * 后续项目照常发证但不再加分。{@code CreditEvent} 无项目维度，
+     * 归属信息通过描述文本承载（D-11）。
+     */
+    private void awardCarbonNeutralCredit(CarbonNeutralProject project, String certNo, Long operatorId) {
+        boolean alreadyAwarded = creditEventRepository.existsByEnterpriseIdAndEventTypeAndDeletedFalse(
+                project.getOwnerId(), CreditEventTypeEnum.CARBON_NEUTRAL_CERTIFIED.getCode());
+        if (alreadyAwarded) {
+            log.info("Carbon neutral credit already awarded for enterprise {}, skip project {}",
+                    project.getOwnerId(), project.getProjectNo());
+            return;
+        }
+
+        creditScoreService.addBonusPoints(
+                project.getOwnerId(),
+                CreditEventTypeEnum.CARBON_NEUTRAL_CERTIFIED.getDefaultPoints(),
+                "碳中和认证 " + project.getProjectNo() + " / 证书 " + certNo,
+                operatorId,
+                CreditEventTypeEnum.CARBON_NEUTRAL_CERTIFIED);
     }
 
     /**

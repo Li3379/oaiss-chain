@@ -21,4 +21,9 @@ public interface CreditEventRepository extends JpaRepository<CreditEvent, Long> 
      * 查询企业指定类型的事件
      */
     Page<CreditEvent> findByEnterpriseIdAndEventTypeAndDeletedFalse(Long enterpriseId, Integer eventType, Pageable pageable);
+
+    /**
+     * 该企业是否已存在指定类型的事件（碳中和认证加分幂等判据：每企业只加一次）。
+     */
+    boolean existsByEnterpriseIdAndEventTypeAndDeletedFalse(Long enterpriseId, Integer eventType);
 }
