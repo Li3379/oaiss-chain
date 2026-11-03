@@ -8,8 +8,10 @@ import com.oaiss.chain.entity.CarbonNeutralProject;
 import com.oaiss.chain.entity.Enterprise;
 import com.oaiss.chain.entity.Reviewer;
 import com.oaiss.chain.entity.User;
+import com.oaiss.chain.enums.CreditEventTypeEnum;
 import com.oaiss.chain.exception.BusinessException;
 import com.oaiss.chain.repository.CarbonNeutralProjectRepository;
+import com.oaiss.chain.repository.CreditEventRepository;
 import com.oaiss.chain.repository.EnterpriseRepository;
 import com.oaiss.chain.repository.ReviewerRepository;
 import com.oaiss.chain.repository.UserRepository;
@@ -18,6 +20,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
@@ -55,6 +58,12 @@ class CarbonNeutralProjectServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private CreditEventRepository creditEventRepository;
+
+    @Mock
+    private CreditScoreService creditScoreService;
 
     @Spy
     private ObjectMapper objectMapper = new ObjectMapper();
@@ -333,9 +342,88 @@ class CarbonNeutralProjectServiceTest {
         when(projectRepository.findById(1L)).thenReturn(Optional.of(testProject));
         when(projectRepository.save(any())).thenReturn(testProject);
 
-        CarbonNeutralProjectResponse response = service.completeCertification(1L, "CERT-001");
+        CarbonNeutralProjectResponse response = service.completeCertification(1L, 9L);
 
         assertNotNull(response);
+    }
+
+    @Test
+    @DisplayName("核证通过-签发碳信用等于核定减排量")
+    void verifyProject_issuedCreditsEqualVerifiedReduction() {
+        testProject.setVerificationStatus(CarbonNeutralProjectService.VERIFY_STATUS_PENDING);
+        testProject.setStatus(CarbonNeutralProjectService.STATUS_IMPLEMENTING);
+        testProject.setIssuedCredits(BigDecimal.valueOf(10));
+
+        ProjectVerificationRequest request = new ProjectVerificationRequest();
+        request.setProjectId(1L);
+        request.setVerifiedReduction(BigDecimal.valueOf(42.5));
+
+        when(projectRepository.findById(1L)).thenReturn(Optional.of(testProject));
+        when(projectRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        CarbonNeutralProjectResponse response = service.verifyProject(testUser, request);
+
+        assertEquals(0, BigDecimal.valueOf(52.5).compareTo(response.getIssuedCredits()));
+        assertEquals(CarbonNeutralProjectService.VERIFY_STATUS_VERIFIED, response.getVerificationStatus());
+    }
+
+    @Test
+    @DisplayName("完成认证-首次写入碳中和认证加分事件")
+    void completeCertification_addsCarbonNeutralCreditEvent() {
+        testProject.setCertStatus(CarbonNeutralProjectService.CERT_STATUS_PENDING);
+        testProject.setProjectNo("CNP202605050001");
+
+        when(projectRepository.findById(1L)).thenReturn(Optional.of(testProject));
+        when(projectRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(creditEventRepository.existsByEnterpriseIdAndEventTypeAndDeletedFalse(
+                1L, CreditEventTypeEnum.CARBON_NEUTRAL_CERTIFIED.getCode())).thenReturn(false);
+
+        CarbonNeutralProjectResponse response = service.completeCertification(1L, 2L);
+
+        ArgumentCaptor<String> descriptionCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<CreditEventTypeEnum> eventTypeCaptor = ArgumentCaptor.forClass(CreditEventTypeEnum.class);
+        verify(creditScoreService, times(1)).addBonusPoints(
+                eq(1L),
+                eq(CreditEventTypeEnum.CARBON_NEUTRAL_CERTIFIED.getDefaultPoints()),
+                descriptionCaptor.capture(),
+                eq(2L),
+                eventTypeCaptor.capture());
+
+        assertEquals(CreditEventTypeEnum.CARBON_NEUTRAL_CERTIFIED, eventTypeCaptor.getValue());
+        assertTrue(descriptionCaptor.getValue().contains("CNP202605050001"));
+        assertTrue(descriptionCaptor.getValue().contains(response.getCertNo()));
+    }
+
+    @Test
+    @DisplayName("完成认证-同企业第二个项目不重复加分")
+    void completeCertification_secondProjectNoDuplicateBonus() {
+        testProject.setCertStatus(CarbonNeutralProjectService.CERT_STATUS_PENDING);
+
+        when(projectRepository.findById(1L)).thenReturn(Optional.of(testProject));
+        when(projectRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(creditEventRepository.existsByEnterpriseIdAndEventTypeAndDeletedFalse(anyLong(), anyInt()))
+                .thenReturn(true);
+
+        CarbonNeutralProjectResponse response = service.completeCertification(1L, 2L);
+
+        verify(creditScoreService, never()).addBonusPoints(
+                anyLong(), anyInt(), anyString(), anyLong(), any());
+        assertNotNull(response.getCertNo());
+        assertEquals(CarbonNeutralProjectService.CERT_STATUS_CERTIFIED, response.getCertStatus());
+    }
+
+    @Test
+    @DisplayName("完成认证-证书编号符合 CNE-{year}-{6 位} 格式")
+    void completeCertification_generatesCertNoInExpectedFormat() {
+        testProject.setCertStatus(CarbonNeutralProjectService.CERT_STATUS_PENDING);
+
+        when(projectRepository.findById(1L)).thenReturn(Optional.of(testProject));
+        when(projectRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        CarbonNeutralProjectResponse response = service.completeCertification(1L, 2L);
+
+        assertTrue(response.getCertNo().matches("^CNE-\\d{4}-\\d{6}$"));
+        assertEquals(String.valueOf(LocalDate.now().getYear()), response.getCertNo().substring(4, 8));
     }
 
     @Test
@@ -677,7 +765,7 @@ class CarbonNeutralProjectServiceTest {
         testProject.setCertStatus(CarbonNeutralProjectService.CERT_STATUS_NONE);
         when(projectRepository.findById(1L)).thenReturn(Optional.of(testProject));
 
-        assertThrows(BusinessException.class, () -> service.completeCertification(1L, "CERT-001"));
+        assertThrows(BusinessException.class, () -> service.completeCertification(1L, 9L));
     }
 
     @Test

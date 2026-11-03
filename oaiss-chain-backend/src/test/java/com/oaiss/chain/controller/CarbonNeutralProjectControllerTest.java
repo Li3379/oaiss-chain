@@ -821,48 +821,48 @@ class CarbonNeutralProjectControllerTest {
     @DisplayName("完成认证成功")
     void testCompleteCertificationSuccess() throws Exception {
         // Given
+        setAuthentication(adminUser);
         CarbonNeutralProjectResponse certifiedResponse = CarbonNeutralProjectResponse.builder()
                 .id(1L)
                 .projectNo("CNP202605050001")
                 .projectName("林业碳汇项目")
                 .certStatus(2)
                 .certStatusText("已认证")
-                .certNo("CERT-2026-001")
+                .certNo("CNE-2026-000001")
                 .certDate(LocalDate.now())
                 .build();
 
-        when(projectService.completeCertification(eq(1L), eq("CERT-2026-001")))
+        when(projectService.completeCertification(eq(1L), eq(2L)))
                 .thenReturn(certifiedResponse);
 
         // When & Then
         mockMvc.perform(post("/carbon-neutral/1/certify")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"certNo\": \"CERT-2026-001\"}"))
+                        .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.certStatus").value(2))
                 .andExpect(jsonPath("$.data.certStatusText").value("已认证"))
-                .andExpect(jsonPath("$.data.certNo").value("CERT-2026-001"));
+                .andExpect(jsonPath("$.data.certNo").value("CNE-2026-000001"));
 
-        verify(projectService, times(1)).completeCertification(eq(1L), eq("CERT-2026-001"));
+        verify(projectService, times(1)).completeCertification(eq(1L), eq(2L));
     }
 
     @Test
     @DisplayName("完成认证失败-项目不在待认证状态")
     void testCompleteCertificationInvalidStatus() throws Exception {
         // Given
-        when(projectService.completeCertification(eq(1L), eq("CERT-2026-001")))
+        setAuthentication(adminUser);
+        when(projectService.completeCertification(eq(1L), eq(2L)))
                 .thenThrow(new BusinessException(3003, "项目不在待认证状态"));
 
         // When & Then
         mockMvc.perform(post("/carbon-neutral/1/certify")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"certNo\": \"CERT-2026-001\"}"))
+                        .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(3003))
                 .andExpect(jsonPath("$.message").value("项目不在待认证状态"));
 
-        verify(projectService, times(1)).completeCertification(eq(1L), eq("CERT-2026-001"));
+        verify(projectService, times(1)).completeCertification(eq(1L), eq(2L));
     }
 
     // ==================== POST /carbon-neutral/{id}/terminate Tests ====================
