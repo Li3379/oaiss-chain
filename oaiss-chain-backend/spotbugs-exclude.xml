@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SpotBugs 精确排除清单。
+
+  原则（与 static-analysis-ratchet 一致）：只排除「确定的误报」，不排除「改起来麻烦的真问题」。
+  每一条都必须写明为什么在这里判为误报，否则下一个人无法判断能否删除。
+
+  基线棘轮不会因为本文件而放宽：被排除的条目根本不计入总数。
+-->
+<FindBugsFilter>
+    <!--
+      Lombok @Builder 生成的 Builder 类持有字段引用（EI_EXPOSE_REP2）。
+
+      这不是设计缺陷：构造器接收集合后立刻写入新实例，Builder 本身是一次性的
+      中间对象，不对外暴露、不被缓存。SpotBugs 看不到 Lombok 生成代码的语义，
+      按普通 Pojo 的 getter/setter 规则报出。
+
+      只匹配 `$XxxBuilder` 生成类，不涉及任何手写类。
+    -->
+    <Match>
+        <Class name="~.*\$.*Builder" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
+</FindBugsFilter>

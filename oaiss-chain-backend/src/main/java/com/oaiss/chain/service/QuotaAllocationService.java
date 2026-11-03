@@ -173,9 +173,9 @@ public class QuotaAllocationService {
         // 参数含 toPlainString() 等调用，无论日志级别都会求值；
         // 加守卫既满足 PMD GuardLogStatement，也避免高频路径上的无谓字符串化。
         if (log.isInfoEnabled()) {
-            log.info("[QUOTA] 报告 {} 计算配额 {} 吨（{} × {}，机组类型 {}，年度 {}），配额只算不发",
+            log.info("[QUOTA] 报告 {} 计算配额 {} 吨（{} × {}，机组类型 {}，年度 {}，序号 {}），配额只算不发",
                     reportId, quota.toPlainString(), report.getOutputQuantity().toPlainString(),
-                    benchmark.getBenchmarkValue().toPlainString(), unitType, year);
+                    benchmark.getBenchmarkValue().toPlainString(), unitType, year, seq);
         }
 
         return buildResult(report, quota, false);
