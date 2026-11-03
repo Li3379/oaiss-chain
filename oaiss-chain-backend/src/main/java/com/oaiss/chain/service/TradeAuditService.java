@@ -48,6 +48,15 @@ public class TradeAuditService {
     private final TransactionRepository transactionRepository;
     private final TradeAuditRepository tradeAuditRepository;
     private final EnterpriseRepository enterpriseRepository;
+    /**
+     * 配额账本：2026-11-03 后成交结算改走碳币，本服务**不再调用**它。
+     *
+     * <p>保留注入是为了让 TradeAuditServiceTest 的负向断言有意义——
+     * 那些 {@code verify(quotaLedgerService, never())} 正是「配额退出资产层」
+     * 这一模型变更的可执行证据。删掉依赖会让它们变成编译错误，
+     * 等于把「没回退」的守护一起删了。
+     */
+    private final QuotaLedgerService quotaLedgerService;
     private final CreditScoreService creditScoreService;
     private final CarbonCoinService carbonCoinService;
     private final NotificationService notificationService;
