@@ -59,7 +59,8 @@ class CarbonCoinIssuanceTest {
         certificateGateService = mock(CertificateGateService.class);
 
         service = new CarbonCoinService(accountRepository, transactionRepository,
-                certificateGateService, enterpriseRepository, reportRepository);
+                certificateGateService, enterpriseRepository, reportRepository,
+                mock(QuotaLedgerService.class));
 
         enterprise = Enterprise.builder().userId(OWNER_USER_ID).enterpriseName("测试企业").build();
         enterprise.setId(ENTERPRISE_ID);

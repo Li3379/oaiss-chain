@@ -91,6 +91,33 @@ public class CarbonCoinController {
     }
 
     /**
+     * 【业务功能】：用碳币兑换配额（1 枚碳币 = 1 吨排放权）
+     * 【对应前端页面】：views/enterprise/CarbonCoin.vue (/enterprise/carbon-coin/account)
+     * 【可见UI操作】：在碳币账户页点【兑换配额】，输入枚数后确认，配额进入可交易余额
+     *
+     * <p>这是碳币的**唯一出口**。碳币不支持提现，只能换回配额用于履约或挂单。
+     * 没有这个出口，企业拿到碳币后无处可用，「减排有奖」就只是账面数字。
+     */
+    @AuditLog(module = "碳币管理", action = "REDEEMQUOTA", description = "碳币管理 REDEEMQUOTA")
+    @PostMapping("/redeem-quota")
+    @Operation(summary = "碳币兑换配额",
+            description = "1 枚碳币兑换 1 吨配额。扣减碳币余额，等量配额进入可交易余额。")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "兑换成功"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "数量无效或余额不足"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "未授权访问")
+    })
+    @SecurityRequirement(name = "Bearer Authentication")
+    @PreAuthorize("hasRole('ENTERPRISE') or hasRole('ADMIN')")
+    public ApiResponse<CarbonCoinAccountResponse> redeemQuota(
+            @Parameter(hidden = true) @AuthenticationPrincipal JwtUserDetails currentUser,
+            @Parameter(description = "兑换枚数", required = true, example = "285.80")
+            @RequestParam java.math.BigDecimal amount) {
+        return ApiResponse.success(carbonCoinService.redeemQuota(
+                currentUser.getUserId(), amount, currentUser.getUserId()));
+    }
+
+    /**
      * 【业务功能】：分页查询碳币账户收支交易明细
      * 【对应前端页面】：views/enterprise/CarbonCoin.vue (/enterprise/carbon-coin/account)
      * 【对应前端API】：api/carbonCoin.ts -> getTransactions()

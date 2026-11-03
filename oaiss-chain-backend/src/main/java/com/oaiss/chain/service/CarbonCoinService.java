@@ -5,6 +5,7 @@ import com.oaiss.chain.dto.CarbonCoinRechargeRequest;
 import com.oaiss.chain.entity.CarbonCoinAccount;
 import com.oaiss.chain.entity.CarbonCoinTransaction;
 import com.oaiss.chain.entity.CarbonReport;
+import com.oaiss.chain.entity.Enterprise;
 import com.oaiss.chain.annotation.DistributedLock;
 import com.oaiss.chain.exception.BusinessException;
 import com.oaiss.chain.repository.CarbonCoinAccountRepository;
@@ -43,6 +44,8 @@ public class CarbonCoinService {
     /** 发放时需要「报告 → 企业 → userId」两跳解析，故注入两个 repository */
     private final com.oaiss.chain.repository.EnterpriseRepository enterpriseRepository;
     private final com.oaiss.chain.repository.CarbonReportRepository carbonReportRepository;
+    /** 兑换配额时配额要进企业余额，必须走账本（唯一合法写入口） */
+    private final QuotaLedgerService quotaLedgerService;
 
     /**
      * 交易类型
@@ -54,6 +57,8 @@ public class CarbonCoinService {
     public static final int TX_TYPE_ISSUE = 5;
     /** 发放回收：报告被驳回时冲减已发的币 */
     public static final int TX_TYPE_CLAWBACK = 6;
+    /** 碳币兑换配额：1 枚碳币换 1 吨排放权 */
+    public static final int TX_TYPE_REDEEM_QUOTA = 7;
 
     /** 碳币精度：与 carbon_coin_account.balance 列一致 */
     private static final int COIN_SCALE = 2;
@@ -413,6 +418,53 @@ public class CarbonCoinService {
 
         log.info("[COIN] 报告 {} 回收碳币 {} 枚（userId={}）",
                 reportId, issued.toPlainString(), ownerUserId);
+    }
+
+    /**
+     * 碳币兑换配额：1 枚碳币换 1 吨排放权。
+     *
+     * <p>这是碳币的**唯一出口**。碳币不能提现，只能换回配额用于履约或挂单——
+     * 若没有这个出口，企业拿到碳币后无处可用，「减排有奖」就只是账面数字。
+     *
+     * <p>扣币与加配额必须在同一事务：只扣币不加配额=凭空销毁资产，
+     * 只加配额不扣币=凭空造币。两者都不可接受。
+     *
+     * @param userId     兑换人
+     * @param amount     兑换枚数（= 换到的吨数）
+     * @param operatorId 触发人（企业自助时与 userId 相同）
+     */
+    @DistributedLock(key = "'carbon:coin:' + #userId", expireTime = 30)
+    @Transactional
+    public CarbonCoinAccountResponse redeemQuota(Long userId, BigDecimal amount, Long operatorId) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException(4001, "兑换数量必须为正数");
+        }
+
+        CarbonCoinAccount account = getAccountEntity(userId);
+        validateAccountActive(account);
+        // 只校验可用余额：冻结中的币属于在途挂单，不能拿去兑换
+        validateBalance(account, amount);
+
+        Enterprise enterprise = enterpriseRepository.findByUserId(userId)
+                .orElseThrow(() -> new BusinessException(4007, "当前用户未关联企业"));
+
+        BigDecimal before = account.getBalance();
+        BigDecimal after = before.subtract(amount);
+        account.setBalance(after);
+        account.setTotalSpent(nz(account.getTotalSpent()).add(amount));
+        accountRepository.save(account);
+
+        // 配额入账走账本——它是配额字段的唯一合法写入口
+        BigDecimal quotaAmount = amount.setScale(4, java.math.RoundingMode.HALF_UP);
+        quotaLedgerService.increase(enterprise.getId(), quotaAmount,
+                "碳币兑换配额", operatorId == null ? userId : operatorId, "REDEEM", null);
+
+        saveTransaction(userId, TX_TYPE_REDEEM_QUOTA, amount, before, after,
+                quotaAmount, null, "碳币兑换配额");
+
+        log.info("[COIN] userId={} 兑换 {} 枚碳币 → {} 吨配额", userId,
+                amount.toPlainString(), quotaAmount.toPlainString());
+        return toResponse(account);
     }
 
     /** 报告 → 企业 → userId 两跳解析 */
