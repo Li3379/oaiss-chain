@@ -4,6 +4,7 @@ import com.oaiss.chain.dto.CarbonCoinAccountResponse;
 import com.oaiss.chain.dto.CarbonCoinRechargeRequest;
 import com.oaiss.chain.entity.CarbonCoinAccount;
 import com.oaiss.chain.entity.CarbonCoinTransaction;
+import com.oaiss.chain.entity.CarbonReport;
 import com.oaiss.chain.annotation.DistributedLock;
 import com.oaiss.chain.exception.BusinessException;
 import com.oaiss.chain.repository.CarbonCoinAccountRepository;
@@ -37,8 +38,11 @@ public class CarbonCoinService {
 
     private final CarbonCoinAccountRepository accountRepository;
     private final CarbonCoinTransactionRepository transactionRepository;
-    /** 证书门禁：仅充值入口校验；购买/出售配额由交易侧门禁保证 */
+    /** 证书门禁：充值入口与碳币发放都必须校验 */
     private final CertificateGateService certificateGateService;
+    /** 发放时需要「报告 → 企业 → userId」两跳解析，故注入两个 repository */
+    private final com.oaiss.chain.repository.EnterpriseRepository enterpriseRepository;
+    private final com.oaiss.chain.repository.CarbonReportRepository carbonReportRepository;
 
     /**
      * 交易类型
@@ -46,6 +50,13 @@ public class CarbonCoinService {
     public static final int TX_TYPE_RECHARGE = 1;
     public static final int TX_TYPE_BUY_QUOTA = 2;
     public static final int TX_TYPE_SELL_QUOTA = 3;
+    /** 减排成果发放：审核通过后按盈余 1:1 发放 */
+    public static final int TX_TYPE_ISSUE = 5;
+    /** 发放回收：报告被驳回时冲减已发的币 */
+    public static final int TX_TYPE_CLAWBACK = 6;
+
+    /** 碳币精度：与 carbon_coin_account.balance 列一致 */
+    private static final int COIN_SCALE = 2;
 
     /**
      * 获取或创建碳币账户
@@ -251,6 +262,20 @@ public class CarbonCoinService {
     private void saveTransaction(Long userId, Integer txType, BigDecimal amount,
                                   BigDecimal balanceBefore, BigDecimal balanceAfter,
                                   BigDecimal relatedQuota, Long relatedTradeId, String remark) {
+        saveTransaction(userId, txType, amount, balanceBefore, balanceAfter,
+                relatedQuota, relatedTradeId, null, null, remark);
+    }
+
+    /**
+     * 写流水（含报告维度）。
+     *
+     * @param relatedReportId 关联报告ID；非发放/回收场景传 null
+     * @param relatedSeq      发放序号；回收行必须传 null
+     */
+    private void saveTransaction(Long userId, Integer txType, BigDecimal amount,
+                                  BigDecimal balanceBefore, BigDecimal balanceAfter,
+                                  BigDecimal relatedQuota, Long relatedTradeId,
+                                  Long relatedReportId, Integer relatedSeq, String remark) {
         CarbonCoinTransaction tx = CarbonCoinTransaction.builder()
                 .txNo(generateTxNo())
                 .userId(userId)
@@ -260,9 +285,165 @@ public class CarbonCoinService {
                 .balanceAfter(balanceAfter)
                 .relatedQuota(relatedQuota)
                 .relatedTradeId(relatedTradeId)
+                .relatedReportId(relatedReportId)
+                .relatedSeq(relatedSeq)
                 .remark(remark)
                 .build();
         transactionRepository.save(tx);
+    }
+
+    // ==================== 减排成果发放（组件：碳币闭环）====================
+
+    /**
+     * 按报告盈余发放碳币，**幂等**。
+     *
+     * <p>事务传播是 {@code MANDATORY}：必须由审核流程的事务驱动，
+     * 保证「发币」与「报告状态变更」同生共死。
+     *
+     * <p><b>入账对象是报告所属企业的 userId</b>，不是调用方（审核员）。
+     * 这个解析必须在这里做——由调用方传 userId 极易传错，
+     * 而资产错发的后果比「多发/少发」严重得多（钱进了审核员口袋）。
+     *
+     * @param reportId  报告ID
+     * @param surplus   盈余吨数；非正数直接跳过（不发、不写流水、不报错）
+     * @param operatorId 触发人（审核员），仅用于日志
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void issueForReport(Long reportId, BigDecimal surplus, Long operatorId) {
+        doIssue(reportId, surplus, operatorId, true);
+    }
+
+    /**
+     * 强制重发：跳过幂等检查，序号递增。
+     *
+     * <p>用于「报告被驳回 → 修改 → 重新审核通过」的场景。驳回时
+     * {@link #clawbackForReport} 会冲减上一轮的发放，但流水行保留，
+     * 因此这里必须用新序号，否则会撞 {@code uk_coin_issue} 唯一索引。
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void reissueForReport(Long reportId, BigDecimal surplus, Long operatorId) {
+        doIssue(reportId, surplus, operatorId, false);
+    }
+
+    private void doIssue(Long reportId, BigDecimal surplus, Long operatorId, boolean checkIdempotent) {
+        if (surplus == null || surplus.compareTo(BigDecimal.ZERO) <= 0) {
+            // 超排或刚好持平：不发币，这是正常路径，不该抛错也不该写流水
+            log.info("[COIN] 报告 {} 无盈余（{}），不发放碳币", reportId, surplus);
+            return;
+        }
+
+        CarbonReport report = carbonReportRepository.findByIdAndDeletedFalse(reportId)
+                .orElseThrow(() -> new BusinessException(4006, "碳报告不存在: " + reportId));
+
+        Long ownerUserId = resolveOwnerUserId(report.getEnterpriseId());
+
+        // 门禁：无有效准入证书的主体不应获得减排凭证
+        certificateGateService.assertEnterpriseAdmittedByUserId(ownerUserId);
+
+        long priorIssues = transactionRepository.countByRelatedReportIdAndRelatedSeqIsNotNull(reportId);
+        if (checkIdempotent && priorIssues > 0) {
+            log.info("[COIN] 报告 {} 已发放过碳币（{} 次），幂等跳过", reportId, priorIssues);
+            return;
+        }
+
+        int seq = (int) priorIssues + 1;
+        BigDecimal amount = surplus.setScale(COIN_SCALE, java.math.RoundingMode.HALF_UP);
+
+        CarbonCoinAccount account = getOrCreateAccountEntity(ownerUserId);
+        validateAccountActive(account);
+
+        BigDecimal before = account.getBalance();
+        BigDecimal after = before.add(amount);
+        account.setBalance(after);
+        account.setTotalIssued(nz(account.getTotalIssued()).add(amount));
+        accountRepository.save(account);
+
+        saveTransaction(ownerUserId, TX_TYPE_ISSUE, amount, before, after,
+                null, null, reportId, seq,
+                String.format("碳报告 %s 减排盈余发放（第 %d 次）", report.getReportNo(), seq));
+
+        log.info("[COIN] 报告 {} 发放碳币 {} 枚给 userId={}（盈余 {}，序号 {}）",
+                reportId, amount.toPlainString(), ownerUserId, surplus.toPlainString(), seq);
+    }
+
+    /**
+     * 回收某报告已发放的碳币。
+     *
+     * <p>传播是 {@code REQUIRES_NEW}：调用方（驳回流程）是「尽力而为」的——
+     * 回收失败（余额已被花掉）不得让驳回整体失败。若共用事务，
+     * 内层抛出会把外层标记 rollback-only，提交阶段抛
+     * {@code UnexpectedRollbackException}，驳回变成 500。
+     *
+     * <p><b>totalIssued 不减少</b>：发行是史实，回收改的是流通量。
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public void clawbackForReport(Long reportId, Long operatorId) {
+        CarbonReport report = carbonReportRepository.findByIdAndDeletedFalse(reportId)
+                .orElseThrow(() -> new BusinessException(4006, "碳报告不存在: " + reportId));
+
+        // 累计已发放量（ISSUE 行求和）
+        BigDecimal issued = transactionRepository
+                .findByRelatedReportIdAndDeletedFalseOrderByIdAsc(reportId).stream()
+                .filter(tx -> Integer.valueOf(TX_TYPE_ISSUE).equals(tx.getTxType()))
+                .map(CarbonCoinTransaction::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        if (issued.compareTo(BigDecimal.ZERO) <= 0) {
+            log.info("[COIN] 报告 {} 未曾发放碳币，无需回收", reportId);
+            return;
+        }
+
+        Long ownerUserId = resolveOwnerUserId(report.getEnterpriseId());
+        CarbonCoinAccount account = getOrCreateAccountEntity(ownerUserId);
+
+        BigDecimal before = account.getBalance();
+        if (before.compareTo(issued) < 0) {
+            throw new BusinessException(4005,
+                    String.format("碳币余额不足，无法回收：应回收 %s 枚，当前余额 %s 枚",
+                            issued.toPlainString(), before.toPlainString()));
+        }
+        BigDecimal after = before.subtract(issued);
+        account.setBalance(after);
+        // totalIssued 刻意不动——发行史实不可抹去
+        accountRepository.save(account);
+
+        saveTransaction(ownerUserId, TX_TYPE_CLAWBACK, issued, before, after,
+                null, null, reportId, null,
+                String.format("碳报告 %s 驳回，回收已发碳币", report.getReportNo()));
+
+        log.info("[COIN] 报告 {} 回收碳币 {} 枚（userId={}）",
+                reportId, issued.toPlainString(), ownerUserId);
+    }
+
+    /** 报告 → 企业 → userId 两跳解析 */
+    private Long resolveOwnerUserId(Long enterpriseId) {
+        return enterpriseRepository.findById(enterpriseId)
+                .map(com.oaiss.chain.entity.Enterprise::getUserId)
+                .orElseThrow(() -> new BusinessException(4007, "企业不存在: " + enterpriseId));
+    }
+
+    /**
+     * 取账户，不存在则创建。
+     *
+     * <p>与 {@link #getOrCreateAccount} 的区别：那个返回 DTO，这个返回实体供内部写入。
+     * <b>不能用 getAccountEntity</b>——它找不到就抛 4002，而首份报告审核时
+     * 账户还不存在（企业从未访问过碳币页），会直接失败。
+     */
+    private CarbonCoinAccount getOrCreateAccountEntity(Long userId) {
+        return accountRepository.findByUserIdAndDeletedFalse(userId)
+                .orElseGet(() -> accountRepository.save(CarbonCoinAccount.builder()
+                        .userId(userId)
+                        .balance(BigDecimal.ZERO)
+                        .frozenBalance(BigDecimal.ZERO)
+                        .totalRecharged(BigDecimal.ZERO)
+                        .totalSpent(BigDecimal.ZERO)
+                        .totalIssued(BigDecimal.ZERO)
+                        .status(1)
+                        .build()));
+    }
+
+    private static BigDecimal nz(BigDecimal v) {
+        return v == null ? BigDecimal.ZERO : v;
     }
 
     private CarbonCoinAccountResponse toResponse(CarbonCoinAccount account) {

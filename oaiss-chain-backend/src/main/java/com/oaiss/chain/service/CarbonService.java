@@ -69,6 +69,8 @@ public class CarbonService {
     private final CertificateGateService certificateGateService;
     private final QuotaAllocationService quotaAllocationService;
     private final com.oaiss.chain.repository.IndustryBenchmarkRepository industryBenchmarkRepository;
+    /** 2026-11-03 起，审核通过的资产产出改为碳币（不再是配额） */
+    private final CarbonCoinService carbonCoinService;
 
     /**
      * 配额发放总开关。
@@ -412,7 +414,7 @@ public class CarbonService {
                 // 放在这里：链上有存证才认可这批减排；且此时所有会失败的校验都已提前做过，
                 // 留下的只有「不该失败」的 DB 写。失败不阻断审核（报告已是 ON_CHAIN）。
                 if (quotaAllocationEnabled) {
-                    allocateQuotaQuietly(report, currentUser.getUserId());
+                    issueCoinQuietly(report, currentUser.getUserId());
                 }
             }
         }
@@ -474,25 +476,53 @@ public class CarbonService {
     }
 
     /**
-     * 发放配额，失败不阻断审核。
+     * 按减排盈余发放碳币，失败不阻断审核。
      *
-     * <p>此时报告已是 ON_CHAIN（链上存证成功），若让配额失败回滚整个事务，
-     * 就会出现「链上有、DB 无」的分歧且无法自愈。故失败只留痕 + 置
-     * {@code PENDING_RETRY}，由管理员通过重试端点补发。
+     * <p><b>2026-11-03 语义变更</b>：此处原来的实现是
+     * {@code quotaAllocationService.allocateForReport}——把「应得配额」直接加进企业的
+     * {@code carbonTradable}。现行模型改为：
+     * <pre>
+     * 配额 = 产量 × 基准值   ← 只计算，不发给企业
+     * 盈余 = 配额 − 实排
+     * 盈余 &gt; 0 → 发 N 枚碳币（1:1）
+     * </pre>
+     * 理由：配额若同时作为「可交易资产」和「碳币的发放依据」，同一吨盈余会被
+     * 铸成两份可花费资产。改为配额只算不发、碳币承接全部资产属性，从根上消除重复。
+     *
+     * <p>仍然保留「失败不阻断审核」的语义：此时报告已是 ON_CHAIN（链上存证成功），
+     * 让发币失败回滚整个事务会造成「链上有、DB 无」，且无法自愈。
      */
-    private void allocateQuotaQuietly(CarbonReport report, Long operatorUserId) {
+    private void issueCoinQuietly(CarbonReport report, Long operatorUserId) {
         try {
-            quotaAllocationService.allocateForReport(report.getId(), operatorUserId);
+            // 先算盈余：配额（审计值）− 范围一实排
+            BigDecimal quota = report.getQuotaAllocatedAmount();
+            BigDecimal actual = report.getScope1Emission();
+            if (quota == null) {
+                log.warn("[COIN] 报告 {} 无配额计算值（quotaAllocatedAmount 为空），跳过发币",
+                        report.getReportNo());
+                return;
+            }
+            BigDecimal surplus = quota.subtract(actual == null ? BigDecimal.ZERO : actual);
+
+            // 驳回后重发要跳过幂等检查并使用新序号，否则会撞 uk_coin_issue
+            boolean isReissue = com.oaiss.chain.enums.AllocationStateEnum.REVOKED.getCode()
+                    .equals(report.getAllocationState());
+            if (isReissue) {
+                carbonCoinService.reissueForReport(report.getId(), surplus, operatorUserId);
+            } else {
+                carbonCoinService.issueForReport(report.getId(), surplus, operatorUserId);
+            }
+            report.setAllocationState(
+                    com.oaiss.chain.enums.AllocationStateEnum.ALLOCATED.getCode());
         } catch (Exception ex) {
-            log.error("[QUOTA] 报告 {} 配额发放失败，已置为待重试: {}",
+            log.error("[COIN] 报告 {} 碳币发放失败，已置为待重试: {}",
                     report.getReportNo(), ex.getMessage(), ex);
             report.setAllocationState(
                     com.oaiss.chain.enums.AllocationStateEnum.PENDING_RETRY.getCode());
             try {
                 carbonReportRepository.save(report);
             } catch (Exception saveEx) {
-                // 连标记都写不进去也只能记日志——不能让审核整体失败
-                log.error("[QUOTA] 标记待重试状态失败: {}", saveEx.getMessage());
+                log.error("[COIN] 标记待重试状态失败: {}", saveEx.getMessage());
             }
         }
     }
@@ -548,39 +578,39 @@ public class CarbonService {
     }
 
     /**
-     * 驳回时收回已发放的配额，失败不阻断驳回。
+     * 驳回时回收已发的碳币，失败不阻断驳回。
      *
-     * <p><b>为什么是「尽力而为」而非强校验</b>：冲正有两道保护——企业已动用配额、
-     * 或存在冻结配额（在途挂单）。这两种情况下冲正会拒绝。如果让这个拒绝抛出、
-     * 回滚整个驳回事务，审核员就会陷入死局：他必须驳回这份有问题的报告，
-     * 但企业只要挂着一笔卖单，他就永远驳不掉。业务上显然应该「驳回优先，
-     * 收回配额另行处理」。
+     * <p><b>2026-11-03 语义变更</b>：原实现调 {@code revokeForReport} 冲正配额
+     * （{@code carbonTradable -= amount}）。现在配额只算不发，企业账上根本没有配额，
+     * 冲正对象变成了碳币——{@link CarbonCoinService#clawbackForReport}。
      *
-     * <p>失败时置 {@code REVOKE_FAILED} 并记错误日志，让这笔该收回的配额
+     * <p><b>为什么是「尽力而为」而非强校验</b>：回收可能失败——企业已把币花掉
+     * （买了配额或转给别人）、或余额不足。若让这个失败回滚整个驳回事务，
+     * 审核员就会陷入死局：他必须驳回这份有问题的报告，但只要企业花光了币，
+     * 他就永远驳不掉。业务上显然应该「驳回优先，回收另行处理」。
+     *
+     * <p>失败时置 {@code REVOKE_FAILED} 并记错误日志，让这笔该回收的币
      * 有据可查、可由管理员重试，而不是静默消失。
      */
     private void revokeQuotaQuietly(CarbonReport report, Long operatorUserId) {
         if (!quotaAllocationEnabled) {
             return;
         }
-        // 未发放过就没什么可收回的；这里提前判掉，避免每次都触发一次注定失败的调用
+        // 未发放过就没什么可回收的；这里提前判掉，避免每次都触发一次注定失败的调用
         if (report.getQuotaAllocatedAmount() == null
                 || !AllocationStateEnum.ALLOCATED.getCode().equals(report.getAllocationState())) {
             return;
         }
         try {
-            quotaAllocationService.revokeForReport(report.getId(), operatorUserId);
-            // 冲正在独立事务里提交，这里手里这份实体还是冲正**之前**的值。
-            // 若不同步，随后 carbonReportRepository.save(report) 会把
-            // allocation_state / quota_allocated_amount 写回成 ALLOCATED / 原金额，
-            // 冲正等于白做——而且账面看起来完全正常，最难查的那种。
-            CarbonReport refreshed = carbonReportRepository.findByIdAndDeletedFalse(report.getId())
-                    .orElse(report);
-            report.setAllocationState(refreshed.getAllocationState());
-            report.setQuotaAllocatedAmount(refreshed.getQuotaAllocatedAmount());
-            report.setQuotaUsedSnapshot(refreshed.getQuotaUsedSnapshot());
+            carbonCoinService.clawbackForReport(report.getId(), operatorUserId);
+            // 回收在独立事务（REQUIRES_NEW）里提交，这里手里这份实体还是回收前的值。
+            // 必须显式标记 REVOKED，否则随后 save(report) 会把 ALLOCATED 写回去，
+            // 回收等于白做——而且账面看起来完全正常，最难查的那种。
+            report.setAllocationState(AllocationStateEnum.REVOKED.getCode());
+            report.setQuotaAllocatedAmount(null);
+            report.setQuotaUsedSnapshot(null);
         } catch (Exception ex) {
-            log.error("[QUOTA] 报告 {} 驳回时冲正失败，已置为待人工处理: {}",
+            log.error("[COIN] 报告 {} 驳回时回收碳币失败，已置为待人工处理: {}",
                     report.getReportNo(), ex.getMessage(), ex);
             report.setAllocationState(AllocationStateEnum.REVOKE_FAILED.getCode());
         }
@@ -633,7 +663,7 @@ public class CarbonService {
                 // 这正是「上链失败→certify 补救」这条链的最后一环：不补这一步，
                 // 计划里承诺的"补救后配额会发"就是空头支票。
                 if (quotaAllocationEnabled) {
-                    allocateQuotaQuietly(report, currentUser.getUserId());
+                    issueCoinQuietly(report, currentUser.getUserId());
                 }
                 return toResponse(report);
             }
@@ -646,7 +676,7 @@ public class CarbonService {
             report.setStatus(ReportStatusEnum.ON_CHAIN.getCode());
             // 补救上链成功后才发放配额（与 reviewReport 的主路径同源）
             if (quotaAllocationEnabled) {
-                allocateQuotaQuietly(report, currentUser.getUserId());
+                issueCoinQuietly(report, currentUser.getUserId());
             }
         } else {
             if (request.getReviewComment() != null && !request.getReviewComment().isBlank()) {

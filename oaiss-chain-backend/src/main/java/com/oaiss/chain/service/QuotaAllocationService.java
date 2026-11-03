@@ -140,11 +140,6 @@ public class QuotaAllocationService {
                     "计算出的配额必须为正数，实际: " + quota.toPlainString());
         }
 
-        // ---- 发放序号：冲正重发时递增，避免撞唯一索引 ----
-        long priorAllocations = quotaTransactionRepository
-                .countByRelatedReportIdAndAllocationSeqIsNotNull(reportId);
-        int seq = (int) priorAllocations + 1;
-
         // ---- 记录发放前的 used 快照（冲正保护的比较基线）----
         Enterprise enterprise = enterpriseRepository.findById(report.getEnterpriseId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND,
@@ -152,11 +147,21 @@ public class QuotaAllocationService {
         BigDecimal usedSnapshot = enterprise.getCarbonUsed() == null
                 ? BigDecimal.ZERO : enterprise.getCarbonUsed();
 
-        // ---- 写账本 ----
-        quotaLedgerService.increaseForReport(
-                report.getEnterpriseId(), quota,
-                "碳报告审核通过，按行业基准值发放配额",
-                auditorId, reportId, seq);
+        // ---- 配额只算不发 ----
+        //
+        // 2026-11-03 语义变更：配额从「企业资产」改为「计算基准」。
+        // 原来这里调 quotaLedgerService.increaseForReport 把配额加进企业
+        // carbonTradable（可挂牌出售）；现在配额只写入报告的
+        // quotaAllocatedAmount 供审计与盈余计算，**不进企业余额**。
+        //
+        // 原因：碳币已按盈余 1:1 发放（CarbonCoinService.issueForReport）。
+        // 若配额仍进 carbonTradable，同一吨盈余就会变成两份可花费资产。
+        //
+        // 保留 allocationState / allocationSeq：它们仍是「该报告是否已结算」
+        // 的幂等真相源，冲正与重发都依赖。
+        long priorAllocations = quotaTransactionRepository
+                .countByRelatedReportIdAndAllocationSeqIsNotNull(reportId);
+        int seq = (int) priorAllocations + 1;
 
         // ---- 更新报告状态（幂等真相源）----
         report.setQuotaAllocatedAmount(quota);
@@ -168,9 +173,9 @@ public class QuotaAllocationService {
         // 参数含 toPlainString() 等调用，无论日志级别都会求值；
         // 加守卫既满足 PMD GuardLogStatement，也避免高频路径上的无谓字符串化。
         if (log.isInfoEnabled()) {
-            log.info("[QUOTA] 报告 {} 发放配额 {} 吨（{} × {}，机组类型 {}，年度 {}，序号 {}）",
+            log.info("[QUOTA] 报告 {} 计算配额 {} 吨（{} × {}，机组类型 {}，年度 {}），配额只算不发",
                     reportId, quota.toPlainString(), report.getOutputQuantity().toPlainString(),
-                    benchmark.getBenchmarkValue().toPlainString(), unitType, year, seq);
+                    benchmark.getBenchmarkValue().toPlainString(), unitType, year);
         }
 
         return buildResult(report, quota, false);

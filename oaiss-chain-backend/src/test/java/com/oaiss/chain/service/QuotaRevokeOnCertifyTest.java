@@ -53,6 +53,7 @@ class QuotaRevokeOnCertifyTest {
     private CarbonReportRepository reportRepository;
     private EnterpriseRepository enterpriseRepository;
     private QuotaAllocationService quotaAllocationService;
+    private CarbonCoinService carbonCoinService;
     private CarbonService carbonService;
 
     private CarbonReport report;
@@ -70,6 +71,7 @@ class QuotaRevokeOnCertifyTest {
         reportRepository = mock(CarbonReportRepository.class);
         enterpriseRepository = mock(EnterpriseRepository.class);
         quotaAllocationService = mock(QuotaAllocationService.class);
+        carbonCoinService = mock(CarbonCoinService.class);
 
         carbonService = new CarbonService(
                 reportRepository,
@@ -82,7 +84,8 @@ class QuotaRevokeOnCertifyTest {
                 mock(DigitalSignatureService.class),
                 mock(CertificateGateService.class),
                 quotaAllocationService,
-                mock(com.oaiss.chain.repository.IndustryBenchmarkRepository.class));
+                mock(com.oaiss.chain.repository.IndustryBenchmarkRepository.class),
+                carbonCoinService);
         ReflectionTestUtils.setField(carbonService, "quotaAllocationEnabled", true);
 
         report = CarbonReport.builder()
@@ -108,11 +111,11 @@ class QuotaRevokeOnCertifyTest {
     }
 
     @Test
-    @DisplayName("certify 驳回已发放配额的报告 → 必须冲正")
+    @DisplayName("certify 驳回已发放碳币的报告 → 必须回收")
     void certifyReject_revokesAllocatedQuota() {
         carbonService.certifyReport(REVIEWER, rejectRequest());
 
-        verify(quotaAllocationService, times(1)).revokeForReport(eq(100L), anyLong());
+        verify(carbonCoinService, times(1)).clawbackForReport(eq(100L), anyLong());
     }
 
     @Test
@@ -141,11 +144,11 @@ class QuotaRevokeOnCertifyTest {
     }
 
     @Test
-    @DisplayName("冲正失败不阻断驳回——企业有在途挂单时审核员仍要能驳回")
+    @DisplayName("回收失败不阻断驳回——企业已花掉碳币时审核员仍要能驳回")
     void certifyReject_revokeFailureDoesNotBlock() {
         doThrow(new BusinessException(com.oaiss.chain.constant.ErrorCode.PARAM_ERROR,
-                "该企业存在冻结配额 500 吨（挂单待售中），不可冲正"))
-                .when(quotaAllocationService).revokeForReport(anyLong(), anyLong());
+                "碳币余额不足，无法回收：应回收 285.80 枚，当前余额 10.00 枚"))
+                .when(carbonCoinService).clawbackForReport(anyLong(), anyLong());
 
         // 不抛异常
         assertDoesNotThrow(() -> carbonService.certifyReport(REVIEWER, rejectRequest()));
@@ -154,18 +157,18 @@ class QuotaRevokeOnCertifyTest {
         assertEquals(ReportStatusEnum.REJECTED.getCode(), report.getStatus());
         // 冲正失败要留痕，供管理员重试
         assertEquals(AllocationStateEnum.REVOKE_FAILED.getCode(), report.getAllocationState(),
-                "冲正失败必须置 REVOKE_FAILED，否则这笔该收回的配额彻底失联");
+                "回收失败必须置 REVOKE_FAILED，否则这笔该收回的碳币彻底失联");
     }
 
     @Test
-    @DisplayName("未发放配额的报告被驳回 → 不调冲正（避免无意义报错）")
+    @DisplayName("未发放碳币的报告被驳回 → 不调回收（避免无意义报错）")
     void certifyReject_unallocatedReportSkipsRevoke() {
         report.setQuotaAllocatedAmount(null);
         report.setAllocationState(AllocationStateEnum.NONE.getCode());
 
         carbonService.certifyReport(REVIEWER, rejectRequest());
 
-        verify(quotaAllocationService, never()).revokeForReport(anyLong(), anyLong());
+        verify(carbonCoinService, never()).clawbackForReport(anyLong(), anyLong());
         assertEquals(ReportStatusEnum.REJECTED.getCode(), report.getStatus());
     }
 
@@ -176,7 +179,7 @@ class QuotaRevokeOnCertifyTest {
 
         carbonService.certifyReport(REVIEWER, rejectRequest());
 
-        verify(quotaAllocationService, never()).revokeForReport(anyLong(), anyLong());
+        verify(carbonCoinService, never()).clawbackForReport(anyLong(), anyLong());
     }
 
     @Test
@@ -187,6 +190,6 @@ class QuotaRevokeOnCertifyTest {
         ReviewRequest req = new ReviewRequest(100L, ReportStatusEnum.REJECTED.getCode(), "退回修改");
         carbonService.reviewReport(REVIEWER, req);
 
-        verify(quotaAllocationService, times(1)).revokeForReport(eq(100L), anyLong());
+        verify(carbonCoinService, times(1)).clawbackForReport(eq(100L), anyLong());
     }
 }

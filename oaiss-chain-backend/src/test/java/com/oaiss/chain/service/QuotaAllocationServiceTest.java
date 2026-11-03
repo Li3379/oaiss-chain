@@ -145,7 +145,7 @@ class QuotaAllocationServiceTest {
     }
 
     @Test
-    @DisplayName("已冲正（REVOKED）→ 允许重发，序号递增")
+    @DisplayName("已冲正（REVOKED）→ 允许重发，序号递增（配额只算不发）")
     void allocate_reallocatesAfterRevokeWithIncrementedSeq() {
         report.setAllocationState(AllocationStateEnum.REVOKED.getCode());
         when(quotaTransactionRepository.countByRelatedReportIdAndAllocationSeqIsNotNull(100L))
@@ -157,10 +157,15 @@ class QuotaAllocationServiceTest {
 
         allocationService.allocateForReport(100L, 7L);
 
-        verify(quotaLedgerService).increaseForReport(anyLong(), any(), anyString(),
-                anyLong(), eq(100L), eq(2));
-        // 序号应为 2（已发过 1 次）
+        // 2026-11-03 语义变更：配额只算不发。
+        // 原断言 verify(increaseForReport) 会把配额加进企业 carbonTradable；
+        // 现在配额仅写入报告供审计与盈余计算，账本零写入（碳币由 CarbonCoinService 发）。
+        verify(quotaLedgerService, never()).increaseForReport(anyLong(), any(), anyString(),
+                anyLong(), anyLong(), anyInt());
+        // 序号仍应为 2（已发过 1 次）——它是「该报告是否已结算」的幂等真相源
         assertEquals(2, report.getAllocationSeq());
+        // 配额值仍被算出并记录（盈余 = 配额 − 实排 依赖它）
+        assertEquals(0, new BigDecimal("798.5000").compareTo(report.getQuotaAllocatedAmount()));
     }
 
     // ==================== 冲正 ====================
