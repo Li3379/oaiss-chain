@@ -32,6 +32,14 @@ public class RegulatoryFinding extends BaseEntity {
     public static final String RULE_REPEATED_REJECTION = "REPEATED_REJECTION";
     /** 额度异常：已用配额超过持有配额 */
     public static final String RULE_QUOTA_OVERDRAFT = "QUOTA_OVERDRAFT";
+    /**
+     * 超排缺口：报告的实排超过该报告算出的配额。
+     *
+     * <p>取代 {@link #RULE_QUOTA_OVERDRAFT}——那个判据是「企业余额口径」，
+     * 配额退出资产层后恒不触发。新判据按报告算，是唯一仍能反映
+     * 「排放超过许可」的地方。
+     */
+    public static final String RULE_QUOTA_SHORTFALL = "QUOTA_SHORTFALL";
     /** 信誉骤降：窗口期内信誉分跌幅达阈值 */
     public static final String RULE_CREDIT_PLUNGE = "CREDIT_PLUNGE";
     /** 洗售拦截：撮合引擎曾拦截该企业的自成交 */

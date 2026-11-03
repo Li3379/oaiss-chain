@@ -42,6 +42,7 @@ class RegulatoryFindingServiceTest {
     private TradeAuditRepository tradeAuditRepository;
     private CreditEventRepository creditEventRepository;
     private EnterpriseRepository enterpriseRepository;
+    private com.oaiss.chain.repository.CarbonReportRepository carbonReportRepository;
     private RegulatoryFindingService service;
 
     private Enterprise enterprise;
@@ -52,8 +53,9 @@ class RegulatoryFindingServiceTest {
         tradeAuditRepository = mock(TradeAuditRepository.class);
         creditEventRepository = mock(CreditEventRepository.class);
         enterpriseRepository = mock(EnterpriseRepository.class);
+        carbonReportRepository = mock(com.oaiss.chain.repository.CarbonReportRepository.class);
         service = new RegulatoryFindingService(findingRepository, tradeAuditRepository,
-                creditEventRepository, enterpriseRepository);
+                creditEventRepository, enterpriseRepository, carbonReportRepository);
 
         enterprise = new Enterprise();
         enterprise.setId(10L);
@@ -114,26 +116,39 @@ class RegulatoryFindingServiceTest {
     }
 
     @Test
-    @DisplayName("额度异常：已用配额超过持有配额时产出 QUOTA_OVERDRAFT 线索")
-    void quotaOverdraft_producesFinding() {
-        enterprise.setCarbonQuota(new java.math.BigDecimal("100"));
-        enterprise.setCarbonUsed(new java.math.BigDecimal("150"));
+    @DisplayName("超排缺口：报告实排 > 算出配额时产出 QUOTA_SHORTFALL 线索")
+    void quotaShortfall_producesFinding() {
+        // 配额 100，实排 150 → 缺口 50
+        var report = com.oaiss.chain.entity.CarbonReport.builder()
+                .enterpriseId(10L).reportNo("R1").title("t").reportType(1).emissionData("{}")
+                .quotaAllocatedAmount(new java.math.BigDecimal("100"))
+                .scope1Emission(new java.math.BigDecimal("150"))
+                .build();
+        when(carbonReportRepository.findByEnterpriseIdAndDeletedFalse(10L))
+                .thenReturn(List.of(report));
         when(tradeAuditRepository.countRejectedSince(anyInt(), any(LocalDateTime.class))).thenReturn(0L);
 
         List<RegulatoryFinding> findings = service.scanEnterprise(10L);
 
         RegulatoryFinding f = findings.stream()
-                .filter(x -> x.getRuleCode().equals(RegulatoryFinding.RULE_QUOTA_OVERDRAFT))
+                .filter(x -> x.getRuleCode().equals(RegulatoryFinding.RULE_QUOTA_SHORTFALL))
                 .findFirst().orElse(null);
-        assertNotNull(f, "已用 150 超过持有 100 应产出额度异常线索");
+        assertNotNull(f, "实排 150 超过配额 100 应产出超排缺口线索");
         assertEquals(RegulatoryFinding.SEVERITY_CRITICAL, f.getSeverity());
+        org.junit.jupiter.api.Assertions.assertTrue(f.getEvidence().contains("50"),
+                "描述应带出缺口数值，实际: " + f.getEvidence());
     }
 
     @Test
-    @DisplayName("额度正常：不产出额度异常线索")
-    void quotaNormal_producesNoOverdraftFinding() {
-        enterprise.setCarbonQuota(new java.math.BigDecimal("1000"));
-        enterprise.setCarbonUsed(new java.math.BigDecimal("200"));
+    @DisplayName("无缺口：实排未超配额时不产出超排线索")
+    void quotaNormal_producesNoShortfallFinding() {
+        var report = com.oaiss.chain.entity.CarbonReport.builder()
+                .enterpriseId(10L).reportNo("R1").title("t").reportType(1).emissionData("{}")
+                .quotaAllocatedAmount(new java.math.BigDecimal("1000"))
+                .scope1Emission(new java.math.BigDecimal("200"))
+                .build();
+        when(carbonReportRepository.findByEnterpriseIdAndDeletedFalse(10L))
+                .thenReturn(List.of(report));
         when(tradeAuditRepository.countRejectedSince(anyInt(), any(LocalDateTime.class))).thenReturn(0L);
 
         List<RegulatoryFinding> findings = service.scanEnterprise(10L);
