@@ -21,4 +21,22 @@
         <Class name="~.*\$.*Builder" />
         <Bug pattern="EI_EXPOSE_REP2" />
     </Match>
+
+    <!--
+      TradeAuditService#quotaLedgerService：Spring 构造器注入的只读单例依赖，
+      本类生产路径**不调用**它（成交结算已改走碳币）。
+
+      为什么注入而不删：TradeAuditServiceTest 有 9 处
+      verify(quotaLedgerService, never())——那是「配额退出资产层」这一
+      2026-11-03 模型变更的可执行证据。删掉依赖字段会让这些断言变成编译错误，
+      等于把「没有回退到配额账本」的守护一起删掉。
+
+      EI_EXPOSE_REP2 的本意是「把可变对象存进字段后外部仍可改」，而 Spring
+      注入的单例本就不该被外部持有者修改。只匹配这一个字段，不放大到整个类。
+    -->
+    <Match>
+        <Class name="com.oaiss.chain.service.TradeAuditService" />
+        <Field name="quotaLedgerService" />
+        <Bug pattern="EI_EXPOSE_REP2" />
+    </Match>
 </FindBugsFilter>
