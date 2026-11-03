@@ -167,16 +167,12 @@ public class DoubleAuctionService {
             throw new TradeException(ErrorCode.PARAM_ERROR, "存在未完成的买入挂单，同一主体禁止同时买卖以防自成交/洗售交易");
         }
 
-        BigDecimal remaining = enterprise.getCarbonTradable();
-        if (remaining.compareTo(request.getQuantity()) < 0) {
-            throw TradeException.insufficientQuota(remaining, request.getQuantity());
-        }
-
-        // 全额现货锁定卖方碳配额
-        enterprise.setCarbonTradable(enterprise.getCarbonTradable().subtract(request.getQuantity()));
-        BigDecimal currentFrozen = enterprise.getCarbonFrozen() != null ? enterprise.getCarbonFrozen() : BigDecimal.ZERO;
-        enterprise.setCarbonFrozen(currentFrozen.add(request.getQuantity()));
-        enterpriseRepository.save(enterprise);
+        // 卖单冻结碳币（2026-11-03：配额退出资产层后，可交易标的是碳币）
+        //
+        // 原来这里校验并冻结 carbonTradable（配额）。配额现在只算不发，
+        // 企业账上不再有配额余额，故改为冻结碳币——与 P2P 保持同一模型。
+        // freezeBalance 内部会校验可用余额，不足时抛 4005。
+        carbonCoinService.freezeBalance(currentUser.getUserId(), request.getQuantity());
 
         AuctionOrder order = AuctionOrder.builder()
                 .orderNo(generateOrderNo("S"))
@@ -765,17 +761,8 @@ public class DoubleAuctionService {
                 BigDecimal unfreezeCash = unmatchedQty.multiply(order.getPrice()).setScale(2, RoundingMode.HALF_UP);
                 carbonCoinService.unfreezeBalance(currentUser.getUserId(), unfreezeCash);
             } else if (order.getDirection() == 2) {
-                // 卖单：解冻剩余未成交的碳配额
-                Enterprise enterprise = enterpriseRepository.findByUserId(currentUser.getUserId())
-                        .orElseThrow(() -> TradeException.insufficientQuota(BigDecimal.ZERO, unmatchedQty));
-                BigDecimal currentFrozen = enterprise.getCarbonFrozen() != null ? enterprise.getCarbonFrozen() : BigDecimal.ZERO;
-                if (currentFrozen.compareTo(unmatchedQty) < 0) {
-                    enterprise.setCarbonFrozen(BigDecimal.ZERO);
-                } else {
-                    enterprise.setCarbonFrozen(currentFrozen.subtract(unmatchedQty));
-                }
-                enterprise.setCarbonTradable(enterprise.getCarbonTradable().add(unmatchedQty));
-                enterpriseRepository.save(enterprise);
+                // 卖单：解冻剩余未成交的碳币（2026-11-03：挂单冻的是碳币）
+                carbonCoinService.unfreezeBalance(currentUser.getUserId(), unmatchedQty);
             }
         }
 
@@ -787,29 +774,20 @@ public class DoubleAuctionService {
     }
 
     /**
-     * 更新买卖双方企业配额
+     * 撮合成交时转让碳币。
+     *
+     * <p><b>2026-11-03 变更</b>：原实现是「卖方配额冻结转出、买方配额入账」，
+     * 现在配额退出资产层，改由碳币承接——卖方挂单时冻结的碳币直接转给买方。
+     *
+     * <p>与 P2P 的 {@code TradeService.confirmTrade} 保持同一语义：
+     * 一进一出，卖方不再收到任何对价（碳币换碳币，无计价关系）。
+     *
+     * @param buyerUserId  买方
+     * @param sellerUserId 卖方
+     * @param quantity     撮合数量（碳币枚数）
      */
     private void updateEnterpriseQuota(Long buyerUserId, Long sellerUserId, BigDecimal quantity) {
-        Enterprise seller = enterpriseRepository.findByUserId(sellerUserId)
-                .orElseThrow(() -> TradeException.insufficientQuota(BigDecimal.ZERO, quantity));
-        Enterprise buyer = enterpriseRepository.findByUserId(buyerUserId)
-                .orElseThrow(() -> TradeException.insufficientQuota(BigDecimal.ZERO, quantity));
-
-        // 卖方从已冻结配额扣减并转入已履约
-        BigDecimal currentFrozen = seller.getCarbonFrozen() != null ? seller.getCarbonFrozen() : BigDecimal.ZERO;
-        if (currentFrozen.compareTo(quantity) < 0) {
-            seller.setCarbonFrozen(BigDecimal.ZERO);
-        } else {
-            seller.setCarbonFrozen(currentFrozen.subtract(quantity));
-        }
-        seller.setCarbonUsed(seller.getCarbonUsed().add(quantity));
-
-        // 买方增加总配额和可用配额
-        buyer.setCarbonQuota(buyer.getCarbonQuota().add(quantity));
-        buyer.setCarbonTradable(buyer.getCarbonTradable().add(quantity));
-
-        enterpriseRepository.save(seller);
-        enterpriseRepository.save(buyer);
+        carbonCoinService.transferFrozen(sellerUserId, buyerUserId, quantity, null);
     }
 
     /**
