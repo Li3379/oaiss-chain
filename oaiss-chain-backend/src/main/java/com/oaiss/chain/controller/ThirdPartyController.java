@@ -104,26 +104,4 @@ public class ThirdPartyController {
         return thirdPartyService.getStatistics(currentUser);
     }
 
-    /**
-     * 【业务功能】：修改第三方监管机构的联系人与应急联络电话
-     * 【对应前端页面】：views/third-party/Monitor.vue (/third-party/monitor)
-     * 【对应前端API】：api/thirdParty.ts -> updateContact()
-     * 【可见UI操作】：在“机构联系人”表单修改后点击【保存联系人】按钮
-     */
-    @AuditLog(module = "第三方监管", action = "UPDATECONTACT", description = "第三方监管 UPDATECONTACT")
-    @PutMapping("/contact")
-    @Operation(summary = "更新机构联系方式", description = "更新第三方监管机构的联系人和联系电话")
-    @ApiResponses(value = {
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "更新成功"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "联系方式无效"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "未授权访问"),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "非第三方监管机构用户")
-    })
-    @SecurityRequirement(name = "Bearer Authentication")
-    public ApiResponse<Void> updateContact(
-            @AuthenticationPrincipal JwtUserDetails currentUser,
-            @Parameter(description = "联系人姓名", example = "张三") @RequestParam(required = false) String contactPerson,
-            @Parameter(description = "联系电话", example = "13800138000") @RequestParam(required = false) String contactPhone) {
-        return thirdPartyService.updateContact(currentUser, contactPerson, contactPhone);
     }
-}

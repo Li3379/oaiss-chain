@@ -4,12 +4,19 @@
 # Crypto materials generated (./scripts/generate-fabric-crypto.sh)
 #
 # Usage: ./scripts/deploy-chaincode.sh [VERSION] [SEQUENCE]
-# Default VERSION: 1.0, SEQUENCE: 1
+# VERSION is a label (default 1.2); SEQUENCE must be committed+1 on upgrades.
+# bootstrap-fabric.sh computes both automatically — prefer running that.
 
 set -e
 
+# Git Bash / MSYS rewrites leading-slash args of native docker.exe into
+# "D:/Program File/Git/..." — that corrupts /opt/gopath and /var/hyperledger
+# paths handed to `docker exec`. Harmless no-op on real Linux.
+export MSYS_NO_PATHCONV=1
+export MSYS2_ARG_CONV_EXCL="*"
+
 CC_NAME="carbon-chaincode"
-CC_VERSION="${1:-1.0}"
+CC_VERSION="${1:-1.2}"
 CC_SEQUENCE="${2:-1}"
 CC_PATH="/opt/gopath/src/github.com/oaiss/chain/chaincode"
 CHANNEL_NAME="mychannel"
@@ -58,14 +65,24 @@ fabric_exec -e CORE_PEER_LOCALMSPID=Org1MSP \
   --lang golang \
   --label ${CC_NAME}_${CC_VERSION}
 
-# Step 2: Install chaincode on peer
+# Step 2: Install chaincode on peer (idempotent: re-installing the same
+# package ID returns 500 "already successfully installed", which is benign)
 echo "2. Installing chaincode on peer0..."
-fabric_exec -e CORE_PEER_LOCALMSPID=Org1MSP \
+INSTALL_OUTPUT=$(fabric_exec -e CORE_PEER_LOCALMSPID=Org1MSP \
   -e CORE_PEER_MSPCONFIGPATH=${ORG_ADMIN_MSP} \
   -e CORE_PEER_ADDRESS=${PEER_ADDRESS} \
   -e CORE_PEER_TLS_ROOTCERT_FILE=${PEER_TLS_CA} \
   ${CLI_CONTAINER} \
-  peer lifecycle chaincode install ${CC_NAME}.tar.gz
+  peer lifecycle chaincode install ${CC_NAME}.tar.gz 2>&1) || {
+    if printf '%s' "$INSTALL_OUTPUT" | grep -qi "already successfully installed"; then
+      echo "   Chaincode package already installed on peer0 (skipping)"
+    else
+      printf '%s\n' "$INSTALL_OUTPUT"
+      echo "ERROR: chaincode install failed"
+      exit 1
+    fi
+  }
+printf '%s\n' "$INSTALL_OUTPUT" | tail -3
 
 # Step 3: Get package ID
 echo "3. Querying installed chaincode..."

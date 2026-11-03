@@ -27,11 +27,6 @@ export interface ApplyCertificationRequest {
   certOrg: string
 }
 
-/** 完成认证请求体：后端 CompleteCertificationRequest 要求证书编号（@NotBlank） */
-export interface CompleteCertificationRequest {
-  certNo: string
-}
-
 /**
  * 【业务功能】：多维度检索公开的碳中和项目列表（按项目类型、状态、地区过滤）
  * 【对应前端页面】：CarbonNeutral.vue (/enterprise/carbon-neutral/projects)
@@ -134,6 +129,7 @@ export function terminateProject(projectId: number, data: { reason: string }): P
   return request.post(`/carbon-neutral/${projectId}/terminate`, data)
 }
 
+
 /**
  * 【业务功能】：企业用户查询自身申报的所有碳中和项目列表
  * 【对应前端页面】：CarbonNeutral.vue (/enterprise/carbon-neutral/projects)
@@ -182,11 +178,11 @@ export function useCredits(projectId: number, data: { amount: number }): Promise
  * 【对应前端页面】：ProjectReview.vue, CertificateManage.vue
  * 【界面触发操作】：点击【完成最终认证签发】
  * 【后端对应端点】：CarbonNeutralProjectController -> POST /carbon-neutral/{id}/certify
- * 注意：后端 CompleteCertificationRequest.certNo 为 @NotBlank，缺失会 400。
+ * 注意：证书编号由服务端生成（07-02 D-05），端点不接收请求体，客户端无输入面。
  */
-export function completeCertification(projectId: number, data: CompleteCertificationRequest): Promise<void> {
+export function completeCertification(projectId: number): Promise<CarbonNeutralProjectResponse> {
   if (!projectId) return Promise.reject(new Error('项目ID不能为空'))
-  return request.post(`/carbon-neutral/${projectId}/certify`, data)
+  return request.post(`/carbon-neutral/${projectId}/certify`)
 }
 
 /**

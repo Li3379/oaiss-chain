@@ -77,11 +77,11 @@ info "Checking Redis (oaiss-redis)..."
   || fail "Redis not responding. Run: docker compose -f docker-compose.infra.yml up -d"
 ok "Redis is healthy on :6379"
 
-# 7. MinIO console (D-14)
-info "Checking MinIO console..."
-http_ok "http://localhost:9003" \
-  || fail "MinIO console not responding on :9003. Check oaiss-minio container."
-ok "MinIO console accessible on :9003"
+# 7. S3 object storage (D-14; LocalStack replaced the removed minio/minio image)
+info "Checking S3 object storage (oaiss-s3)..."
+http_ok "http://127.0.0.1:9004/_localstack/health" \
+  || fail "S3 object storage not responding on :9004. Check oaiss-s3 container."
+ok "S3 object storage accessible on :9004"
 
 # 8. Backend API reachable (ENV-04, updated after BUG-02: Swagger now requires auth)
 info "Checking backend API..."

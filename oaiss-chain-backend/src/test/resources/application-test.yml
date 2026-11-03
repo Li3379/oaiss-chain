@@ -1,6 +1,12 @@
 # Rate limiting disabled in tests
 # Test Profile - H2 in-memory database, no Testcontainers needed
 
+# 单元测试没有 Fabric 网络可用，必须显式声明逃生门，否则
+# SecurityStartupValidator 会按「全真」原则拒绝启动上下文。
+# 注意：该模式下 MockBlockchainService 不产出任何 txHash，
+# 因此涉及上链断言的测试应改为断言「停留在审核通过」而非「已上链」。
+OAISS_ALLOW_MOCK_CHAIN: "true"
+
 oaiss:
   ratelimit:
     enabled: false

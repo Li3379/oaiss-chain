@@ -103,7 +103,9 @@ def predict_supply_demand(
         request.horizon_days,
     )
     try:
-        return market_service.predict(request)
+        # include_volumes=True：这是三个端点中唯一需要成交量预测的。
+        # 此前三个端点都调 predict() 且不带成交量，导致「供需预测」返回价格曲线。
+        return market_service.predict(request, include_volumes=True)
     except HTTPException:
         raise
     except Exception as exc:

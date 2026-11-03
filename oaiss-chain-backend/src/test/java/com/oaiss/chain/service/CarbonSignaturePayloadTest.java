@@ -58,7 +58,8 @@ class CarbonSignaturePayloadTest {
                 org.mockito.Mockito.mock(DigitalSignatureService.class),
                 org.mockito.Mockito.mock(CertificateGateService.class),
                 org.mockito.Mockito.mock(QuotaAllocationService.class),
-                org.mockito.Mockito.mock(com.oaiss.chain.repository.IndustryBenchmarkRepository.class));
+                org.mockito.Mockito.mock(com.oaiss.chain.repository.IndustryBenchmarkRepository.class),
+                org.mockito.Mockito.mock(CarbonCoinService.class));
     }
 
     @Test

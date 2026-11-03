@@ -58,6 +58,10 @@ public class TradeService {
     private final PriceLimitService priceLimitService;
     /** 准入证书门禁：未签发 / 已吊销 / 已过期都不得参与交易 */
     private final CertificateGateService certificateGateService;
+    /** 成交风控分流：与拍卖撮合同一套规则（大额 / 偏离均价 / 低信誉 / 洗售） */
+    private final TradeRiskAssessor tradeRiskAssessor;
+    /** 命中风控时建待审工单；审核通过才结算，驳回纯解冻 */
+    private final TradeAuditService tradeAuditService;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     /**
@@ -93,20 +97,18 @@ public class TradeService {
         // 信誉分风控闸门：被限制交易或账户冻结的发起方不得创建 P2P 交易
         assertTradeAllowed(sellerEnterprise.getId());
 
-        // 平台限价：必须在任何资源冻结之前——否则注定失败的请求会先冻结配额再被拒
-        priceLimitService.validate(request.getUnitPrice(), LocalDateTime.now());
+        // P2P 语义（2026-11-03）：卖方转让的是**碳币**，不是配额。
+        //
+        // 配额已退出资产层（只算不发），碳币成为唯一可交易资产。
+        // P2P 因此退化为「碳币换碳币」——1 枚换 1 枚，无价格维度。
+        // 单价字段仍保留在 DTO 里（拍卖要用），但 P2P 路径按 1 处理并忽略入参。
+        BigDecimal transferAmount = request.getQuantity();
+        BigDecimal unitPrice = BigDecimal.ONE;
 
-        if (sellerEnterprise.getCarbonTradable().compareTo(request.getQuantity()) < 0) {
-            throw TradeException.insufficientQuota(sellerEnterprise.getCarbonTradable(), request.getQuantity());
-        }
+        // 冻结卖方的碳币（不是配额），防止超额挂单与双花透支
+        carbonCoinService.freezeBalance(sellerId, transferAmount);
 
-        // 挂单时冻结卖方可交易配额，防止超额挂单与双花透支
-        sellerEnterprise.setCarbonTradable(sellerEnterprise.getCarbonTradable().subtract(request.getQuantity()));
-        BigDecimal currentFrozen = sellerEnterprise.getCarbonFrozen() != null ? sellerEnterprise.getCarbonFrozen() : BigDecimal.ZERO;
-        sellerEnterprise.setCarbonFrozen(currentFrozen.add(request.getQuantity()));
-        enterpriseRepository.save(sellerEnterprise);
-
-        BigDecimal totalAmount = request.getQuantity().multiply(request.getUnitPrice());
+        BigDecimal totalAmount = transferAmount.multiply(unitPrice);
 
         Transaction trade = Transaction.builder()
                 .tradeNo(CommonUtils.generateTradeId())
@@ -114,7 +116,7 @@ public class TradeService {
                 .sellerId(sellerId)
                 .buyerId(buyerId)
                 .quantity(request.getQuantity())
-                .unitPrice(request.getUnitPrice())
+                .unitPrice(unitPrice)
                 .totalAmount(totalAmount)
                 .reportId(request.getReportId())
                 .status(TradeStatusEnum.PENDING.getCode())
@@ -124,52 +126,8 @@ public class TradeService {
         trade = transactionRepository.save(trade);
 
         log.info("P2P trade created: {} ({} -> {}, qty: {}, price: {})", 
-                trade.getTradeNo(), sellerId, buyerId, request.getQuantity(), request.getUnitPrice());
+                trade.getTradeNo(), sellerId, buyerId, request.getQuantity(), unitPrice);
 
-        return toResponse(trade);
-    }
-
-    /**
-     * 创建拍卖挂单
-     */
-    @Transactional
-    public TradeResponse createAuctionOrder(JwtUserDetails currentUser, TradeRequest request) {
-        Enterprise enterprise = enterpriseRepository.findByUserId(currentUser.getUserId())
-                .orElseThrow(() -> TradeException.insufficientQuota(BigDecimal.ZERO, request.getQuantity()));
-
-        // 信誉分风控闸门：被限制交易或账户冻结的发起方不得创建拍卖挂单
-        assertTradeAllowed(enterprise.getId());
-
-        // 平台限价：与 createP2PTrade 保持一致的报错优先级（价格先于配额）
-        priceLimitService.validate(request.getUnitPrice(), LocalDateTime.now());
-
-        if (enterprise.getCarbonTradable().compareTo(request.getQuantity()) < 0) {
-            throw TradeException.insufficientQuota(enterprise.getCarbonTradable(), request.getQuantity());
-        }
-
-        // 拍卖挂单时冻结配额
-        enterprise.setCarbonTradable(enterprise.getCarbonTradable().subtract(request.getQuantity()));
-        BigDecimal currentFrozen = enterprise.getCarbonFrozen() != null ? enterprise.getCarbonFrozen() : BigDecimal.ZERO;
-        enterprise.setCarbonFrozen(currentFrozen.add(request.getQuantity()));
-        enterpriseRepository.save(enterprise);
-
-        BigDecimal totalAmount = request.getQuantity().multiply(request.getUnitPrice());
-
-        Transaction trade = Transaction.builder()
-                .tradeNo(CommonUtils.generateTradeId())
-                .tradeType(TradeTypeEnum.AUCTION.getCode())
-                .sellerId(currentUser.getUserId())
-                .buyerId(0L) // 拍卖挂单，买方待定
-                .quantity(request.getQuantity())
-                .unitPrice(request.getUnitPrice())
-                .totalAmount(totalAmount)
-                .status(TradeStatusEnum.PENDING.getCode())
-                .remark(request.getRemark())
-                .build();
-
-        trade = transactionRepository.save(trade);
-
-        log.info("Auction order created: {} by user {}", trade.getTradeNo(), currentUser.getUsername());
         return toResponse(trade);
     }
 
@@ -211,40 +169,56 @@ public class TradeService {
         certificateGateService.assertEnterpriseAdmitted(sellerEnterprise.getId());
         certificateGateService.assertEnterpriseAdmitted(buyerEnterprise.getId());
 
+        // ===== 风控分流（与拍卖撮合同口径）=====
+        //
+        // 历史缺口：拍卖撮合走 TradeRiskAssessor 分流，命中则生成待审工单、
+        // 资产留在冻结态等审核；而 P2P 确认**确认即结算**，完全没有风控。
+        // 同一个「成交审核」业务，两条通道口径不一致——P2P 成了绕开审核的后门。
+        //
+        // 现在把分流前置到任何资产移动之前：命中则建工单、保持 PROCESSING、
+        // 资产一分不动。审核通过才发生首次移动（TradeAuditService.approve），
+        // 驳回则纯解冻（reject）。这与拍卖侧完全对称。
+        TradeRiskAssessor.Decision riskDecision = assessP2pRisk(trade);
+        if (riskDecision.requiresAudit()) {
+            trade.setAuditStatus(com.oaiss.chain.entity.TradeAudit.AUDIT_PENDING);
+            trade = transactionRepository.save(trade);
+            tradeAuditService.createPendingAudit(trade.getId(), riskDecision.reasons());
+
+            notificationService.sendBatchNotificationsAsync(
+                    java.util.List.of(trade.getSellerId(), trade.getBuyerId()),
+                    "P2P 成交待审核",
+                    "您的 P2P 交易 " + trade.getTradeNo() + " 已达成 " + tradeQuantity
+                            + " 吨，成交价 " + trade.getUnitPrice()
+                            + " 碳币/吨，正在审核中。审核通过后资金与配额才会结算。",
+                    "TRADE");
+
+            log.info("P2P confirm routed to audit: tradeId={}, qty={}, price={}, reasons={}",
+                    tradeId, tradeQuantity, trade.getUnitPrice(), riskDecision.reasons());
+            return toResponse(trade);
+        }
+
         // 立即将状态设置为PROCESSING并保存，防止并发请求重复操作
         trade.setStatus(TradeStatusEnum.PROCESSING.getCode());
         transactionRepository.save(trade);
 
-        // 卖方核减冻结配额并计入已售出
-        BigDecimal currentFrozen = sellerEnterprise.getCarbonFrozen() != null ? sellerEnterprise.getCarbonFrozen() : BigDecimal.ZERO;
-        if (currentFrozen.compareTo(tradeQuantity) < 0) {
-            // 兼容性保护：若此前挂单未走冻结，则从可用余额扣除并严格校验余额，杜绝负数穿透
-            BigDecimal available = sellerEnterprise.getCarbonTradable().add(currentFrozen);
-            if (available.compareTo(tradeQuantity) < 0) {
-                throw TradeException.insufficientQuota(available, tradeQuantity);
-            }
-            BigDecimal remainingDeduct = tradeQuantity.subtract(currentFrozen);
-            sellerEnterprise.setCarbonFrozen(BigDecimal.ZERO);
-            sellerEnterprise.setCarbonTradable(sellerEnterprise.getCarbonTradable().subtract(remainingDeduct));
-        } else {
-            sellerEnterprise.setCarbonFrozen(currentFrozen.subtract(tradeQuantity));
-        }
-        sellerEnterprise.setCarbonUsed(sellerEnterprise.getCarbonUsed().add(tradeQuantity));
+        // P2P 成交结算（2026-11-03）：转让碳币，不动配额。
+        //
+        // 原实现是 DVP 双向：买方 buyQuota（扣碳币）+ 卖方 sellQuota（收碳币），
+        // 同时卖方 carbonFrozen 核减、买方 carbonTradable 增加——即「用币买配额」。
+        //
+        // 现在配额已退出资产层（只算不发），P2P 退化为「碳币换碳币」：
+        // 卖方挂单时已冻结 N 枚，成交时这 N 枚转给买方，卖方不再收到任何币。
+        // 因此这里只需一进一出，不能再用 buyQuota/sellQuota（那是双向计价语义）。
+        BigDecimal transferAmount = trade.getQuantity();
+        carbonCoinService.transferFrozen(trade.getSellerId(), trade.getBuyerId(),
+                transferAmount, trade.getId());
 
-        // 买方增加配额
-        buyerEnterprise.setCarbonQuota(buyerEnterprise.getCarbonQuota().add(tradeQuantity));
-        buyerEnterprise.setCarbonTradable(buyerEnterprise.getCarbonTradable().add(tradeQuantity));
-
-        enterpriseRepository.save(sellerEnterprise);
-        enterpriseRepository.save(buyerEnterprise);
+        // 配额侧完全不动：carbonTradable / carbonFrozen / carbonUsed 均不修改。
+        // 但这三列的历史语义仍需保留在库中供审计，故不做清零。
 
         trade.setStatus(TradeStatusEnum.COMPLETED.getCode());
         trade.setCompletedAt(LocalDateTime.now());
         trade = transactionRepository.save(trade);
-
-        // 碳币货款两讫结算 (DVP): 买方扣除碳币，卖方增加碳币
-        carbonCoinService.buyQuota(trade.getBuyerId(), trade.getTotalAmount(), trade.getQuantity(), trade.getId());
-        carbonCoinService.sellQuota(trade.getSellerId(), trade.getTotalAmount(), trade.getQuantity(), trade.getId());
 
         // 发布交易完成事件，驱动异步区块链存证
         String tradeDataJson = String.format(
@@ -276,7 +250,7 @@ public class TradeService {
                 || (trade.getSellerId() != null && trade.getSellerId().equals(currentUser.getUserId()))
                 || (trade.getBuyerId() != null && trade.getBuyerId().equals(currentUser.getUserId())));
         if (!isParticipant) {
-            throw new com.oaiss.chain.exception.BusinessException(com.oaiss.chain.constant.ErrorCode.PERMISSION_DENIED, "无权取消非本人参与的交易");
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "无权取消非本人参与的交易");
         }
 
         TradeStatusEnum status = TradeStatusEnum.fromCode(trade.getStatus());
@@ -287,19 +261,10 @@ public class TradeService {
         trade.setStatus(TradeStatusEnum.CANCELLED.getCode());
         trade = transactionRepository.save(trade);
 
-        // 撤单解冻卖方配额
+        // 撤单解冻卖方的碳币（2026-11-03：挂单冻的是碳币，不是配额）
         final BigDecimal cancelQty = trade.getQuantity();
         final Long sellerUserId = trade.getSellerId();
-        enterpriseRepository.findByUserId(sellerUserId).ifPresent(seller -> {
-            BigDecimal currentFrozen = seller.getCarbonFrozen() != null ? seller.getCarbonFrozen() : BigDecimal.ZERO;
-            if (currentFrozen.compareTo(cancelQty) < 0) {
-                seller.setCarbonFrozen(BigDecimal.ZERO);
-            } else {
-                seller.setCarbonFrozen(currentFrozen.subtract(cancelQty));
-            }
-            seller.setCarbonTradable(seller.getCarbonTradable().add(cancelQty));
-            enterpriseRepository.save(seller);
-        });
+        carbonCoinService.unfreezeBalance(sellerUserId, cancelQty);
 
         // 通知对手方：订单已取消
         Long counterpartyId = currentUser.getUserId().equals(trade.getSellerId()) ? trade.getBuyerId() : trade.getSellerId();
@@ -346,7 +311,7 @@ public class TradeService {
      */
     public Page<TradeResponse> listMyTrades(JwtUserDetails currentUser,
             Integer tradeType, Integer status, String tradeNo, String keyword, String identity,
-            java.time.LocalDateTime startTime, java.time.LocalDateTime endTime,
+            LocalDateTime startTime, LocalDateTime endTime,
             Integer page, Integer size) {
         size = CommonUtils.sanitizePageSize(size);
         Pageable pageable = PageRequest.of(page - 1, size, Sort.by(Sort.Direction.DESC, "createdAt"));
@@ -440,7 +405,42 @@ public class TradeService {
                 .blockchainTxHash(trade.getBlockchainTxHash())
                 .completedAt(trade.getCompletedAt())
                 .createdAt(trade.getCreatedAt())
+                .auditStatus(trade.getAuditStatus())
                 .build();
+    }
+
+    /**
+     * P2P 成交的风控分流评估——与拍卖撮合 {@code DoubleAuctionService} 同一套规则。
+     *
+     * <p><b>为什么取数失败不阻断成交</b>：参考价与信誉分来自历史数据，
+     * 冷启动时可能查不到。此时降级为「无参考价 / 无信誉」，
+     * 由 {@link TradeRiskAssessor} 的缺失值规则处理（无均价跳过价格检查、
+     * 无信誉按最低分）。若在这里抛异常，等于让「数据不足」变成「禁止交易」，
+     * 而拍卖侧的处理是继续撮合——两侧口径必须一致。</p>
+     */
+    private TradeRiskAssessor.Decision assessP2pRisk(Transaction trade) {
+        BigDecimal referencePrice = null;
+        Integer buyerCredit = null;
+        Integer sellerCredit = null;
+        try {
+            referencePrice = transactionRepository.findAverageUnitPriceSince(
+                    LocalDateTime.now().minusDays(
+                            tradeRiskAssessor.getProperties().getPriceReferenceDays()));
+            Map<Long, Integer> scores =
+                    creditScoreService.getScoresByUserIds(
+                            Set.of(trade.getSellerId(), trade.getBuyerId()));
+            if (scores != null) {
+                sellerCredit = scores.get(trade.getSellerId());
+                buyerCredit = scores.get(trade.getBuyerId());
+            }
+        } catch (Exception e) {
+            // 参数含 e.getMessage()，显式守卫既满足 PMD GuardLogStatement，也避免异常路径上的无谓求值
+            if (log.isWarnEnabled()) {
+                log.warn("[AUDIT] P2P 风险分流取数失败，降级评估: {}", e.getMessage());
+            }
+        }
+        // P2P 没有撮合环节，不存在自成交/洗售嫌疑，该维度传 false。
+        return tradeRiskAssessor.assess(trade, referencePrice, buyerCredit, sellerCredit, false);
     }
 
     private String normalizeFilterValue(String value) {

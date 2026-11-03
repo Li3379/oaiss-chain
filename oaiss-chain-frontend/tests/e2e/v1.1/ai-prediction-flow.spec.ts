@@ -2,7 +2,6 @@ import { test, expect } from '@playwright/test'
 import { TEST_USERS, loginViaApi } from '../fixtures/auth'
 import { isMlServiceAvailable } from '../fixtures/test-env'
 import { MarketPredictionPage } from '../fixtures/page-objects/MarketPredictionPage'
-import { EnterpriseInferencePage } from '../fixtures/page-objects/EnterpriseInferencePage'
 
 import type { APIRequestContext } from '@playwright/test'
 
@@ -222,60 +221,6 @@ test.describe('AI Prediction Flow', () => {
     })
   })
 
-  // ─── REQ-04: Enterprise Inference Frontend ────────────────────────────────
-
-  test.describe('Enterprise Inference Frontend (REQ-04)', () => {
-    test('enterprise user can access inference page', async ({ page }) => {
-      await loginViaApi(page, TEST_USERS.enterprise.username, TEST_USERS.enterprise.password)
-      const inferencePage = new EnterpriseInferencePage(page)
-
-      await inferencePage.goto()
-      await inferencePage.expectLoaded()
-    })
-
-    test('inference page displays compliance status', async ({ page }) => {
-      test.skip(!await isMlServiceAvailable(), 'ML service not available')
-
-      await loginViaApi(page, TEST_USERS.enterprise.username, TEST_USERS.enterprise.password)
-      const inferencePage = new EnterpriseInferencePage(page)
-
-      await inferencePage.goto()
-      await inferencePage.expectComplianceStatus()
-    })
-
-    test('inference page displays stat cards', async ({ page }) => {
-      test.skip(!await isMlServiceAvailable(), 'ML service not available')
-
-      await loginViaApi(page, TEST_USERS.enterprise.username, TEST_USERS.enterprise.password)
-      const inferencePage = new EnterpriseInferencePage(page)
-
-      await inferencePage.goto()
-      await inferencePage.expectStatCards()
-    })
-
-    // AI 企业推理是**企业专有**页面：router 里
-    // meta.roles = [ROLE.ENTERPRISE]，其它角色访问会被守卫重定向到各自首页。
-    //
-    // 这两个用例原先断言「reviewer/third-party 能访问」，与实际权限模型相反：
-    // 它们跑到一半就停在 toHaveURL 失败（收到 third-party/monitor）。
-    // 正确断言是「越权访问被拒」——这才是安全边界应有的行为。
-    test('reviewer cannot access enterprise inference (redirected)', async ({ page }) => {
-      await loginViaApi(page, TEST_USERS.reviewer.username, TEST_USERS.reviewer.password)
-      const inferencePage = new EnterpriseInferencePage(page)
-
-      await inferencePage.goto()
-      await expect(page).not.toHaveURL(/\/enterprise\/enterprise-inference/)
-    })
-
-    test('third-party cannot access enterprise inference (redirected)', async ({ page }) => {
-      await loginViaApi(page, TEST_USERS.thirdParty.username, TEST_USERS.thirdParty.password)
-      const inferencePage = new EnterpriseInferencePage(page)
-
-      await inferencePage.goto()
-      await expect(page).not.toHaveURL(/\/enterprise\/enterprise-inference/)
-    })
-  })
-
   // ─── REQ-03: Carbon Emission Prediction ──────────────────────────────────
 
   test.describe('Carbon Emission Prediction (REQ-03)', () => {
@@ -373,13 +318,8 @@ test.describe('AI Prediction Flow', () => {
       await expect(page).toHaveURL(/\/login/)
     })
 
-    test('unauthenticated user cannot access enterprise inference', async ({ page }) => {
-      const inferencePage = new EnterpriseInferencePage(page)
-      await inferencePage.goto()
-
-      // Should redirect to login
-      await expect(page).toHaveURL(/\/login/)
-    })
+    // 「未登录访问企业推断页」用例随页面下线一并移除：
+    // 路由已不存在，访问会落 404 而不是重定向到 /login。
   })
 
   // ─── Rate Limiting (REQ-01) ───────────────────────────────────────────────

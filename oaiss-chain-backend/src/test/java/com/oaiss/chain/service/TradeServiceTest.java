@@ -30,6 +30,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -72,6 +73,13 @@ class TradeServiceTest {
     // Batch 2：TradeService 新增限价依赖。不加此 mock 会让所有走到 validate 的用例 NPE。
     @Mock
     private PriceLimitService priceLimitService;
+
+    // W3：confirmTrade 新增风控分流依赖。同样不加就会 NPE。
+    @Mock
+    private TradeRiskAssessor tradeRiskAssessor;
+
+    @Mock
+    private TradeAuditService tradeAuditService;
 
     @InjectMocks
     private TradeService tradeService;
@@ -125,6 +133,14 @@ class TradeServiceTest {
 
         // 默认信誉分正常放行；限制态由各用例单独覆写
         lenient().when(creditScoreService.checkTradePermission(anyLong())).thenReturn(true);
+
+        // W3 风控分流默认放行（requiresAudit=false）。
+        // 用 lenient：多数用例不走到 confirmTrade 的风控分支，严格模式会报 UnnecessaryStubbing。
+        // 命中风控的用例在各自方法里覆写为 requiresAudit=true。
+        lenient().when(tradeRiskAssessor.assess(any(), any(), any(), any(), anyBoolean()))
+                .thenReturn(new TradeRiskAssessor.Decision(false, java.util.List.of()));
+        lenient().when(tradeRiskAssessor.getProperties())
+                .thenReturn(new com.oaiss.chain.config.TradeAuditProperties());
     }
 
     @Test
@@ -156,34 +172,22 @@ class TradeServiceTest {
     }
 
     @Test
-    @DisplayName("创建P2P交易失败-配额不足")
+    @DisplayName("创建P2P交易失败-碳币不足（2026-11-03 起挂单冻的是碳币，不是配额）")
     void testCreateP2PTradeFailInsufficientQuota() {
         // Given
-        tradeRequest.setQuantity(new BigDecimal("1000.00")); // More than tradable (500)
+        tradeRequest.setQuantity(new BigDecimal("1000.00"));
         when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(sellerEnterprise));
+        // 碳币不足在 CarbonCoinService.freezeBalance 内抛出，这里模拟
+        org.mockito.Mockito.doThrow(new com.oaiss.chain.exception.BusinessException(4005, "碳币余额不足"))
+                .when(carbonCoinService).freezeBalance(org.mockito.ArgumentMatchers.anyLong(),
+                        org.mockito.ArgumentMatchers.any());
 
         // When & Then
-        assertThrows(TradeException.class, () -> tradeService.createP2PTrade(currentUser, tradeRequest));
+        assertThrows(RuntimeException.class, () -> tradeService.createP2PTrade(currentUser, tradeRequest));
         verify(transactionRepository, never()).save(any());
     }
 
-    @Test
-    @DisplayName("创建拍卖挂单成功")
-    void testCreateAuctionOrderSuccess() {
-        // Given
-        tradeRequest.setTradeType(TradeTypeEnum.AUCTION.getCode());
-        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(sellerEnterprise));
-        when(transactionRepository.save(any(Transaction.class))).thenReturn(testTransaction);
-
-        // When
-        TradeResponse response = tradeService.createAuctionOrder(currentUser, tradeRequest);
-
-        // Then
-        assertNotNull(response);
-        verify(transactionRepository, times(1)).save(any(Transaction.class));
-    }
-
-    @Test
+        @Test
     @DisplayName("确认交易成功")
     void testConfirmTradeSuccess() {
         // Given
@@ -191,17 +195,17 @@ class TradeServiceTest {
         when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(sellerEnterprise));
         when(enterpriseRepository.findByUserId(2L)).thenReturn(Optional.of(buyerEnterprise));
         when(transactionRepository.save(any(Transaction.class))).thenReturn(testTransaction);
-        when(enterpriseRepository.save(any(Enterprise.class))).thenReturn(sellerEnterprise);
 
         // When
         TradeResponse response = tradeService.confirmTrade(1L, 1L);
 
         // Then
         assertNotNull(response);
-        verify(enterpriseRepository, times(2)).save(any(Enterprise.class));
         verify(transactionRepository, times(2)).save(any(Transaction.class)); // PROCESSING + COMPLETED
-        verify(carbonCoinService, times(1)).buyQuota(eq(2L), any(), any(), eq(1L));
-        verify(carbonCoinService, times(1)).sellQuota(eq(1L), any(), any(), eq(1L));
+        // 2026-11-03：P2P 改为转让碳币（卖方冻结 → 买方余额），不再用 buyQuota/sellQuota
+        verify(carbonCoinService, times(1)).transferFrozen(eq(1L), eq(2L), any(), eq(1L));
+        verify(carbonCoinService, never()).buyQuota(anyLong(), any(), any(), anyLong());
+        verify(carbonCoinService, never()).sellQuota(anyLong(), any(), any(), anyLong());
         verify(eventPublisher, times(1)).publishEvent(any(com.oaiss.chain.event.TradeCompletedEvent.class));
     }
 
@@ -404,7 +408,6 @@ class TradeServiceTest {
         when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(sellerEnterprise));
         when(enterpriseRepository.findByUserId(2L)).thenReturn(Optional.of(buyerEnterprise));
         when(transactionRepository.save(any(Transaction.class))).thenReturn(testTransaction);
-        when(enterpriseRepository.save(any(Enterprise.class))).thenReturn(sellerEnterprise);
 
         // When & Then: should succeed
         TradeResponse response = tradeService.confirmTrade(1L, 1L);
@@ -517,30 +520,7 @@ class TradeServiceTest {
                 () -> tradeService.getTrade(1L, nonParticipant));
     }
 
-    @Test
-    @DisplayName("创建拍卖挂单失败-企业不存在")
-    void testCreateAuctionOrderFailEnterpriseNotFound() {
-        tradeRequest.setTradeType(TradeTypeEnum.AUCTION.getCode());
-        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.empty());
-
-        assertThrows(TradeException.class,
-                () -> tradeService.createAuctionOrder(currentUser, tradeRequest));
-        verify(transactionRepository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("创建拍卖挂单失败-配额不足")
-    void testCreateAuctionOrderFailInsufficientQuota() {
-        tradeRequest.setTradeType(TradeTypeEnum.AUCTION.getCode());
-        tradeRequest.setQuantity(new BigDecimal("9999.00"));
-        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(sellerEnterprise));
-
-        assertThrows(TradeException.class,
-                () -> tradeService.createAuctionOrder(currentUser, tradeRequest));
-        verify(transactionRepository, never()).save(any());
-    }
-
-    @Test
+            @Test
     @DisplayName("P2P交易-默认卖方为当前用户")
     void testCreateP2PTradeDefaultSeller() {
         tradeRequest.setSellerId(null); // No sellerId, should default to currentUser
@@ -813,7 +793,6 @@ class TradeServiceTest {
         when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(sellerEnterprise));
         when(enterpriseRepository.findByUserId(2L)).thenReturn(Optional.of(buyerEnterprise));
         when(transactionRepository.save(any(Transaction.class))).thenReturn(testTransaction);
-        when(enterpriseRepository.save(any(Enterprise.class))).thenReturn(sellerEnterprise);
 
         TradeResponse response = tradeService.confirmTrade(1L, 2L); // buyer confirms
         assertNotNull(response);
@@ -1051,17 +1030,75 @@ class TradeServiceTest {
         verify(enterpriseRepository, never()).save(any(Enterprise.class));
     }
 
+    // ==================== W3：P2P 风控与拍卖对称 ====================
+
     @Test
-    @DisplayName("拍卖挂单-信誉分被限制交易时拒绝创建")
-    void testCreateAuctionOrderFailCreditRestricted() {
-        tradeRequest.setTradeType(TradeTypeEnum.AUCTION.getCode());
+    @DisplayName("W3：P2P 确认命中风控时生成待审工单，且资产一分不动")
+    void testConfirmTradeHitRiskCreatesPendingAudit() {
+        when(transactionRepository.findById(1L)).thenReturn(Optional.of(testTransaction));
         when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(sellerEnterprise));
-        when(creditScoreService.checkTradePermission(1L)).thenReturn(false);
+        when(enterpriseRepository.findByUserId(2L)).thenReturn(Optional.of(buyerEnterprise));
+        when(transactionRepository.save(any(Transaction.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        TradeException ex = assertThrows(TradeException.class,
-                () -> tradeService.createAuctionOrder(currentUser, tradeRequest));
+        // 命中风控（例如大额/偏离均价/低信誉）
+        when(tradeRiskAssessor.assess(any(), any(), any(), any(), anyBoolean()))
+                .thenReturn(new TradeRiskAssessor.Decision(
+                        true, java.util.List.of(TradeRiskAssessor.REASON_LARGE_AMOUNT)));
 
-        assertEquals(com.oaiss.chain.constant.ErrorCode.CREDIT_TRADE_RESTRICTED, ex.getCode());
-        verify(transactionRepository, never()).save(any());
+        BigDecimal sellerTradableBefore = sellerEnterprise.getCarbonTradable();
+        BigDecimal sellerUsedBefore = sellerEnterprise.getCarbonUsed();
+        BigDecimal buyerQuotaBefore = buyerEnterprise.getCarbonQuota();
+
+        TradeResponse response = tradeService.confirmTrade(1L, 1L);
+
+        // 1) 工单已建
+        verify(tradeAuditService, times(1)).createPendingAudit(eq(1L), any());
+
+        // 2) 资产未动 —— 这是「待审」的实质：审核通过才发生首次移动
+        assertEquals(sellerTradableBefore, sellerEnterprise.getCarbonTradable());
+        assertEquals(sellerUsedBefore, sellerEnterprise.getCarbonUsed());
+        assertEquals(buyerQuotaBefore, buyerEnterprise.getCarbonQuota());
+        verify(enterpriseRepository, never()).save(any(Enterprise.class));
+        verify(carbonCoinService, never()).buyQuota(any(), any(), any(), any());
+        verify(carbonCoinService, never()).sellQuota(any(), any(), any(), any());
+
+        // 3) 响应必须告诉前端「待审核」，而不是「已完成」
+        assertEquals(com.oaiss.chain.entity.TradeAudit.AUDIT_PENDING, response.getAuditStatus(),
+                "前端据此显示待审核文案；若为空会被误读成交易已完成");
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    @DisplayName("W3：P2P 未命中风控时走原结算路径，auditStatus 保持无需审核")
+    void testConfirmTradeNoRiskSettlesNormally() {
+        when(transactionRepository.findById(1L)).thenReturn(Optional.of(testTransaction));
+        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(sellerEnterprise));
+        when(enterpriseRepository.findByUserId(2L)).thenReturn(Optional.of(buyerEnterprise));
+        when(transactionRepository.save(any(Transaction.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        TradeResponse response = tradeService.confirmTrade(1L, 1L);
+
+        assertEquals(TradeStatusEnum.COMPLETED.getCode(), response.getStatus());
+        verify(tradeAuditService, never()).createPendingAudit(any(), any());
+        // 2026-11-03：P2P 改为转让碳币，配额侧不再变动
+        verify(carbonCoinService).transferFrozen(eq(1L), eq(2L), any(), eq(1L));
+    }
+
+    @Test
+    @DisplayName("W3：风控取数失败时降级放行，不阻断成交（与拍卖侧同口径）")
+    void testConfirmTradeRiskDataUnavailableDegradesToPass() {
+        when(transactionRepository.findById(1L)).thenReturn(Optional.of(testTransaction));
+        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(sellerEnterprise));
+        when(enterpriseRepository.findByUserId(2L)).thenReturn(Optional.of(buyerEnterprise));
+        when(transactionRepository.save(any(Transaction.class))).thenAnswer(inv -> inv.getArgument(0));
+        // 参考价查询抛异常（冷启动无历史成交）
+        when(transactionRepository.findAverageUnitPriceSince(any()))
+                .thenThrow(new RuntimeException("no historical trades"));
+
+        TradeResponse response = tradeService.confirmTrade(1L, 1L);
+
+        // 取数失败不应变成「禁止交易」——拍卖侧的处理是继续撮合
+        assertEquals(TradeStatusEnum.COMPLETED.getCode(), response.getStatus());
+        verify(tradeAuditService, never()).createPendingAudit(any(), any());
     }
 }

@@ -80,6 +80,28 @@ public class CarbonCoinTransaction extends BaseEntity {
     private Long relatedTradeId;
 
     /**
+     * 关联碳报告ID（发放 ISSUE / 回收 CLAWBACK 时填写）。
+     *
+     * <p>用途是让「这份报告发了多少币」可追溯，配合 {@link #relatedSeq}
+     * 构成发放幂等键 {@code reportId#seq}。
+     */
+    @Column(name = "related_report_id")
+    private Long relatedReportId;
+
+    /**
+     * 该报告的发放序号，从 1 开始；回收行为 null。
+     *
+     * <p><b>为什么需要序号</b>：报告被驳回后可修改重提并再次通过
+     * （{@code ReportStatusEnum.REJECTED.isSubmittable() == true}）。
+     * 若幂等键只取 {@code related_report_id}，第二次发放会撞唯一索引，
+     * 新盈余被静默丢弃。序号递增解决这个问题。
+     *
+     * <p>回收行此列留 null——MySQL 唯一索引不约束 NULL，可多行共存。
+     */
+    @Column(name = "related_seq")
+    private Integer relatedSeq;
+
+    /**
      * 备注
      */
     @Column(name = "remark", length = 500)

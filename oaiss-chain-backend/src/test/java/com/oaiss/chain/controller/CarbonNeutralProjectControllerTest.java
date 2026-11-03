@@ -19,6 +19,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -30,6 +31,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -678,7 +680,7 @@ class CarbonNeutralProjectControllerTest {
                 .build();
 
         setAuthentication(normalUser);
-        when(projectService.useCredits(any(JwtUserDetails.class), eq(1L), any(BigDecimal.class)))
+        when(projectService.useCredits(any(JwtUserDetails.class), eq(1L), any(BigDecimal.class), isNull()))
                 .thenReturn(creditsUsedResponse);
 
         // When & Then
@@ -690,7 +692,7 @@ class CarbonNeutralProjectControllerTest {
                 .andExpect(jsonPath("$.data.usedCredits").value(100))
                 .andExpect(jsonPath("$.data.availableCredits").value(850));
 
-        verify(projectService, times(1)).useCredits(any(JwtUserDetails.class), eq(1L), any(BigDecimal.class));
+        verify(projectService, times(1)).useCredits(any(JwtUserDetails.class), eq(1L), any(BigDecimal.class), isNull());
     }
 
     @Test
@@ -698,7 +700,7 @@ class CarbonNeutralProjectControllerTest {
     void testUseCreditsInsufficient() throws Exception {
         // Given
         setAuthentication(normalUser);
-        when(projectService.useCredits(any(JwtUserDetails.class), eq(1L), any(BigDecimal.class)))
+        when(projectService.useCredits(any(JwtUserDetails.class), eq(1L), any(BigDecimal.class), isNull()))
                 .thenThrow(new BusinessException(3004, "可用碳信用不足"));
 
         // When & Then
@@ -709,7 +711,7 @@ class CarbonNeutralProjectControllerTest {
                 .andExpect(jsonPath("$.code").value(3004))
                 .andExpect(jsonPath("$.message").value("可用碳信用不足"));
 
-        verify(projectService, times(1)).useCredits(any(JwtUserDetails.class), eq(1L), any(BigDecimal.class));
+        verify(projectService, times(1)).useCredits(any(JwtUserDetails.class), eq(1L), any(BigDecimal.class), isNull());
     }
 
     // ==================== PUT /carbon-neutral/{id}/monitoring Tests ====================
@@ -819,48 +821,48 @@ class CarbonNeutralProjectControllerTest {
     @DisplayName("完成认证成功")
     void testCompleteCertificationSuccess() throws Exception {
         // Given
+        setAuthentication(adminUser);
         CarbonNeutralProjectResponse certifiedResponse = CarbonNeutralProjectResponse.builder()
                 .id(1L)
                 .projectNo("CNP202605050001")
                 .projectName("林业碳汇项目")
                 .certStatus(2)
                 .certStatusText("已认证")
-                .certNo("CERT-2026-001")
+                .certNo("CNE-2026-000001")
                 .certDate(LocalDate.now())
                 .build();
 
-        when(projectService.completeCertification(eq(1L), eq("CERT-2026-001")))
+        when(projectService.completeCertification(eq(1L), eq(2L)))
                 .thenReturn(certifiedResponse);
 
         // When & Then
         mockMvc.perform(post("/carbon-neutral/1/certify")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"certNo\": \"CERT-2026-001\"}"))
+                        .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.certStatus").value(2))
                 .andExpect(jsonPath("$.data.certStatusText").value("已认证"))
-                .andExpect(jsonPath("$.data.certNo").value("CERT-2026-001"));
+                .andExpect(jsonPath("$.data.certNo").value("CNE-2026-000001"));
 
-        verify(projectService, times(1)).completeCertification(eq(1L), eq("CERT-2026-001"));
+        verify(projectService, times(1)).completeCertification(eq(1L), eq(2L));
     }
 
     @Test
     @DisplayName("完成认证失败-项目不在待认证状态")
     void testCompleteCertificationInvalidStatus() throws Exception {
         // Given
-        when(projectService.completeCertification(eq(1L), eq("CERT-2026-001")))
+        setAuthentication(adminUser);
+        when(projectService.completeCertification(eq(1L), eq(2L)))
                 .thenThrow(new BusinessException(3003, "项目不在待认证状态"));
 
         // When & Then
         mockMvc.perform(post("/carbon-neutral/1/certify")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"certNo\": \"CERT-2026-001\"}"))
+                        .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(3003))
                 .andExpect(jsonPath("$.message").value("项目不在待认证状态"));
 
-        verify(projectService, times(1)).completeCertification(eq(1L), eq("CERT-2026-001"));
+        verify(projectService, times(1)).completeCertification(eq(1L), eq(2L));
     }
 
     // ==================== POST /carbon-neutral/{id}/terminate Tests ====================
@@ -990,5 +992,46 @@ class CarbonNeutralProjectControllerTest {
         verify(projectService, times(1))
                 .getPendingVerificationProjects(eq(9L), eq(1), eq(20));
         verify(projectService, never()).getAllPendingVerificationProjects(any(), any());
+    }
+
+    @Test
+    @DisplayName("纯 ADMIN（非 REVIEWER）走全局池分支")
+    void testGetPendingVerificationAsAdmin() throws Exception {
+        // Given: 显式 stub 角色判定，把「ADMIN 且非 REVIEWER」这一分支条件锁死，
+        // 不依赖 roles 列表的内容推导
+        JwtUserDetails adminOnly = mock(JwtUserDetails.class);
+        when(adminOnly.isAdmin()).thenReturn(true);
+        when(adminOnly.isReviewer()).thenReturn(false);
+        when(adminOnly.getUserId()).thenReturn(2L);
+        when(adminOnly.getRoles()).thenReturn(List.of("ADMIN"));
+        setAuthentication(adminOnly);
+
+        Page<CarbonNeutralProjectResponse> page = new PageImpl<>(
+                List.of(testResponse), PageRequest.of(0, 20), 1);
+        when(projectService.getAllPendingVerificationProjects(eq(1), eq(20)))
+                .thenReturn(page);
+
+        // When & Then
+        mockMvc.perform(get("/carbon-neutral/pending-verification"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.content[0].projectName").value("林业碳汇项目"));
+
+        verify(projectService, times(1)).getAllPendingVerificationProjects(eq(1), eq(20));
+        verify(projectService, never()).getPendingVerificationProjects(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("待核证端点仅 REVIEWER/ADMIN 可达")
+    void testGetPendingVerificationForbidden() throws Exception {
+        // @WebMvcTest 切片不加载 SecurityConfig，方法级 @PreAuthorize 在切片内不生效，
+        // 因此企业角色发请求会返回 200 而非 403。这里直接断言端点声明的权限表达式，
+        // 与 role-matrix-verify.mjs 门禁共同保证 ENTERPRISE 被拦截。
+        var handler = CarbonNeutralProjectController.class.getMethod(
+                "getPendingVerification", JwtUserDetails.class, Integer.class, Integer.class);
+        PreAuthorize preAuthorize = handler.getAnnotation(PreAuthorize.class);
+
+        assertThat(preAuthorize).isNotNull();
+        assertThat(preAuthorize.value()).isEqualTo("hasRole('REVIEWER') or hasRole('ADMIN')");
     }
 }

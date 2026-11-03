@@ -2,6 +2,7 @@ package com.oaiss.chain.service;
 
 import com.oaiss.chain.config.TradeAuditProperties;
 import com.oaiss.chain.entity.Transaction;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -42,6 +43,20 @@ public class TradeRiskAssessor {
     public static final String REASON_WASH_TRADING = "WASH_TRADING";
 
     private final TradeAuditProperties properties;
+
+    /**
+     * 暴露配置，供调用方读取参考价窗口等参数。
+     *
+     * <p>P2P 分流需要与拍卖撮合取同一窗口的均价作为偏离基准；
+     * 把窗口天数写死在调用方会与配置漂移。</p>
+     */
+    @SuppressFBWarnings(
+            value = "EI_EXPOSE_REP",
+            justification = "properties 是 Spring 绑定的不可变配置代理，注入后只读；"
+                    + "调用方需要与撮合取同一参考价窗口，拷贝反而会造成口径漂移。")
+    public TradeAuditProperties getProperties() {
+        return properties;
+    }
 
     /**
      * 评估结果。

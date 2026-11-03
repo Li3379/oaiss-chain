@@ -14,7 +14,7 @@ vi.mock('../../api/carbonNeutral', () => ({
   getProjects: vi.fn(() => Promise.resolve({ items: [], total: 0, page: 0, size: 10, totalPages: 0 })),
   reviewProject: vi.fn(() => Promise.resolve()),
   verifyProject: vi.fn(() => Promise.resolve()),
-  completeCertification: vi.fn(() => Promise.resolve()),
+  completeCertification: vi.fn(() => Promise.resolve({ certNo: 'CNE-2026-000001' })),
 }))
 
 vi.mock('../../api/credit', () => ({
@@ -34,7 +34,7 @@ vi.mock('element-plus', async (importOriginal) => {
 })
 
 import ProjectReview from '../auditor/ProjectReview.vue'
-import { completeCertification, getPendingVerification, getProjects, reviewProject, verifyProject } from '../../api/carbonNeutral'
+import { getPendingVerification, getProjects, reviewProject } from '../../api/carbonNeutral'
 import { deductPoints } from '../../api/credit'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -149,14 +149,6 @@ describe('ProjectReview.vue', () => {
     vi.clearAllMocks()
   })
 
-  it('loads the pending verification queue on mount', async () => {
-    const wrapper = mountComponent()
-    await flushPromises()
-
-    expect(getPendingVerification).toHaveBeenCalledWith({ pageNum: 1, pageSize: 10 })
-    wrapper.unmount()
-  })
-
   it('loads the review queue (status=1) and the certification queue (status=4) on mount', async () => {
     const wrapper = mountComponent()
     await flushPromises()
@@ -205,28 +197,6 @@ describe('ProjectReview.vue', () => {
     wrapper.unmount()
   })
 
-  it('completes certification with the entered certificate number', async () => {
-    const wrapper = mountComponent()
-    await flushPromises()
-
-    const vm = wrapper.vm as unknown as {
-      certificationAction: (row: typeof baseProject) => Promise<void>
-      canCompleteCertification: (row: typeof baseProject) => boolean
-    }
-
-    const certifiable = { ...baseProject, status: 4, verificationStatus: 2, certStatus: 1 }
-    expect(vm.canCompleteCertification(certifiable)).toBe(true)
-    // 已核证但企业尚未申请认证（certStatus=0）时不可操作，否则后端必报 3003
-    expect(vm.canCompleteCertification({ ...certifiable, certStatus: 0 })).toBe(false)
-
-    await vm.certificationAction(certifiable)
-    await flushPromises()
-
-    expect(completeCertification).toHaveBeenCalledWith(8, { certNo: 'documents incomplete' })
-    expect(ElMessage.success).toHaveBeenCalledWith('projectReview.certificationCompleted')
-    wrapper.unmount()
-  })
-
   it('normalizes numeric status fields and keeps backend total authoritative', async () => {
     vi.mocked(getPendingVerification).mockResolvedValueOnce({
       items: [{ ...baseProject, status: '4', verificationStatus: '1' } as unknown as typeof baseProject],
@@ -249,62 +219,6 @@ describe('ProjectReview.vue', () => {
     wrapper.unmount()
   })
 
-  it('submits verification and refreshes the queue', async () => {
-    const wrapper = mountComponent()
-    await flushPromises()
-
-    const vm = wrapper.vm as unknown as {
-      openVerifyDialog: (row: typeof baseProject) => void
-      verifyForm: {
-        projectId: number | null
-        verifiedReduction: string
-        verificationReport: string
-        monitoringData: string
-        remark: string
-      }
-      submitVerify: () => Promise<void>
-    }
-
-    vm.openVerifyDialog(baseProject)
-    vm.verifyForm.verificationReport = 'measured and confirmed'
-    vm.verifyForm.remark = 'pass'
-    await vm.submitVerify()
-    await flushPromises()
-
-    expect(verifyProject).toHaveBeenCalledWith({
-      projectId: 8,
-      verifiedReduction: 128,
-      verificationReport: 'measured and confirmed',
-      monitoringData: 'telemetry',
-      remark: 'pass',
-    })
-    expect(ElMessage.success).toHaveBeenCalledWith('projectReview.verifyPassed')
-    expect(getPendingVerification).toHaveBeenCalledTimes(2)
-    wrapper.unmount()
-  })
-
-  it('blocks invalid verification reductions before calling the backend', async () => {
-    const wrapper = mountComponent()
-    await flushPromises()
-
-    const vm = wrapper.vm as unknown as {
-      openVerifyDialog: (row: typeof baseProject) => void
-      verifyForm: { verifiedReduction: string }
-      submitVerify: () => Promise<void>
-      verifyErrorMessage: string
-    }
-
-    vm.openVerifyDialog(baseProject)
-    vm.verifyForm.verifiedReduction = '0'
-    await vm.submitVerify()
-    await flushPromises()
-
-    expect(verifyProject).not.toHaveBeenCalled()
-    expect(ElMessage.warning).toHaveBeenCalledWith('projectReview.labelVerifiedReduction > 0')
-    expect(vm.verifyErrorMessage).toBe('projectReview.labelVerifiedReduction > 0')
-    wrapper.unmount()
-  })
-
   it('requires a deduction description before sending credit deductions', async () => {
     const wrapper = mountComponent()
     await flushPromises()
@@ -320,33 +234,6 @@ describe('ProjectReview.vue', () => {
 
     expect(deductPoints).not.toHaveBeenCalled()
     expect(ElMessage.warning).toHaveBeenCalledWith('projectReview.enterDescription')
-    wrapper.unmount()
-  })
-
-  it('shows backend verification errors and keeps them on the form', async () => {
-    vi.mocked(verifyProject).mockRejectedValueOnce({
-      response: {
-        data: {
-          data: ['verified reduction mismatch'],
-        },
-      },
-    })
-
-    const wrapper = mountComponent()
-    await flushPromises()
-
-    const vm = wrapper.vm as unknown as {
-      openVerifyDialog: (row: typeof baseProject) => void
-      submitVerify: () => Promise<void>
-      verifyErrorMessage: string
-    }
-
-    vm.openVerifyDialog(baseProject)
-    await vm.submitVerify()
-    await flushPromises()
-
-    expect(ElMessage.error).toHaveBeenCalledWith('verified reduction mismatch')
-    expect(vm.verifyErrorMessage).toBe('verified reduction mismatch')
     wrapper.unmount()
   })
 

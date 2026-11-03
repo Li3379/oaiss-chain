@@ -25,6 +25,27 @@ info "Logging in as admin..."
 TOKEN_ADMIN=$(login "admin") || { fail "Cannot proceed"; exit 1; }
 ok "admin logged in"
 
+# --- Precondition: enterprise admission certificates (CertificateGateService, 2026-10) ---
+# 2026-11-02 同步：确认成交 / 挂单现在要求企业持有有效准入证书
+# （status=1 且 expiry_date 为空或 >= 今天），吊销或过期的企业会被 7001 拦下。
+# 该门禁是业务正确行为，测试必须自备前置——历史上这些证书被上一轮
+# 吊销流程演示吊销过，直接把基线数据当成"可用"会让本脚本整体红。
+info "Ensuring enterprise admission certificates are valid..."
+for eid in 2 3; do
+    exec_mysql_query "UPDATE enterprise_admission SET status=1, revoked_at=NULL, revoke_reason=NULL,
+        expiry_date=DATE_ADD(CURDATE(), INTERVAL 1 YEAR)
+        WHERE enterprise_id=$eid AND status=1" 2>/dev/null || true
+done
+HAS_ADM_2=$(run_mysql_query "SELECT COUNT(*) FROM enterprise_admission WHERE enterprise_id=2 AND status=1 AND (expiry_date IS NULL OR expiry_date >= CURDATE())" | tr -d '[:space:]')
+HAS_ADM_3=$(run_mysql_query "SELECT COUNT(*) FROM enterprise_admission WHERE enterprise_id=3 AND status=1 AND (expiry_date IS NULL OR expiry_date >= CURDATE())" | tr -d '[:space:]')
+if [ "${HAS_ADM_2:-0}" = "0" ]; then
+    curl -s -X POST "$BASE_URL/admin/enterprise-admission/2/issue" -H "Authorization: Bearer $TOKEN_ADMIN" >/dev/null || true
+fi
+if [ "${HAS_ADM_3:-0}" = "0" ]; then
+    curl -s -X POST "$BASE_URL/admin/enterprise-admission/3/issue" -H "Authorization: Bearer $TOKEN_ADMIN" >/dev/null || true
+fi
+ok "Enterprise admission certificates ready"
+
 # --- Reset state ---
 info "Resetting P2P trade state..."
 exec_mysql_query "DELETE FROM transaction WHERE trade_type=2" 2>/dev/null || true

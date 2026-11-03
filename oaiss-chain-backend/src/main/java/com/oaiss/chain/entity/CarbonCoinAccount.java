@@ -59,6 +59,21 @@ public class CarbonCoinAccount extends BaseEntity {
     private BigDecimal totalSpent = BigDecimal.ZERO;
 
     /**
+     * 历史累计发放量。
+     *
+     * <p><b>回收不减少此字段</b>：发行是史实，回收改变的是流通量。
+     * 因此守恒要分两条断言，不能合并：
+     * <pre>
+     * 净流通   Σ tx(ISSUE) − Σ tx(CLAWBACK) == Σ balance
+     * 发行累计 Σ tx(ISSUE)                  == Σ totalIssued
+     * </pre>
+     * 把两者写成同一个等式，测试必然红。
+     */
+    @Column(name = "total_issued", precision = 15, scale = 2)
+    @Builder.Default
+    private BigDecimal totalIssued = BigDecimal.ZERO;
+
+    /**
      * 账户状态（0-禁用, 1-启用）
      */
     @Column(name = "status", nullable = false)

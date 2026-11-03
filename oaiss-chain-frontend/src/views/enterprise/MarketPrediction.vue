@@ -68,12 +68,16 @@ function transformToDataPoints(response: MarketForecastResponse): MarketForecast
   const forecastPrices = asNumberArray(response.forecastPrices)
   const lowerBound = asNumberArray(response.lowerBound)
   const upperBound = asNumberArray(response.upperBound)
+  // 成交量仅供需端点返回；价格类端点为空数组 -> volume 为 undefined，
+  // 图表据此决定是否渲染成交量系列（而不是拿价格冒充成交量）。
+  const forecastVolumes = asNumberArray(response.forecastVolumes ?? [])
 
   return forecastDates.map((date, i) => ({
     date,
     price: forecastPrices[i] ?? 0,
     lowerBound: lowerBound[i] ?? 0,
     upperBound: upperBound[i] ?? 0,
+    volume: forecastVolumes.length ? (forecastVolumes[i] ?? 0) : undefined,
   }))
 }
 
@@ -154,13 +158,10 @@ const overviewStats = computed(() => {
   ]
 })
 
-// XAI 可解释性特征贡献度
-const xaiFeatures = [
-  { nameKey: 'marketPrediction.factorCoalEnergy', weight: 38, tipKey: 'marketPrediction.factorCoalTip' },
-  { nameKey: 'marketPrediction.factorGridSeason', weight: 28, tipKey: 'marketPrediction.factorGridTip' },
-  { nameKey: 'marketPrediction.factorComplianceTightness', weight: 21, tipKey: 'marketPrediction.factorComplianceTip' },
-  { nameKey: 'marketPrediction.factorPolicyMacro', weight: 13, tipKey: 'marketPrediction.factorPolicyTip' },
-]
+// XAI 特征归因卡片已移除（2026-11-03）：
+// 原实现把 38/28/21/13 四个权重写死在代码里，i18n 文案却写「基于 Shapley 特征重要性分析」，
+// 而全仓没有任何 SHAP 依赖与计算。那是把一个手填常量包装成模型归因——
+// 在「全真」原则下不可接受，且学术性陈述失实。要么真做 SHAP，要么不展示。
 
 const simCoalDelta = ref(0) // 动力煤价变动率 -20% ~ +20%
 const simQuotaTightening = ref(0) // 配额紧缩幅度 -10% ~ +10%
@@ -213,7 +214,10 @@ const dynamicScenarioInsight = computed(() => {
   return {
     type: 'info',
     headline: '市场多空动能均衡：预计在当前置信区间窄幅箱体整理',
-    advice: `当前情景下，供需两侧力量基本对称，预测碳价大概率在 ${dataPoints.value[0]?.lowerBound ? Number(dataPoints.value[0].lowerBound).toFixed(2) : '55.30'} ~ ${dataPoints.value[0]?.upperBound ? Number(dataPoints.value[0].upperBound).toFixed(2) : '64.80'} 元/吨区间稳健运行。`
+    // 无置信区间数据时如实说明「暂无区间」，不再填 55.30/64.80 这种编造值。
+    advice: dataPoints.value[0]?.lowerBound != null && dataPoints.value[0]?.upperBound != null
+      ? `当前情景下，供需两侧力量基本对称，预测碳价大概率在 ${Number(dataPoints.value[0].lowerBound).toFixed(2)} ~ ${Number(dataPoints.value[0].upperBound).toFixed(2)} 元/吨区间稳健运行。`
+      : '当前情景下，暂无可用的置信区间估计（历史成交数据不足），无法给出价格区间判断。'
   }
 })
 
@@ -626,35 +630,8 @@ onBeforeUnmount(() => {
       </div>
     </DataPanel>
 
-    <!-- 下半部：XAI 特征归因分析 + AI 量化交易策略建议 -->
+    <!-- 下半部：AI 量化交易策略建议（XAI 特征归因卡片已移除，见 script 顶部说明） -->
     <div class="analysis-row">
-      <!-- 左侧：XAI 特征归因解释 -->
-      <DataPanel :title="t('marketPrediction.xaiCardTitle')">
-        <template #actions>
-          <el-tag size="small" type="primary" effect="plain">{{ t('marketPrediction.shapTag') }}</el-tag>
-        </template>
-
-        <div class="panel-pad">
-          <p class="panel-desc">{{ t('marketPrediction.xaiCardDesc') }}</p>
-
-          <div class="xai-list">
-            <div v-for="(feat, i) in xaiFeatures" :key="i" class="xai-item">
-              <div class="xai-label-row">
-                <span class="xai-name">{{ t(feat.nameKey) }}</span>
-                <span class="xai-weight">{{ t('marketPrediction.xaiWeight') }}: <strong>{{ feat.weight }}%</strong></span>
-              </div>
-              <el-progress
-                :percentage="feat.weight"
-                :stroke-width="10"
-                :color="feat.weight >= 30 ? 'var(--color-chart-1)' : (feat.weight >= 20 ? 'var(--color-chart-3)' : 'var(--color-text-muted)')"
-                :show-text="false"
-              />
-              <div class="xai-tip">{{ t(feat.tipKey) }}</div>
-            </div>
-          </div>
-        </div>
-      </DataPanel>
-
       <!-- 右侧：AI 操盘与企业履约决策 -->
       <DataPanel :title="t('marketPrediction.advisoryCardTitle')">
         <template #actions>
@@ -675,11 +652,11 @@ onBeforeUnmount(() => {
           <div class="strategy-metrics-box">
             <div class="strat-item">
               <span class="strat-label">{{ t('marketPrediction.supportLabel') }}</span>
-              <strong class="is-pos">{{ dataPoints[0]?.lowerBound ? Number(dataPoints[0].lowerBound).toFixed(2) : '55.30' }} {{ t('marketPrediction.statPriceUnit') }}</strong>
+              <strong class="is-pos">{{ dataPoints[0]?.lowerBound != null ? Number(dataPoints[0].lowerBound).toFixed(2) : '—' }} {{ t('marketPrediction.statPriceUnit') }}</strong>
             </div>
             <div class="strat-item">
               <span class="strat-label">{{ t('marketPrediction.resistanceLabel') }}</span>
-              <strong class="is-neg">{{ dataPoints[0]?.upperBound ? Number(dataPoints[0].upperBound).toFixed(2) : '64.80' }} {{ t('marketPrediction.statPriceUnit') }}</strong>
+              <strong class="is-neg">{{ dataPoints[0]?.upperBound != null ? Number(dataPoints[0].upperBound).toFixed(2) : '—' }} {{ t('marketPrediction.statPriceUnit') }}</strong>
             </div>
             <div class="strat-item">
               <span class="strat-label">{{ t('marketPrediction.windowLabel') }}</span>

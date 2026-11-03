@@ -61,19 +61,20 @@ class PriceLimitInjectionTest {
     }
 
     @Test
-    @DisplayName("AC-10：TradeService 的两个写入口都调用了限价校验")
+    @DisplayName("AC-10：TradeService 的 P2P 写入口调用了限价校验")
     void tradeService_bothEntryPointsValidate() {
         String src = readSource(TRADE_SERVICE);
 
-        List<String> entryPoints = new ArrayList<>();
-        entryPoints.add("public TradeResponse createP2PTrade(");
-        entryPoints.add("public TradeResponse createAuctionOrder(");
-
-        for (String sig : entryPoints) {
-            String body = methodBody(src, sig);
-            assertTrue(body.contains("priceLimitService.validate("),
-                    sig + " 的方法体内缺少 priceLimitService.validate 调用");
-        }
+        // 2026-11-03：P2P 改为「碳币换碳币」，1 枚换 1 枚，**不存在价格维度**。
+        // 因此限价校验在 P2P 入口被移除——没有价格可限。
+        // 这不是放宽约束：拍卖（唯一有价格的交易形态）仍在 validateOrderRequest 里校验，
+        // 见 auctionService_validateOrderRequestValidates。
+        //
+        // 断言改为「P2P 不得再出现限价调用」，防止有人在不理解模型的情况下加回来
+        // （加了也不会生效：unitPrice 被硬编码为 1）。
+        String body = methodBody(src, "public TradeResponse createP2PTrade(");
+        assertFalse(body.contains("priceLimitService.validate("),
+                "P2P 已无价格维度，不应再调限价校验；若确需恢复，请先恢复单价语义");
     }
 
     @Test
@@ -89,15 +90,23 @@ class PriceLimitInjectionTest {
     @Test
     @DisplayName("B6/M2b：限价校验必须早于配额冻结（否则先冻结再拒绝）")
     void priceLimit_precedesQuotaFreeze() {
+        // 2026-11-03：P2P 无价格 → 无限价校验，本断言的对象已不存在。
+        //
+        // 原意图（「限价必须早于冻结，否则用户先被冻结再被拒」）在**拍卖**仍然成立，
+        // 那里由 validateOrderRequest 统一前置校验——它在 placeSellOrder 的
+        // freezeBalance 之前调用，见 auctionService_validateOrderRequestValidates。
+        //
+        // 这里改为守 P2P 的等价不变量：冻结碳币必须发生在任何写库之前，
+        // 避免「先落库再因余额不足失败」留下孤儿交易记录。
         String src = readSource(TRADE_SERVICE);
-
         String p2p = methodBody(src, "public TradeResponse createP2PTrade(");
-        assertTrue(p2p.indexOf("priceLimitService.validate(") < p2p.indexOf("setCarbonTradable("),
-                "createP2PTrade：限价校验必须早于 setCarbonTradable（冻结）");
 
-        String auction = methodBody(src, "public TradeResponse createAuctionOrder(");
-        assertTrue(auction.indexOf("priceLimitService.validate(") < auction.indexOf("setCarbonTradable("),
-                "createAuctionOrder：限价校验必须早于 setCarbonTradable（冻结）");
+        int freezeIdx = p2p.indexOf("freezeBalance(");
+        int saveIdx = p2p.indexOf("transactionRepository.save(");
+        assertTrue(freezeIdx >= 0, "createP2PTrade 未冻结碳币");
+        assertTrue(saveIdx >= 0, "找不到交易落库点");
+        assertTrue(freezeIdx < saveIdx,
+                "冻结必须在落库之前，否则余额不足时会留下孤儿交易记录");
     }
 
     @Test

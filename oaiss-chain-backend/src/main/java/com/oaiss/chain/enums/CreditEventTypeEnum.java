@@ -33,7 +33,13 @@ public enum CreditEventTypeEnum {
     ADMIN_DELIST(7, "管理员下市处罚", 0),
 
     /** 恢复上市（下市解除），留痕用。 */
-    ADMIN_REPEAL(8, "恢复上市", 0);
+    ADMIN_REPEAL(8, "恢复上市", 0),
+
+    /**
+     * 碳中和认证通过（L1 §2.2 第 2 条）：管理员可根据证明发放相应数量的信誉分。
+     * 每企业只加一次（幂等判据见 CreditEventRepository.existsByEnterpriseIdAndEventTypeAndDeletedFalse）。
+     */
+    CARBON_NEUTRAL_CERTIFIED(9, "碳中和认证", 10);
 
     private final Integer code;
     private final String description;

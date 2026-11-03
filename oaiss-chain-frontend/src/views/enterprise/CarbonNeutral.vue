@@ -15,9 +15,6 @@
  *     * POST /api/v1/carbon-neutral                     -> createProject() 创建项目立项草稿
  *     * POST /api/v1/carbon-neutral/{id}/submit         -> submitProject() 提交立项审核
  *     * POST /api/v1/carbon-neutral/{id}/start          -> startProject() 启动项目实施
- *     * POST /api/v1/carbon-neutral/{id}/submit-verification -> submitVerification() 申请第三方核证
- *     * POST /api/v1/carbon-neutral/{id}/apply-certification -> applyCertification() 申请最终认证
- *     * POST /api/v1/carbon-neutral/{id}/terminate      -> terminateProject() 终止废止项目
  * ==============================================================================
  */
 import { ref, reactive, computed, onMounted } from 'vue'
@@ -30,9 +27,6 @@ import {
   createProject,
   submitProject,
   startProject,
-  submitVerification,
-  applyCertification,
-  terminateProject,
 } from '../../api/carbonNeutral'
 import { formatDateTime } from '../../utils/format'
 import PageHeader from '../../components/pen/PageHeader.vue'
@@ -245,91 +239,6 @@ const onStartProject = async (row: CarbonNeutralProjectResponse) => {
   }
 }
 
-/** 申请核证：后端 SubmitVerificationRequest 必填 verifierId，项目ID 走路径 */
-const onSubmitVerification = async (row: CarbonNeutralProjectResponse) => {
-  let verifierId: number
-  try {
-    const { value } = await ElMessageBox.prompt(
-      t('carbonNeutral.enterVerifierId'),
-      t('carbonNeutral.dialogSubmitVerifyTitle'),
-      {
-        confirmButtonText: t('common.confirm'),
-        cancelButtonText: t('common.cancel'),
-        inputValue: row.verifierId ? String(row.verifierId) : '',
-        inputPattern: /^[1-9]\d*$/,
-        inputErrorMessage: t('carbonNeutral.verifierIdInvalid'),
-      },
-    )
-    verifierId = Number(value)
-  } catch {
-    return
-  }
-  try {
-    await ElMessageBox.confirm(t('carbonNeutral.confirmSubmitVerification'), t('common.confirm'), { type: 'warning' })
-    await submitVerification(row.id, { verifierId })
-    ElMessage.success(t('carbonNeutral.submitVerificationSuccess'))
-    loadProjects()
-  } catch (e) {
-    if (e !== 'cancel') ElMessage.error(t('carbonNeutral.submitVerificationFailed'))
-  }
-}
-
-/** 申请认证：后端 ApplyCertificationRequest.certOrg 为 @NotBlank */
-const onApplyCertification = async (row: CarbonNeutralProjectResponse) => {
-  let certOrg: string
-  try {
-    const { value } = await ElMessageBox.prompt(
-      t('carbonNeutral.enterCertOrg'),
-      t('carbonNeutral.dialogApplyCertificationTitle'),
-      {
-        confirmButtonText: t('common.confirm'),
-        cancelButtonText: t('common.cancel'),
-        inputValue: row.certOrg || '',
-        inputPattern: /\S+/,
-        inputErrorMessage: t('carbonNeutral.certOrgRequired'),
-      },
-    )
-    certOrg = value.trim()
-  } catch {
-    return
-  }
-  if (!certOrg) {
-    ElMessage.warning(t('carbonNeutral.certOrgRequired'))
-    return
-  }
-  try {
-    await ElMessageBox.confirm(t('carbonNeutral.confirmCertification'), t('common.confirm'), { type: 'warning' })
-    await applyCertification(row.id, { certOrg })
-    ElMessage.success(t('carbonNeutral.certificationApplied'))
-    loadProjects()
-  } catch (e) {
-    if (e !== 'cancel') ElMessage.error(t('carbonNeutral.certificationFailed'))
-  }
-}
-
-/** 行内动作可见性：与详情页 canSubmitVerify / canCertify 完全同源 */
-const canSubmitVerify = (row: CarbonNeutralProjectResponse) => {
-  const status = Number(row.status)
-  const verified = Number(row.verificationStatus ?? VERIFY_STATUS_NONE)
-  return (status === 3 || status === 4) && verified === VERIFY_STATUS_NONE
-}
-
-const canApplyCert = (row: CarbonNeutralProjectResponse) => {
-  return Number(row.verificationStatus ?? VERIFY_STATUS_NONE) === VERIFY_STATUS_VERIFIED
-    && Number(row.certStatus ?? CERT_STATUS_NONE) === CERT_STATUS_NONE
-}
-
-const onTerminateProject = async (row: CarbonNeutralProjectResponse) => {
-  try {
-    await ElMessageBox.confirm(t('carbonNeutral.confirmTerminate'), t('common.confirm'), { type: 'warning' })
-    await terminateProject(row.id, { reason: t('carbonNeutral.terminateReason') })
-    ElMessage.success(t('carbonNeutral.terminateSuccess'))
-    loadProjects()
-  } catch (e) {
-    if (e !== 'cancel') ElMessage.error(t('carbonNeutral.terminateFailed'))
-  }
-}
-
 /** 页头右上角主操作：索引 0 = 新建项目（与面板内按钮同源） */
 function onHeaderAction(index: number) {
   if (index === 0) openCreateDialog()
@@ -388,9 +297,8 @@ onMounted(() => {
           <template #default="{ row }">
             <el-button v-if="row.status === 0" link type="primary" @click="onSubmitProject(row)">{{ t('carbonNeutral.submit') }}</el-button>
             <el-button v-if="row.status === 2" link type="primary" @click="onStartProject(row)">{{ t('carbonNeutral.start') }}</el-button>
-            <el-button v-if="canSubmitVerify(row)" link type="success" @click="onSubmitVerification(row)">{{ t('carbonNeutral.applyVerify') }}</el-button>
-            <el-button v-if="canApplyCert(row)" link type="success" @click="onApplyCertification(row)">{{ t('carbonNeutral.applyCert') }}</el-button>
-            <el-button v-if="[0, 2, 3].includes(row.status)" link type="danger" @click="onTerminateProject(row)">{{ t('carbonNeutral.terminate') }}</el-button>
+            <!-- W6 收口：申请核证 / 申请认证 / 终止 三个动作已移除（对应后端端点同步删除）。
+                 理由：后三步不产生新的真实数据，且该业务全程不上链，不产生可信证据。 -->
             <router-link :to="`/enterprise/carbon-neutral/projects/${row.id}`">
               <el-button link type="primary">{{ t('carbonNeutral.viewDetail') }}</el-button>
             </router-link>

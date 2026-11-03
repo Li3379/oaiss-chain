@@ -240,7 +240,7 @@ public class CreditScoreService {
     }
 
     /**
-     * 添加奖励分
+     * 添加奖励分（默认记为 BONUS_GOOD_BEHAVIOR）。
      *
      * @param enterpriseId 企业ID
      * @param points       奖励分数（正数）
@@ -251,8 +251,32 @@ public class CreditScoreService {
     @Transactional
     public CreditScoreResponse addBonusPoints(Long enterpriseId, Integer points,
                                                 String description, Long triggeredBy) {
+        return addBonusPoints(enterpriseId, points, description, triggeredBy,
+                CreditEventTypeEnum.BONUS_GOOD_BEHAVIOR);
+    }
+
+    /**
+     * 添加奖励分，事件类型由调用方决定（如碳中和认证记 {@code CARBON_NEUTRAL_CERTIFIED}）。
+     *
+     * <p>四参重载保留原签名，避免既有调用方行为变化；事务注解必须留在本方法上——
+     * 四参方法内部委派属于自调用，不经过 Spring 代理。
+     *
+     * @param enterpriseId 企业ID
+     * @param points       奖励分数（正数）
+     * @param description  描述
+     * @param triggeredBy  触发者
+     * @param eventType    事件类型
+     * @return 更新后的信誉评分
+     */
+    @Transactional
+    public CreditScoreResponse addBonusPoints(Long enterpriseId, Integer points,
+                                                String description, Long triggeredBy,
+                                                CreditEventTypeEnum eventType) {
         if (points == null || points <= 0) {
             throw new IllegalArgumentException("奖励分数必须为正整数");
+        }
+        if (eventType == null) {
+            throw new IllegalArgumentException("事件类型不能为空");
         }
         CreditScore creditScore = creditScoreRepository.findByEnterpriseIdAndDeletedFalse(enterpriseId)
                 .orElseGet(() -> {
@@ -271,7 +295,7 @@ public class CreditScoreService {
 
         CreditEvent event = CreditEvent.builder()
                 .enterpriseId(enterpriseId)
-                .eventType(CreditEventTypeEnum.BONUS_GOOD_BEHAVIOR.getCode())
+                .eventType(eventType.getCode())
                 .eventDescription(description)
                 .pointsChanged(points)
                 .scoreBefore(scoreBefore)

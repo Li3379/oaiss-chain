@@ -18,6 +18,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -303,6 +304,27 @@ class CreditScoreServiceTest {
     void addBonusPoints_NullPoints_ShouldThrow() {
         assertThrows(IllegalArgumentException.class,
             () -> creditScoreService.addBonusPoints(1L, null, "无效", 1L));
+    }
+
+    @Test
+    @DisplayName("加分 - 五参重载按指定事件类型写入，100 分上限下仍留痕")
+    void addBonusPoints_withEventType_recordsGivenEventType() {
+        testCreditScore.setScore(100);
+        when(creditScoreRepository.findByEnterpriseIdAndDeletedFalse(1L)).thenReturn(Optional.of(testCreditScore));
+        when(creditScoreRepository.save(any(CreditScore.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(creditEventRepository.save(any(CreditEvent.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        CreditScoreResponse response = creditScoreService.addBonusPoints(
+                1L, 10, "碳中和认证", 2L, CreditEventTypeEnum.CARBON_NEUTRAL_CERTIFIED);
+
+        ArgumentCaptor<CreditEvent> eventCaptor = ArgumentCaptor.forClass(CreditEvent.class);
+        verify(creditEventRepository).save(eventCaptor.capture());
+        CreditEvent event = eventCaptor.getValue();
+        assertEquals(CreditEventTypeEnum.CARBON_NEUTRAL_CERTIFIED.getCode(), event.getEventType());
+        assertEquals(10, event.getPointsChanged());
+        assertEquals(100, event.getScoreBefore());
+        assertEquals(100, event.getScoreAfter());
+        assertEquals(100, response.getScore());
     }
 
     @Test

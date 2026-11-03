@@ -224,9 +224,9 @@ class DoubleAuctionServiceTest {
 
         assertNotNull(response);
         assertEquals(2, response.getDirection());
-        assertEquals(new BigDecimal("400.00"), testEnterprise.getCarbonTradable());
-        assertEquals(new BigDecimal("100.00"), testEnterprise.getCarbonFrozen());
-        verify(enterpriseRepository, times(1)).save(testEnterprise);
+        // 2026-11-03：挂单冻结的是碳币，配额四列不再变动
+        verify(carbonCoinService, times(1)).freezeBalance(eq(1L), any());
+        verify(enterpriseRepository, never()).save(testEnterprise);
         verify(auctionOrderRepository, times(1)).save(any(AuctionOrder.class));
     }
 
@@ -235,8 +235,11 @@ class DoubleAuctionServiceTest {
     void testPlaceSellOrderFailInsufficientQuota() {
         orderRequest.setQuantity(new BigDecimal("1000.00"));
         when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(testEnterprise));
+        // 2026-11-03：余额不足由 CarbonCoinService.freezeBalance 抛出（4005）
+        org.mockito.Mockito.doThrow(new com.oaiss.chain.exception.BusinessException(4005, "碳币余额不足"))
+                .when(carbonCoinService).freezeBalance(anyLong(), any());
 
-        assertThrows(TradeException.class, () ->
+        assertThrows(RuntimeException.class, () ->
                 doubleAuctionService.placeSellOrder(currentUser, orderRequest));
         verify(auctionOrderRepository, never()).save(any());
     }
@@ -1264,17 +1267,15 @@ class DoubleAuctionServiceTest {
         enterprise.setId(1L);
 
         when(auctionOrderRepository.findById(99L)).thenReturn(Optional.of(sellOrder));
-        when(enterpriseRepository.findByUserId(1L)).thenReturn(Optional.of(enterprise));
         when(auctionOrderRepository.save(any(AuctionOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         AuctionOrderResponse response = doubleAuctionService.cancelOrder(currentUser, 99L);
 
         assertNotNull(response);
         assertEquals(AuctionOrderStatusEnum.CANCELLED.getCode(), response.getStatus());
-        // 剩余100配额全额解冻，frozen变为0，tradable变为500
-        assertEquals(new BigDecimal("0.00"), enterprise.getCarbonFrozen());
-        assertEquals(new BigDecimal("500.00"), enterprise.getCarbonTradable());
-        verify(enterpriseRepository, times(1)).save(enterprise);
+        // 2026-11-03：卖单挂的是碳币，撤单解冻碳币；配额四列不再变动
+        verify(carbonCoinService, times(1)).unfreezeBalance(eq(1L), any());
+        verify(enterpriseRepository, never()).save(enterprise);
     }
 
     @Test

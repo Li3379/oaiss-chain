@@ -1,10 +1,10 @@
 #!/bin/bash
-# 05-02: File Management - Upload/Download/Info/Exists/List/Presigned/Delete + MinIO Console
+# 05-02: File Management - Upload/Download/Info/Exists/List/Presigned/Delete + S3 storage health
 # Requirements: FILE-01, FILE-02, FILE-03
 #
 # Required seed data:
 #   - Users: enterprise001 (password from TEST_PASSWORD env, default: admin123)
-#   - MinIO running and accessible
+#   - S3 object storage (LocalStack) running and accessible
 #   - Backend running at BASE_URL (default: http://localhost:8080/api/v1)
 
 source "$(dirname "$0")/test-helpers.sh"
@@ -117,16 +117,16 @@ else
 fi
 echo ""
 
-# --- MinIO console check (IN-02: renumbered from 8.5 to 9) ---
-echo "[9/10] MinIO console accessibility..."
+# --- S3 object storage health check (LocalStack replaced the removed minio/minio image) ---
+echo "[9/10] S3 object storage (LocalStack) health..."
 
-MINIO_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9003 2>/dev/null || echo "000")
+S3_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:9004/_localstack/health 2>/dev/null || echo "000")
 TEST_ID=$((TEST_ID + 1))
-if [ "$MINIO_CODE" = "200" ] || [ "$MINIO_CODE" = "302" ]; then
-    echo "  [PASS] Test $TEST_ID: MinIO console at localhost:9003 (HTTP $MINIO_CODE)"
+if [ "$S3_CODE" = "200" ]; then
+    echo "  [PASS] Test $TEST_ID: S3 storage healthy at 127.0.0.1:9004 (HTTP $S3_CODE)"
     PASS=$((PASS + 1))
 else
-    echo "  [FAIL] Test $TEST_ID: MinIO console at localhost:9003 (HTTP $MINIO_CODE)"
+    echo "  [FAIL] Test $TEST_ID: S3 storage not responding at 127.0.0.1:9004 (HTTP $S3_CODE)"
     FAIL=$((FAIL + 1))
 fi
 echo ""

@@ -66,7 +66,7 @@ echo ========================================
 echo.
 
 :: ============================================================
-:: 1. Infrastructure (MySQL, Redis, MinIO, ML)
+:: 1. Infrastructure (MySQL, Redis, S3 LocalStack, ML)
 :: ============================================================
 echo [START] Starting infra services...
 docker compose %ENV_ARG% -f "%PROJECT_ROOT%\deploy\compose\docker-compose.infra.yml" up -d
@@ -76,31 +76,49 @@ if errorlevel 1 (
 )
 
 echo [START] Waiting for MySQL...
+set /a MYSQL_WAIT=0
 :wait_mysql
 docker inspect --format="{{.State.Health.Status}}" oaiss-mysql 2>nul | findstr "healthy" >nul
-if errorlevel 1 (
-    ping -n 3 127.0.0.1 >nul
-    goto :wait_mysql
+if not errorlevel 1 goto :mysql_ready
+set /a MYSQL_WAIT+=1
+if !MYSQL_WAIT! GEQ 60 (
+    echo [WARN] MySQL did not become healthy within 180 seconds, continuing anyway
+    goto :mysql_ready
 )
+ping -n 3 127.0.0.1 >nul
+goto :wait_mysql
+:mysql_ready
 echo [START] MySQL is ready
 
 echo [START] Waiting for Redis...
+set /a REDIS_WAIT=0
 :wait_redis
 docker inspect --format="{{.State.Health.Status}}" oaiss-redis 2>nul | findstr "healthy" >nul
-if errorlevel 1 (
-    ping -n 3 127.0.0.1 >nul
-    goto :wait_redis
+if not errorlevel 1 goto :redis_ready
+set /a REDIS_WAIT+=1
+if !REDIS_WAIT! GEQ 30 (
+    echo [WARN] Redis did not become healthy within 90 seconds, continuing anyway
+    goto :redis_ready
 )
+ping -n 3 127.0.0.1 >nul
+goto :wait_redis
+:redis_ready
 echo [START] Redis is ready
 
-echo [START] Waiting for MinIO...
-:wait_minio
-docker inspect --format="{{.State.Health.Status}}" oaiss-minio 2>nul | findstr "healthy" >nul
-if errorlevel 1 (
-    ping -n 3 127.0.0.1 >nul
-    goto :wait_minio
+echo [START] Waiting for S3 (LocalStack)...
+set /a S3_WAIT=0
+:wait_s3
+docker inspect --format="{{.State.Health.Status}}" oaiss-s3 2>nul | findstr "healthy" >nul
+if not errorlevel 1 goto :s3_ready
+set /a S3_WAIT+=1
+if !S3_WAIT! GEQ 60 (
+    echo [WARN] S3 did not become healthy within 180 seconds, continuing anyway
+    goto :s3_ready
 )
-echo [START] MinIO is ready
+ping -n 3 127.0.0.1 >nul
+goto :wait_s3
+:s3_ready
+echo [START] S3 (LocalStack) is ready
 
 echo [START] Waiting for ML Service...
 set /a ML_WAIT=0
@@ -263,10 +281,10 @@ echo  OAISS CHAIN services started
 echo    Backend:  http://localhost:8080/api/v1
 echo    Frontend: http://localhost:5173
 echo    ML:       http://localhost:8001
-echo    MinIO:    http://localhost:9003
+echo    S3:       http://127.0.0.1:9004 (LocalStack S3 API)
 if "%WITH_FABRIC%"=="true" (
-    echo    Orderer:  http://localhost:7050
-    echo    Peer:     http://localhost:7051
+    echo    Orderer:  gRPC 127.0.0.1:7050
+    echo    Peer:     gRPC 127.0.0.1:7051
 )
 echo ========================================
 echo.

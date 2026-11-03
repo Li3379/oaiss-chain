@@ -120,18 +120,12 @@ class TradeAuditServiceTest {
         assertEquals(TradeAudit.AUDIT_APPROVED, trade.getAuditStatus(), "审核态应置通过");
         assertEquals("核对无误", trade.getAuditRemark());
 
-        // 待审期资产一直冻结，结算发生在审核通过这一刻：
-        // 卖方解冻后扣减（额度走账本）、买方增加额度
-        verify(quotaLedgerService).settleSell(eq(10L), eq(new BigDecimal("200")),
-                anyString(), eq(7L), eq(100L));
-        verify(quotaLedgerService).increase(eq(20L), eq(new BigDecimal("200")),
-                anyString(), eq(7L), anyString(), eq(100L));
-
-        // 碳币：买方冻结款划转、卖方入账
-        verify(carbonCoinService).deductFrozenBalance(eq(2L), eq(new BigDecimal("12000")),
-                eq(new BigDecimal("200")), eq(100L));
-        verify(carbonCoinService).sellQuota(eq(1L), eq(new BigDecimal("12000")),
-                eq(new BigDecimal("200")), eq(100L));
+        // 2026-11-03：配额退出资产层，结算改为「碳币转让」一步。
+        // 卖方挂单冻结的 N 枚直接给买方，卖方不再收到对价（碳币换碳币无计价）。
+        verify(carbonCoinService).transferFrozen(eq(1L), eq(2L), eq(new BigDecimal("200")), eq(100L));
+        verify(quotaLedgerService, never()).settleSell(anyLong(), any(), anyString(), anyLong(), anyLong());
+        verify(quotaLedgerService, never()).increase(anyLong(), any(), anyString(), anyLong(), anyString(), anyLong());
+        verify(carbonCoinService, never()).sellQuota(anyLong(), any(), any(), anyLong());
 
         ArgumentCaptor<TradeAudit> auditCaptor = ArgumentCaptor.forClass(TradeAudit.class);
         verify(tradeAuditRepository).save(auditCaptor.capture());
@@ -160,12 +154,11 @@ class TradeAuditServiceTest {
         verify(quotaLedgerService, never()).increase(anyLong(), any(), anyString(), anyLong(), anyString(), anyLong());
         verify(quotaLedgerService, never()).rollback(anyLong(), any(), anyString(), anyLong(), anyString(), anyLong());
 
-        // 卖方额度解冻退回可交易
-        verify(quotaLedgerService).unfreeze(eq(10L), eq(new BigDecimal("200")),
-                anyString(), eq(7L), anyString(), eq(100L));
-
-        // 碳币：买方冻结款解冻退回（同样不是冲正，因为从未划走）
-        verify(carbonCoinService).unfreezeBalance(eq(2L), eq(new BigDecimal("12000")));
+        // 2026-11-03：挂单冻结的是**卖方碳币**，驳回时解冻的是卖方。
+        // 原实现对 buyerId 解冻——但买方从未冻结过，那会让买方凭空多出一笔币。
+        verify(carbonCoinService).unfreezeBalance(eq(1L), eq(new BigDecimal("200")));
+        verify(carbonCoinService, never()).unfreezeBalance(eq(2L), any());
+        verify(quotaLedgerService, never()).unfreeze(anyLong(), any(), anyString(), anyLong(), anyString(), anyLong());
 
         // 信誉扣分必须能指回这笔交易，且买卖双方各扣一次
         // （异常成交中双方都参与价格形成，只罚一方会留下靠对手方低信誉规避的口子）

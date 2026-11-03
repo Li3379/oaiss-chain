@@ -123,6 +123,29 @@ class BusinessScenarioTest extends H2IntegrationTest {
                 .build());
     }
 
+    /**
+     * 建立健康的信誉分（>= TradeAuditProperties.minCreditScore，默认 40）。
+     *
+     * <p>W3 起 P2P 确认与拍卖同口径走风控分流：无信誉记录会被按「最低分」处理，
+     * 从而命中 LOW_CREDIT 转人工。验证「正常成交路径」的用例必须先备好信誉分。</p>
+     *
+     * <p><b>参数是 enterpriseId 不是 userId</b>：CreditScore 按企业维度存储，
+     * {@code getScoresByUserIds} 内部会先做 userId → enterpriseId 的两跳转换。
+     * 用 userId 建记录会导致查不到而仍然转审（此处踩过一次）。</p>
+     */
+    private void ensureHealthyCredit(Long enterpriseId) {
+        if (creditScoreRepository.findByEnterpriseIdAndDeletedFalse(enterpriseId).isPresent()) {
+            return;
+        }
+        creditScoreRepository.save(CreditScore.builder()
+                .enterpriseId(enterpriseId)
+                .score(80)
+                .level("GOOD")
+                .tradeRestricted(false)
+                .accountFrozen(false)
+                .build());
+    }
+
     private void grantAdmission(Enterprise target) {
         enterpriseAdmissionRepository.save(EnterpriseAdmission.builder()
                 .enterpriseId(target.getId())
@@ -174,15 +197,19 @@ class BusinessScenarioTest extends H2IntegrationTest {
                     .reviewComment("Approved")
                     .build();
 
-            // 方案 A：审核通过即触发系统自动上链；Mock 链下上链成功，状态直接推进到 ON_CHAIN(5)。
-            // 原断言期望停在 APPROVED(3)，与「审核通过自动上链」的定稿语义不符。
+            // W0 语义变更：Mock 模式不再伪造 txHash（历史上写入 tx_mock_ 假存证，
+            // 实测在库里留下 11 份，对账页把它们当成已上链）。
+            // 现在审核通过后，上链失败被 autoCommitToChain 捕获，报告停留在 APPROVED(3)，
+            // 由 /carbon/certify 幂等补救入口重试。这才是「有链就上、没链不假装」。
             CarbonReportResponse approved = carbonService.reviewReport(reviewerDetails, reviewRequest);
-            assertEquals(ReportStatusEnum.ON_CHAIN.getCode(), approved.getStatus());
+            assertEquals(ReportStatusEnum.APPROVED.getCode(), approved.getStatus(),
+                    "无真实 Fabric 时报告应停在审核通过，不得被 Mock 假装成已上链");
 
             CarbonReport savedReport = carbonReportRepository.findById(draft.getId()).orElse(null);
             assertNotNull(savedReport);
-            assertEquals(ReportStatusEnum.ON_CHAIN.getCode(), savedReport.getStatus());
-            assertNotNull(savedReport.getBlockchainTxHash(), "审核通过后必须留下链上交易哈希");
+            assertEquals(ReportStatusEnum.APPROVED.getCode(), savedReport.getStatus());
+            assertNull(savedReport.getBlockchainTxHash(),
+                    "Mock 模式必须不产出任何 txHash，否则与真实存证无法区分");
         }
 
         @Test
@@ -237,6 +264,19 @@ class BusinessScenarioTest extends H2IntegrationTest {
         @DisplayName("P2P trade: create -> confirm -> complete")
         void p2pTradeFullFlow_Create_Confirm_Complete() {
             JwtUserDetails sellerDetails = createJwtDetails(enterpriseUser, "ENTERPRISE");
+
+            // W3 起 P2P 确认与拍卖同口径走风控分流：无信誉记录会被按「最低分」处理，
+            // 从而命中 LOW_CREDIT 转人工审核（这是正确行为，不是缺陷）。
+            // 本用例要验证的是「正常成交路径」，因此先给双方建立健康的信誉分。
+            ensureHealthyCredit(enterprise.getId());
+            ensureHealthyCredit(buyerEnterprise.getId());
+
+            // 2026-11-03：P2P 改为「转让碳币」，卖方**挂单时**就冻结碳币，
+            // 所以账户必须在 createP2PTrade 之前备好——原来放在 confirm 之前，
+            // 那时挂单已经因为余额不足失败了。
+            ensureCoinAccount(enterpriseUser.getId(), "10000.00");
+            ensureCoinAccount(buyerUser.getId(), "0.00");
+
             TradeRequest tradeRequest = TradeRequest.builder()
                     .tradeType(TradeTypeEnum.P2P.getCode())
                     .buyerId(buyerUser.getId())
@@ -247,10 +287,6 @@ class BusinessScenarioTest extends H2IntegrationTest {
             TradeResponse trade = tradeService.createP2PTrade(sellerDetails, tradeRequest);
             assertNotNull(trade);
             assertEquals(TradeStatusEnum.PENDING.getCode(), trade.getStatus());
-
-            // 结算要求双方账户存在；买家需有足够碳币支付 100×50=5000
-            ensureCoinAccount(enterpriseUser.getId(), "0.00");
-            ensureCoinAccount(buyerUser.getId(), "10000.00");
 
             TradeResponse confirmed = tradeService.confirmTrade(trade.getId(), buyerUser.getId());
             assertEquals(TradeStatusEnum.COMPLETED.getCode(), confirmed.getStatus());
@@ -263,6 +299,8 @@ class BusinessScenarioTest extends H2IntegrationTest {
         @Test
         @DisplayName("Seller can cancel pending trade")
         void sellerCanCancelPendingTrade() {
+            // 2026-11-03：挂单要冻结碳币，卖方必须有余额
+            ensureCoinAccount(enterpriseUser.getId(), "10000.00");
             JwtUserDetails sellerDetails = createJwtDetails(enterpriseUser, "ENTERPRISE");
             TradeRequest tradeRequest = TradeRequest.builder()
                     .tradeType(TradeTypeEnum.P2P.getCode())
@@ -488,6 +526,15 @@ class BusinessScenarioTest extends H2IntegrationTest {
             carbonService.reviewReport(reviewerDetails, approveRequest);
 
             // Step 2: Create P2P trade
+            // W3：无信誉记录会被按最低分处理而转人工审核，本用例验证完整业务链，
+            // 故先备好双方健康信誉分。
+            ensureHealthyCredit(enterprise.getId());
+            ensureHealthyCredit(buyerEnterprise.getId());
+
+            // 2026-11-03：卖方**挂单时**就要冻结碳币，账户必须提前备好
+            ensureCoinAccount(enterpriseUser.getId(), "20000.00");
+            ensureCoinAccount(buyerUser.getId(), "0.00");
+
             TradeRequest tradeRequest = TradeRequest.builder()
                     .tradeType(TradeTypeEnum.P2P.getCode())
                     .buyerId(buyerUser.getId())
@@ -497,19 +544,11 @@ class BusinessScenarioTest extends H2IntegrationTest {
 
             TradeResponse trade = tradeService.createP2PTrade(enterpriseDetails, tradeRequest);
 
-            // Step 3: Buyer confirms trade（结算需要双方账户已存在；买家需支付 200×55=11000）
-            ensureCoinAccount(enterpriseUser.getId(), "0.00");
-            ensureCoinAccount(buyerUser.getId(), "20000.00");
+            // Step 3: Buyer confirms trade
             tradeService.confirmTrade(trade.getId(), buyerUser.getId());
 
-            // Step 4: Recharge carbon coins
-            carbonCoinService.getOrCreateAccount(enterpriseUser.getId());
-            carbonCoinService.getOrCreateAccount(buyerUser.getId());
-
-            CarbonCoinRechargeRequest rechargeRequest = new CarbonCoinRechargeRequest();
-            rechargeRequest.setAmount(new BigDecimal("5000"));
-            rechargeRequest.setRemark("Trade reward");
-            carbonCoinService.recharge(enterpriseUser.getId(), rechargeRequest);
+            // Step 4: 碳币充值已下线（recharge 端点移除）。
+            // 此处仅为后续断言准备账户，余额由 ensureCoinAccount 的初始值提供。
 
             // Step 5: Add credit bonus
             creditScoreService.addBonusPoints(enterprise.getId(), 5, "Completed report and trade", adminUser.getId());
@@ -519,11 +558,15 @@ class BusinessScenarioTest extends H2IntegrationTest {
             assertNotNull(completedTrade);
             assertEquals(TradeStatusEnum.COMPLETED.getCode(), completedTrade.getStatus());
 
-            // 卖方最终余额 = 成交收款 200×55 = 11000 + 充值 5000 = 16000
-            // （原断言写死 5000，未计入 P2P 成交的货款收入）
+            // 2026-11-03 模型：P2P 是「碳币换碳币」，卖方把冻结的 200 枚转给买方，
+            // 自己不再收到货款（无计价关系），故余额 = 20000 − 200 = 19800。
+            //
+            // 原断言是「收款 11000 + 充值 5000 = 16000」——那属于「用碳币买配额」模型，
+            // 卖方卖出配额换回碳币；现在配额不在资产层，这个算式不成立。
             CarbonCoinAccount coinAccount = carbonCoinAccountRepository.findByUserIdAndDeletedFalse(enterpriseUser.getId()).orElse(null);
             assertNotNull(coinAccount);
-            assertEquals(0, new BigDecimal("16000").compareTo(coinAccount.getBalance()));
+            assertEquals(0, new BigDecimal("19800").compareTo(coinAccount.getBalance()),
+                    "卖方余额应为 20000 − 200（转出的碳币），实际: " + coinAccount.getBalance());
 
             CreditScore creditScore = creditScoreRepository.findByEnterpriseIdAndDeletedFalse(enterprise.getId()).orElse(null);
             assertNotNull(creditScore);

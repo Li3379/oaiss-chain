@@ -188,16 +188,17 @@ async function loginForSeed(page: Page, username: string, password: string): Pro
 }
 
 async function createAuctionSeedTrade(page: Page, token: string): Promise<SeedTradeResult> {
-  const response = await page.request.post(`${API_BASE_URL}/trade/auction`, {
+  // W2：/trade/auction 已删除（拍卖统一走 /auction/sell 写 AuctionOrder 单轨）。
+  // 该探针依赖“造一笔拍卖交易供筛选断言”，改走真实拍卖挂单端点。
+  const response = await page.request.post(`${API_BASE_URL}/auction/sell`, {
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
     data: {
-      tradeType: 1,
+      direction: 2,
       quantity: 1,
-      unitPrice: 1,
-      remark: `trade-filter-probe-${Date.now()}`,
+      price: 1,
     },
   })
 

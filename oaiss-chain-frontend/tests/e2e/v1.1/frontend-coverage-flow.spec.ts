@@ -323,9 +323,10 @@ test.describe('Frontend Coverage Flow', () => {
       // （playwright.config.ts 在该目录下），再拼一次 oaiss-chain-frontend
       // 会得到 .../oaiss-chain-frontend/oaiss-chain-frontend/src/api —— 恒不存在。
       const apiDir = pathMod.join(process.cwd(), 'src', 'api')
+      // enterpriseInference.ts 已于 2026-11-02 随前端企业推理模块一并移除
+      //（后端端点仍在，其存活由上方 "enterprise inference API endpoint exists" 覆盖）
       const requiredFiles = [
         'marketPrediction.ts',
-        'enterpriseInference.ts',
         'carbonFormula.ts',
         'enterprise.ts',
         'reviewer.ts',
@@ -341,9 +342,6 @@ test.describe('Frontend Coverage Flow', () => {
       // Check that each v1.1 module file contains request calls
       const marketPredictionEndpoints = extractEndpointsFromApiModule('marketPrediction.ts')
       expect(marketPredictionEndpoints.length).toBeGreaterThan(0)
-
-      const enterpriseInferenceEndpoints = extractEndpointsFromApiModule('enterpriseInference.ts')
-      expect(enterpriseInferenceEndpoints.length).toBeGreaterThan(0)
 
       // 该模块已不止两个端点：除发电/电网核算外，还新增了碳氧化率实测
       // 与政策问答（G5 缺口回填）。断言取下界而非定值，避免每次加接口就红。

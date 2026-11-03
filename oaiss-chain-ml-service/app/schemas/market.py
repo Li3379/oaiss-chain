@@ -74,3 +74,16 @@ class MarketForecastResponse(BaseModel):
     model_version: str = Field(
         description="Version identifier for the prediction model",
     )
+    # 成交量预测：仅 /predict/market/supply-demand 填充。
+    #
+    # 历史实现里 XGBoost 算出的成交量被 `_forecast_volumes` 丢弃 ——
+    # 三个端点全都返回价格，"供需预测"名不副实。加这两个字段后，
+    # 供需端点才真正携带成交量序列；价格端点保持为空列表，便于前端区分。
+    forecast_volumes: list[float] = Field(
+        default_factory=list,
+        description="Predicted traded volumes per forecast date (supply-demand endpoint only)",
+    )
+    forecast_volume_unit: str | None = Field(
+        default=None,
+        description="Volume unit, e.g. tCO2e (supply-demand endpoint only)",
+    )

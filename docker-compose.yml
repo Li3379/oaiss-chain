@@ -64,7 +64,17 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     environment:
-      SPRING_PROFILES_ACTIVE: docker
+      # 必须包含 fabric：不含 fabric 时 Spring 会加载 MockBlockchainService，
+      # 把 tx_mock_ 假哈希写进 blockchain_tx_hash，报告被标记为「已上链」——
+      # 这是「全真」原则明令禁止的假数据来源。SecurityStartupValidator 也会拒绝启动。
+      #
+      # 若只想起中间件做纯本地业务调试，请显式设置 OAISS_ALLOW_MOCK_CHAIN=true，
+      # 此时 Mock 不产出任何 txHash，报告停留在「审核通过」而非「已上链」。
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-docker,fabric}
+      # 容器内不能用 127.0.0.1 连 peer：peer 是另一个容器，须走服务名。
+      FABRIC_ENABLED: ${FABRIC_ENABLED:-true}
+      FABRIC_PEER_ENDPOINT: ${FABRIC_PEER_ENDPOINT:-peer0.org1.example.com:7051}
+      FABRIC_PEER_HOST_OVERRIDE: ${FABRIC_PEER_HOST_OVERRIDE:-peer0.org1.example.com}
       DB_HOST: mysql
       DB_PORT: 3306
       DB_PASSWORD: ${DB_PASSWORD}

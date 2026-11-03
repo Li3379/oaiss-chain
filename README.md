@@ -43,7 +43,18 @@
 
 ## 二、 3 步极速上手（面向人类普通开发者，无需任何 AI 介入）
 
-本项目经过深度轻量化调优，**日常开发完全不需要在本地安装笨重的 Hyperledger Fabric 节点网络**（后端默认集成 Mock 区块链引擎，自动模拟生成合法哈希），仅需标准三步即可在本地 5 分钟内完整运行：
+本项目经过深度轻量化调优，**日常开发不需要在本地安装笨重的 Hyperledger Fabric 节点网络**。仅需标准三步即可在本地 5 分钟内完整运行：
+
+> ⚠️ **区块链默认 fail-closed（2026-11-03 起）**
+>
+> 后端启动时若未激活 `fabric` profile，会**拒绝启动**并提示两种选择：
+> 1. **真实链上存证**：在 `SPRING_PROFILES_ACTIVE` 中加入 `fabric`；
+> 2. **仅本地开发/单测**：显式设置 `OAISS_ALLOW_MOCK_CHAIN=true`。
+>
+> 逃生门模式下 `MockBlockchainService` **不产出任何交易哈希**——审核通过的报告停留在
+> 「审核通过」而非「已上链」，由 `/carbon/certify` 补救入口重试。
+> 历史上它曾返回 `tx_mock_*` 假哈希并被当成真实存证，库中因此积累了 11 份脏数据（已清理）。
+> 演示环境必须走真实 Fabric，不得使用逃生门。
 
 ### 1. 准备配置文件 (10 秒)
 在项目根目录下复制环境变量模板生成 `.env`：
@@ -52,7 +63,7 @@ cp .env.example .env
 ```
 
 ### 2. 启动中间件基础设施 (1 分钟)
-使用 Docker Compose 启动 MySQL 8、Redis 7、MinIO 对象存储与 Python ML 服务：
+使用 Docker Compose 启动 MySQL 8、Redis 7、S3 对象存储 (LocalStack) 与 Python ML 服务：
 ```bash
 docker compose -f deploy/compose/docker-compose.infra.yml up -d
 ```
@@ -89,13 +100,14 @@ docker compose -f deploy/compose/docker-compose.infra.yml up -d
 
 ## 四、 本地轻量化开发与调优技巧
 
-1. **区块链 Mock 引擎**：
-   * 本地默认使用 `MockBlockchainService`，所有存证与交易哈希在内存毫秒级生成，开发业务逻辑无需消耗额外内存；
-   * 若需联调真实 Fabric SDK 底层网络，可执行 `scripts\start-all.bat --with-fabric`（Windows）或 `./scripts/start-all.sh --with-fabric`。
+1. **区块链 profile（默认 fail-closed）**：
+   * `docker compose` 已默认使用 `docker,fabric`；容器内通过服务名 `peer0.org1.example.com:7051` 连接 peer，不能用 `127.0.0.1`；
+   * 需要真实 Fabric SDK 联调：`scripts\start-all.bat --with-fabric`（Windows）或 `./scripts/start-all.sh --with-fabric`；
+   * 仅做纯业务逻辑调试、不想起 Fabric：显式设 `OAISS_ALLOW_MOCK_CHAIN=true`。**该模式下不产出任何 txHash**，报告停留在「审核通过」。
 2. **数据库零手工维护 (Flyway)**：
    * 禁止在客户端工具中手动修改表结构。如需新增字段，在 `oaiss-chain-backend/src/main/resources/db/migration/` 增加 `Vxx__xxx.sql`，应用重启自动生效。
 3. **接口在线文档 (Swagger/OpenAPI)**：
-   * 后端启动后，直接访问：`http://localhost:8080/api/v1/swagger-ui/index.html` 在线调试全部 153 个 REST 接口。
+   * 后端启动后，直接访问：`http://localhost:8080/api/v1/swagger-ui/index.html` 在线调试全部 REST 接口（当前 160 个，以 `DEV-GUIDE.md §11` 为权威口径）。
 4. **提交前一键自检**：
    ```bash
    node scripts/gates/doc-verify.mjs      # 代码与架构事实零漂移（数字）
@@ -135,7 +147,7 @@ OAISS CHAIN/
 │   └── raw/                     # 5 份 CMMI 标准原始需求说明
 ├── scripts/                     # [工程工具体系] 7 大功能子系统 + 顶层零破坏兼容桩
 │   ├── api/                     # 22 个 Spring Boot REST API 集成测试脚本
-│   ├── browser-qa/              # 13 个 Playwright 自动化巡检套件
+│   ├── browser-qa/              # 16 个 Playwright 自动化巡检套件
 │   ├── lifecycle/               # 9 个服务启动/停止 CLI 脚本
 │   ├── ops/                     # 生产容器编排封装、Fabric 初始化与远程发布脚本
 │   ├── gates/                   # 核心代码-文档零漂移与上线审计门禁

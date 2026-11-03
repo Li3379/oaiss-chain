@@ -60,10 +60,28 @@ function collectColumnTypes() {
     // 遇到一条 ALTER 里有多个 ADD/MODIFY 且中间夹注释时会被首个分号截断，
     // 导致后续 MODIFY 丢失（V17 的 tx_type: INT -> TINYINT 就是这样被漏掉的）。
     for (const stmt of sql.split(';')) {
-      // 语句块前面常带 `--` 注释，因此不能用「以 ALTER 开头」来匹配，
-      // 必须在任意位置定位 ALTER TABLE，否则整条 MODIFY 会被漏掉
-      // （V17 的 tx_type: INT -> TINYINT 正是这样被跳过，导致门禁误判通过）。
-      const a = stmt.match(/ALTER TABLE\s+`?(\w+)`?([\s\S]*)/i)
+      // 先剥掉 `--` 行注释再匹配。
+      //
+      // 为什么必须剥：V28 的头部注释里写了示例
+      //   `ALTER TABLE t ADD COLUMN a, ADD COLUMN b`
+      // 不剥的话正则会在注释里命中 `ALTER TABLE t`，把后续真实的
+      // `ADD COLUMN total_issued` 挂到不存在的表 `t` 上，
+      // 于是 carbon_coin_account.total_issued 永远登记不上，
+      // 门禁报「迁移中不存在该列」——而列其实好好地写在迁移里。
+      //
+      // 这跟下面注释说的「语句块前面常带注释」是同一个问题的另一面：
+      // 不能因为要跳过注释就整块不匹配，也不能让注释里的 SQL 参与匹配。
+      const code = stmt
+        .split('\n')
+        .map((line) => {
+          const i = line.indexOf('--')
+          return i >= 0 ? line.slice(0, i) : line
+        })
+        .join('\n')
+
+      // 剥完注释后仍须在任意位置定位 ALTER TABLE：语句块可能以空白/换行开头
+      // （V17 的 tx_type: INT -> TINYINT 曾因为「必须以 ALTER 开头」被跳过）。
+      const a = code.match(/ALTER TABLE\s+`?(\w+)`?([\s\S]*)/i)
       if (!a) continue
       const table = a[1]
       for (const c of a[2].matchAll(/ADD COLUMN\s+`?(\w+)`?\s+([A-Za-z]+(?:\(\d+\))?)/gi)) {

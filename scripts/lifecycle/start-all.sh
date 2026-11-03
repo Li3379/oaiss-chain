@@ -5,7 +5,7 @@
 #   --skip-frontend  跳过前端启动
 #   --skip-ml        跳过 ML 服务启动
 #   --skip-backend   跳过后端启动
-#   --infra-only     仅启动基础设施（MySQL/Redis/MinIO）
+#   --infra-only     仅启动基础设施（MySQL/Redis/S3）
 #   --help           显示本帮助并退出
 
 set -euo pipefail
@@ -115,7 +115,7 @@ wait_docker_health() {
 }
 
 # ─── 1. 基础设施 ───
-log "启动基础设施（MySQL, Redis, MinIO, ML Service）..."
+log "启动基础设施（MySQL, Redis, S3 对象存储 LocalStack, ML Service）..."
 "$DOCKER_BIN" compose "${ENV_ARGS[@]}" -f "$PROJECT_ROOT/deploy/compose/docker-compose.infra.yml" up -d
 
 log "等待 MySQL 就绪..."
@@ -124,8 +124,8 @@ wait_docker_health "oaiss-mysql" "MySQL" 60 || true
 log "等待 Redis 就绪..."
 wait_docker_health "oaiss-redis" "Redis" 30 || true
 
-log "等待 MinIO 就绪..."
-wait_docker_health "oaiss-minio" "MinIO" 60 || true
+log "等待 S3 (LocalStack) 就绪..."
+wait_docker_health "oaiss-s3" "S3" 60 || true
 
 if [[ "$INFRA_ONLY" == true ]]; then
     log "仅基础设施模式，跳过应用服务"
@@ -164,6 +164,7 @@ if [[ "$SKIP_ML" != true ]]; then
         if command -v uvicorn &> /dev/null; then
             uvicorn app.main:app --host 0.0.0.0 --port 8001 &
             ML_PID=$!
+            echo "$ML_PID" > /tmp/oaiss-ml.pid
             log "ML 服务 PID: $ML_PID"
             check_http "http://localhost:8001/health" "ML Service" 30 || true
         else
@@ -196,6 +197,7 @@ if [[ "$SKIP_FRONTEND" != true ]]; then
     cd "$PROJECT_ROOT/oaiss-chain-frontend"
     npm run dev &
     FRONTEND_PID=$!
+    echo "$FRONTEND_PID" > /tmp/oaiss-frontend.pid
     log "前端 PID: $FRONTEND_PID"
     check_http "http://localhost:5173" "Frontend" 30 || true
 else
@@ -209,10 +211,10 @@ log "OAISS CHAIN 服务已启动"
 log "  后端:   http://localhost:8080/api/v1"
 log "  前端:   http://localhost:5173"
 log "  ML:     http://localhost:8001"
-log "  MinIO:  http://localhost:9003 (Console)"
+log "  S3:     http://127.0.0.1:9004 (LocalStack S3 API)"
 if [[ "$WITH_FABRIC" == true ]]; then
-log "  Orderer: http://localhost:7050"
-log "  Peer:    http://localhost:7051"
+log "  Orderer: gRPC 127.0.0.1:7050"
+log "  Peer:    gRPC 127.0.0.1:7051"
 fi
 log "========================================="
 log "使用 ./scripts/stop-all.sh 停止所有服务"

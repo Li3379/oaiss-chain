@@ -70,7 +70,8 @@ class CarbonReportFieldMappingTest {
                 mock(DigitalSignatureService.class),
                 mock(CertificateGateService.class),
                 mock(QuotaAllocationService.class),
-                mock(com.oaiss.chain.repository.IndustryBenchmarkRepository.class));
+                mock(com.oaiss.chain.repository.IndustryBenchmarkRepository.class),
+                org.mockito.Mockito.mock(CarbonCoinService.class));
     }
 
     /** 与前端 CarbonUpload 提交的最小合法载荷一致（scope1 明细为空数组） */

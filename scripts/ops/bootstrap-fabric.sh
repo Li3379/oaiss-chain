@@ -1,21 +1,45 @@
 #!/usr/bin/env bash
 # Bootstrap local Fabric channel and chaincode for OAISS CHAIN.
 # This is idempotent and intended for local,fabric startup mode.
+#
+# Chaincode version policy (synced 2026-11-02):
+#   - FABRIC_CHAINCODE_VERSION is the desired version LABEL (default 1.2,
+#     matching the committed network state and the V2 snapshot chaincode
+#     source). It is a label only; the package is always built from the
+#     live oaiss-chain-chaincode source mounted into fabric-cli.
+#   - Bump it when chaincode source changes so bootstrap re-deploys.
+#   - The sequence is auto-computed: fresh network -> 1; otherwise
+#     committed_sequence + 1. Never pass a stale sequence.
 
 set -euo pipefail
+
+# Git Bash / MSYS on Windows rewrites leading-slash arguments of native
+# executables (docker.exe) into "D:/Program File/Git/..." — which corrupts
+# /opt/gopath and /var/hyperledger paths passed to `docker exec`. Disable it;
+# the variable is a no-op on real Linux.
+export MSYS_NO_PATHCONV=1
+export MSYS2_ARG_CONV_EXCL="*"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# Load .env so FABRIC_CHAINCODE_VERSION etc. from .env take effect.
+if [[ -f "$PROJECT_ROOT/.env" ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "$PROJECT_ROOT/.env"
+    set +a
+fi
+
 FABRIC_DIR="$PROJECT_ROOT/fabric-config"
-if [ ! -d "$FABRIC_DIR" ] && [ -d "$PROJECT_ROOT/deploy/fabric" ]; then
+if [ ! -d "$FABRIC_DIR" ] && [ -d "$PROJECT_ROOT/deploy/fabric" ] 2>/dev/null; then
     FABRIC_DIR="$PROJECT_ROOT/deploy/fabric"
 fi
 
 CHANNEL_NAME="${FABRIC_CHANNEL_NAME:-mychannel}"
 CHAINCODE_NAME="${FABRIC_CHAINCODE_NAME:-carbon-chaincode}"
-CHAINCODE_VERSION="${FABRIC_CHAINCODE_VERSION:-1.0}"
-CHAINCODE_SEQUENCE="${FABRIC_CHAINCODE_SEQUENCE:-1}"
+# Desired chaincode version label; sequence is computed from the network.
+CHAINCODE_VERSION="${FABRIC_CHAINCODE_VERSION:-1.2}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -59,6 +83,24 @@ fabric_admin_bash() {
         export CORE_PEER_TLS_ENABLED=true && \
         export CORE_PEER_TLS_ROOTCERT_FILE=/var/hyperledger/organizations/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt && \
         $*"
+}
+
+# Parse "Version: X, Sequence: N, ..." from querycommitted output.
+# Contract: echoes "<version> <sequence>" when both fields parse;
+# echoes nothing otherwise. Pure function, covered by the smoke test.
+parse_committed_line() {
+    local line="$1"
+    local version seq
+    version="$(printf '%s' "$line" | sed -n 's/.*Version: \([^,]*\).*/\1/p' | head -n1)"
+    seq="$(printf '%s' "$line" | sed -n 's/.*Sequence: \([0-9][0-9]*\).*/\1/p' | head -n1)"
+    if [[ -n "$version" && -n "$seq" ]]; then
+        printf '%s %s\n' "$version" "$seq"
+    fi
+}
+
+# Indirection point: the smoke test overrides this to record deploy calls.
+run_deploy() {
+    bash "$PROJECT_ROOT/scripts/deploy-chaincode.sh" "$1" "$2"
 }
 
 ensure_prereqs() {
@@ -105,16 +147,40 @@ ensure_channel() {
 }
 
 ensure_chaincode() {
-    if fabric_admin_bash "peer lifecycle chaincode querycommitted --channelID ${CHANNEL_NAME} --name ${CHAINCODE_NAME} | grep -q 'Version: ${CHAINCODE_VERSION}'"; then
-        log "Chaincode ${CHAINCODE_NAME} already committed on ${CHANNEL_NAME}"
+    local committed_line committed_version committed_seq next_seq
+    committed_line="$(fabric_admin_bash "peer lifecycle chaincode querycommitted --channelID ${CHANNEL_NAME} --name ${CHAINCODE_NAME}" 2>/dev/null || true)"
+
+    read -r committed_version committed_seq < <(parse_committed_line "$committed_line")
+
+    if [[ -n "$committed_line" && -z "$committed_version" ]]; then
+        err "已检测到链码定义但无法解析版本/序号，请人工检查: peer lifecycle chaincode querycommitted"
+        exit 1
+    fi
+
+    if [[ -z "$committed_version" ]]; then
+        log "Deploying ${CHAINCODE_NAME} v${CHAINCODE_VERSION} (fresh, sequence 1)"
+        run_deploy "$CHAINCODE_VERSION" "1"
         return 0
     fi
 
-    log "Deploying ${CHAINCODE_NAME} to ${CHANNEL_NAME}"
-    bash "$PROJECT_ROOT/scripts/deploy-chaincode.sh" "$CHAINCODE_VERSION" "$CHAINCODE_SEQUENCE"
+    if [[ "$committed_version" == "$CHAINCODE_VERSION" ]]; then
+        log "Chaincode ${CHAINCODE_NAME} v${committed_version} (sequence ${committed_seq}) already committed on ${CHANNEL_NAME} - skip"
+        return 0
+    else
+        next_seq=$((committed_seq + 1))
+        log "Upgrading ${CHAINCODE_NAME}: committed v${committed_version}/seq${committed_seq} != desired v${CHAINCODE_VERSION} -> deploy v${CHAINCODE_VERSION}/seq${next_seq}"
+        run_deploy "$CHAINCODE_VERSION" "$next_seq"
+    fi
 }
 
-ensure_prereqs
-ensure_channel
-ensure_chaincode
-log "Fabric bootstrap complete"
+main() {
+    ensure_prereqs
+    ensure_channel
+    ensure_chaincode
+    log "Fabric bootstrap complete"
+}
+
+# main-guard: sourcing this file (smoke test) must not execute the flow.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

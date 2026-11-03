@@ -15,8 +15,6 @@
  *     * GET  /api/v1/carbon-neutral/search               -> getProjects() 按 status 列出待审核/已完成项目
  *     * POST /api/v1/carbon-neutral/{id}/review          -> reviewProject() 通过或驳回立项
  *     * GET  /api/v1/carbon-neutral/pending-verification -> getPendingVerification() 查询待核证项目池
- *     * POST /api/v1/carbon-neutral/verify               -> verifyProject() 提交减排量核证结论
- *     * POST /api/v1/carbon-neutral/{id}/certify         -> completeCertification() 完成最终认证
  *   - CreditScoreController:
  *     * POST /api/v1/credit/deduct                      -> deductPoints() 执行违规企业信用扣分
  * ==============================================================================
@@ -33,7 +31,7 @@ import {
   completeCertification,
 } from '../../api/carbonNeutral'
 import { deductPoints } from '../../api/credit'
-import type { CarbonNeutralProjectResponse } from '../../types'
+import type { CarbonNeutralProjectResponse, ProjectVerificationRequest } from '../../types'
 import { formatDateTime } from '../../utils/format'
 import PageHeader from '../../components/pen/PageHeader.vue'
 import StatStrip from '../../components/pen/StatStrip.vue'
@@ -65,7 +63,7 @@ type BackendErrorPayload = {
   message?: string
 }
 
-type ActiveTab = 'review' | 'verify'
+type ActiveTab = 'review' | 'verify' | 'cert'
 
 const activeTab = ref<ActiveTab>('review')
 
@@ -203,10 +201,8 @@ const fetchCertQueue = async () => {
 
 const onTabChange = (name: string | number) => {
   if (name === 'review') fetchReviewQueue()
-  else {
-    fetchData()
-    fetchCertQueue()
-  }
+  else if (name === 'verify') fetchData()
+  else fetchCertQueue()
 }
 
 const onSizeChange = (size: number) => {
@@ -240,6 +236,70 @@ const onCertSizeChange = (size: number) => {
 const onCertCurrentChange = (page: number) => {
   certPage.value = page
   fetchCertQueue()
+}
+
+// ==================== 项目核证 ====================
+/** 打开核证弹窗：带入当前行 id 与已有监测数据，核证员只需补齐结论 */
+const openVerifyDialog = (row: ProjectReviewRow) => {
+  verifyForm.value = {
+    projectId: row.id,
+    verifiedReduction: Number(row.actualReduction) > 0 ? String(row.actualReduction) : '',
+    verificationReport: '',
+    monitoringData: row.monitoringData || '',
+    remark: '',
+  }
+  verifyErrorMessage.value = ''
+  verifyDialogVisible.value = true
+}
+
+/** 提交核证：核定减排量必填且大于 0；失败保留弹窗并回显后端原因（T-07-09 / T-07-10） */
+const onSubmitVerify = async () => {
+  const projectId = verifyForm.value.projectId
+  const verifiedReduction = Number(verifyForm.value.verifiedReduction)
+  if (!projectId) {
+    verifyErrorMessage.value = t('projectReview.loadFailed')
+    return
+  }
+  if (!Number.isFinite(verifiedReduction) || verifiedReduction <= 0) {
+    verifyErrorMessage.value = t('projectReview.verifiedReductionInvalid')
+    return
+  }
+
+  const payload: ProjectVerificationRequest = {
+    projectId,
+    verifiedReduction,
+    verificationReport: verifyForm.value.verificationReport.trim() || undefined,
+    monitoringData: verifyForm.value.monitoringData.trim() || undefined,
+    remark: verifyForm.value.remark.trim() || undefined,
+  }
+
+  verifyLoading.value = true
+  verifyErrorMessage.value = ''
+  try {
+    await verifyProject(payload)
+    verifyDialogVisible.value = false
+    ElMessage.success(t('projectReview.verifySuccess'))
+    await Promise.all([fetchData(), fetchCertQueue()])
+  } catch (error: unknown) {
+    verifyErrorMessage.value = getBackendErrorMessage(error) || t('projectReview.verifySubmitFailed')
+  } finally {
+    verifyLoading.value = false
+  }
+}
+
+// ==================== 完成认证 ====================
+/** 完成认证：证书编号由后端生成并随响应返回，成功后刷新待认证队列 */
+const onCompleteCertification = async (row: ProjectReviewRow) => {
+  certActionId.value = row.id
+  try {
+    const result = await completeCertification(row.id)
+    ElMessage.success(t('projectReview.completeCertSuccess', { certNo: result?.certNo || '-' }))
+    await fetchCertQueue()
+  } catch (error: unknown) {
+    ElMessage.error(getBackendErrorMessage(error) || t('projectReview.completeCertFailed'))
+  } finally {
+    certActionId.value = null
+  }
 }
 
 // ==================== 立项审核 ====================
@@ -302,87 +362,6 @@ const rejectProject = async (row: ProjectReviewRow) => {
   }
 }
 
-// ==================== 核证 ====================
-const openVerifyDialog = (row: ProjectReviewRow) => {
-  verifyErrorMessage.value = ''
-  verifyForm.value = {
-    projectId: row.id,
-    verifiedReduction: String(row.expectedReduction ?? ''),
-    verificationReport: '',
-    monitoringData: row.monitoringData || '',
-    remark: '',
-  }
-  verifyDialogVisible.value = true
-}
-
-const submitVerify = async () => {
-  verifyErrorMessage.value = ''
-  const verifiedReduction = Number(verifyForm.value.verifiedReduction)
-  if (!Number.isFinite(verifiedReduction) || verifiedReduction <= 0) {
-    const invalidMessage = t('projectReview.verifiedReductionInvalid')
-    verifyErrorMessage.value = invalidMessage === 'projectReview.verifiedReductionInvalid'
-      ? `${t('projectReview.labelVerifiedReduction')} > 0`
-      : invalidMessage
-    ElMessage.warning(verifyErrorMessage.value)
-    return
-  }
-
-  verifyLoading.value = true
-  try {
-    await verifyProject({
-      projectId: verifyForm.value.projectId!,
-      verifiedReduction,
-      verificationReport: verifyForm.value.verificationReport || undefined,
-      monitoringData: verifyForm.value.monitoringData || undefined,
-      remark: verifyForm.value.remark || undefined,
-    })
-    ElMessage.success(t('projectReview.verifyPassed'))
-    verifyDialogVisible.value = false
-    fetchData()
-  } catch (error: unknown) {
-    const backendMessage = getBackendErrorMessage(error)
-    verifyErrorMessage.value = backendMessage || t('projectReview.verifySubmitFailed')
-    ElMessage.error(backendMessage || t('projectReview.verifySubmitFailed'))
-  } finally {
-    verifyLoading.value = false
-  }
-}
-
-// ==================== 完成认证 ====================
-const certificationAction = async (row: ProjectReviewRow) => {
-  let certNo: string
-  try {
-    const { value } = await ElMessageBox.prompt(
-      t('projectReview.enterCertNo'),
-      t('projectReview.certDialogTitle'),
-      {
-        confirmButtonText: t('common.confirm'),
-        cancelButtonText: t('common.cancel'),
-        inputValue: row.certNo || '',
-        inputPattern: /\S+/,
-        inputErrorMessage: t('projectReview.certNoRequired'),
-      },
-    )
-    certNo = value.trim()
-  } catch {
-    return
-  }
-  if (!certNo) {
-    ElMessage.warning(t('projectReview.certNoRequired'))
-    return
-  }
-
-  certActionId.value = row.id
-  try {
-    await completeCertification(row.id, { certNo })
-    ElMessage.success(t('projectReview.certificationCompleted'))
-    await fetchCertQueue()
-  } catch (error: unknown) {
-    ElMessage.error(getBackendErrorMessage(error) || t('projectReview.certificationFailed'))
-  } finally {
-    certActionId.value = null
-  }
-}
 
 // ==================== 信用扣分 ====================
 const openDeductDialog = (row: ProjectReviewRow) => {
@@ -444,30 +423,17 @@ const getVerificationTag = (status: number) => {
   return VERIFICATION_STATUS_MAP[status] || 'info'
 }
 
-const canVerify = (row: ProjectReviewRow) => {
-  return Number(row.verificationStatus) === VERIFY_STATUS_PENDING
-}
-
-const canDeduct = (row: ProjectReviewRow) => {
-  return Number(row.verificationStatus) === VERIFY_STATUS_PENDING
-}
-
-/**
- * 完成认证：后端 completeCertification 校验 certStatus===PENDING(1)。
- * 仅 verificationStatus=2 还不够——企业必须先「申请认证」，否则必然报 3003「项目不在待认证状态」。
- */
-const canCompleteCertification = (row: ProjectReviewRow) => {
-  return Number(row.verificationStatus) === VERIFY_STATUS_VERIFIED
-    && Number(row.certStatus) === CERT_STATUS_PENDING
-}
-
 const canReview = (row: ProjectReviewRow) => row.status === PROJECT_STATUS_PENDING
 
 const hasRows = computed(() => tableData.value.length > 0)
 const hasReviewRows = computed(() => reviewRows.value.length > 0)
 const hasCertRows = computed(() => certRows.value.length > 0)
 
-const activeLoading = computed(() => (activeTab.value === 'review' ? reviewLoading.value : loading.value))
+const activeLoading = computed(() => {
+  if (activeTab.value === 'review') return reviewLoading.value
+  if (activeTab.value === 'cert') return certLoading.value
+  return loading.value
+})
 
 /** 首屏统计条：全部由已加载的本页数据推导，不新增接口请求 */
 const overviewStats = computed(() => {
@@ -635,136 +601,122 @@ onMounted(() => {
 
       <!-- ==================== 待核证 ==================== -->
       <el-tab-pane :label="t('projectReview.tabVerification')" name="verify">
-        <div class="verify-stack">
-          <DataPanel
-            :title="t('projectReview.queueVerification')"
-            :meta="t('projectReview.panelMeta', { total })"
-          >
-            <p class="panel-note">{{ t('projectReview.queueVerificationDesc') }}</p>
+        <DataPanel
+          :title="t('projectReview.queueVerification')"
+          :meta="t('projectReview.panelMeta', { total })"
+        >
+          <p class="panel-note">{{ t('projectReview.queueVerificationDesc') }}</p>
 
-            <el-table :data="tableData" v-loading="loading">
-              <el-table-column prop="projectName" :label="t('projectReview.colProjectName')" min-width="180" show-overflow-tooltip />
-              <el-table-column prop="ownerName" :label="t('projectReview.colEnterpriseName')" min-width="160" />
-              <el-table-column prop="projectTypeName" :label="t('projectReview.colProjectType')" min-width="120" />
-              <el-table-column prop="status" :label="t('common.status')" min-width="120">
-                <template #default="{ row }">
-                  <el-tag :type="getStatusTag(row.status)">{{ row.statusText || row.status }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="verificationStatus" :label="t('projectReview.colVerificationStatus')" min-width="140">
-                <template #default="{ row }">
-                  <el-tag :type="getVerificationTag(row.verificationStatus)">{{ row.verificationStatusText || row.verificationStatus }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="expectedReduction" :label="t('projectReview.colExpectedReduction')" min-width="130" />
-              <el-table-column prop="createdAt" :label="t('common.createTime')" min-width="170">
-                <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
-              </el-table-column>
-              <el-table-column :label="t('common.operation')" width="280" fixed="right">
-                <template #default="{ row }">
-                  <el-button v-if="canVerify(row)" link type="success" @click="openVerifyDialog(row)">{{ t('projectReview.verify') }}</el-button>
-                  <el-button v-if="canDeduct(row)" link type="warning" @click="openDeductDialog(row)">{{ t('projectReview.deductCredit') }}</el-button>
-                  <span v-if="!canVerify(row) && !canDeduct(row)" class="empty-op">-</span>
-                </template>
-              </el-table-column>
-            </el-table>
+          <el-table :data="tableData" v-loading="loading">
+            <el-table-column prop="projectNo" :label="t('projectReview.colProjectNo')" min-width="150" />
+            <el-table-column prop="projectName" :label="t('projectReview.colProjectName')" min-width="180" show-overflow-tooltip />
+            <el-table-column prop="ownerName" :label="t('projectReview.colEnterpriseName')" min-width="160" />
+            <el-table-column prop="projectTypeName" :label="t('projectReview.colProjectType')" min-width="120" />
+            <el-table-column prop="verificationStatus" :label="t('projectReview.colVerificationStatus')" min-width="120">
+              <template #default="{ row }">
+                <el-tag :type="getVerificationTag(row.verificationStatus)">{{ row.verificationStatusText || row.verificationStatus }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="expectedReduction" :label="t('projectReview.colExpectedReduction')" min-width="130" />
+            <el-table-column prop="createdAt" :label="t('common.createTime')" min-width="170">
+              <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
+            </el-table-column>
+            <el-table-column :label="t('common.operation')" width="160" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="openVerifyDialog(row)">{{ t('projectReview.verify') }}</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
 
-            <EmptyHint v-if="!loading && !hasRows" :description="t('projectReview.emptyText')">
-              <p class="empty-tip">{{ t('nextSteps.emptyProjectsTip') }}</p>
-            </EmptyHint>
+          <EmptyHint v-if="!loading && !hasRows" :description="t('projectReview.emptyText')" />
 
-            <template #footer>
-              <el-pagination
-                v-model:current-page="currentPage"
-                v-model:page-size="pageSize"
-                background
-                :page-sizes="[10, 20, 50]"
-                layout="total, sizes, prev, pager, next, jumper"
-                :total="total"
-                @size-change="onSizeChange"
-                @current-change="onCurrentChange"
-              />
-            </template>
-          </DataPanel>
-
-          <!-- 已核证待认证：完成认证后 certStatus 才真正到达 2 -->
-          <DataPanel
-            :title="t('projectReview.queueCertification')"
-            :meta="t('projectReview.panelMetaCert', { total: certTotal })"
-          >
-            <p class="panel-note">{{ t('projectReview.queueCertificationDesc') }}</p>
-
-            <el-table :data="certRows" v-loading="certLoading">
-              <el-table-column prop="projectNo" :label="t('projectReview.colProjectNo')" min-width="150" />
-              <el-table-column prop="projectName" :label="t('projectReview.colProjectName')" min-width="180" show-overflow-tooltip />
-              <el-table-column prop="ownerName" :label="t('projectReview.colEnterpriseName')" min-width="160" />
-              <el-table-column prop="verificationStatus" :label="t('projectReview.colVerificationStatus')" min-width="130">
-                <template #default="{ row }">
-                  <el-tag :type="getVerificationTag(row.verificationStatus)">{{ row.verificationStatusText || row.verificationStatus }}</el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="certOrg" :label="t('projectReview.colCertOrg')" min-width="150" />
-              <el-table-column prop="createdAt" :label="t('common.createTime')" min-width="170">
-                <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
-              </el-table-column>
-              <el-table-column :label="t('common.operation')" width="200" fixed="right">
-                <template #default="{ row }">
-                  <el-button
-                    v-if="canCompleteCertification(row)"
-                    link
-                    type="success"
-                    :loading="certActionId === row.id"
-                    @click="certificationAction(row)"
-                  >{{ t('projectReview.completeCertification') }}</el-button>
-                  <span v-else class="empty-op">-</span>
-                </template>
-              </el-table-column>
-            </el-table>
-
-            <EmptyHint v-if="!certLoading && !hasCertRows" :description="t('projectReview.emptyCertText')" />
-
-            <template #footer>
-              <!--
-                分页器上的 total 是「已完成项目」池大小（翻页需要），
-                与本面板「待认证」口径不同，因此不显示 total 文案，避免出现
-                「共 16 条」却「暂无数据」的误导。
-              -->
-              <el-pagination
-                v-model:current-page="certPage"
-                v-model:page-size="certPageSize"
-                background
-                :page-sizes="[10, 20, 50]"
-                layout="sizes, prev, pager, next, jumper"
-                :total="certPageTotal"
-                @size-change="onCertSizeChange"
-                @current-change="onCertCurrentChange"
-              />
-            </template>
-          </DataPanel>
-        </div>
+          <template #footer>
+            <el-pagination
+              v-model:current-page="currentPage"
+              v-model:page-size="pageSize"
+              background
+              :page-sizes="[10, 20, 50]"
+              layout="total, sizes, prev, pager, next, jumper"
+              :total="total"
+              @size-change="onSizeChange"
+              @current-change="onCurrentChange"
+            />
+          </template>
+        </DataPanel>
       </el-tab-pane>
+
+      <!-- ==================== 已核证待认证 ==================== -->
+      <el-tab-pane :label="t('projectReview.tabCertification')" name="cert">
+        <DataPanel
+          :title="t('projectReview.queueCertification')"
+          :meta="t('projectReview.panelMetaCert', { total: certTotal })"
+        >
+          <p class="panel-note">{{ t('projectReview.queueCertificationDesc') }}</p>
+
+          <el-table :data="certRows" v-loading="certLoading">
+            <el-table-column prop="projectNo" :label="t('projectReview.colProjectNo')" min-width="150" />
+            <el-table-column prop="projectName" :label="t('projectReview.colProjectName')" min-width="180" show-overflow-tooltip />
+            <el-table-column prop="ownerName" :label="t('projectReview.colEnterpriseName')" min-width="160" />
+            <el-table-column prop="certOrg" :label="t('projectReview.colCertOrg')" min-width="140" />
+            <el-table-column prop="status" :label="t('common.status')" min-width="110">
+              <template #default="{ row }">
+                <el-tag :type="getStatusTag(row.status)">{{ row.statusText || row.status }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="createdAt" :label="t('common.createTime')" min-width="170">
+              <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
+            </el-table-column>
+            <el-table-column :label="t('common.operation')" width="180" fixed="right">
+              <template #default="{ row }">
+                <el-button
+                  link
+                  type="success"
+                  :loading="certActionId === row.id"
+                  @click="onCompleteCertification(row)"
+                >{{ t('projectReview.completeCertification') }}</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <EmptyHint v-if="!certLoading && !hasCertRows" :description="t('projectReview.emptyCertText')" />
+
+          <template #footer>
+            <el-pagination
+              v-model:current-page="certPage"
+              v-model:page-size="certPageSize"
+              background
+              :page-sizes="[10, 20, 50]"
+              layout="total, sizes, prev, pager, next, jumper"
+              :total="certPageTotal"
+              @size-change="onCertSizeChange"
+              @current-change="onCertCurrentChange"
+            />
+          </template>
+        </DataPanel>
+      </el-tab-pane>
+
     </el-tabs>
 
-    <!-- Verify Dialog -->
-    <el-dialog v-model="verifyDialogVisible" :title="t('projectReview.verifyDialogTitle')" width="600px" destroy-on-close>
-      <el-form label-width="100px">
+    <!-- Verification Dialog -->
+    <el-dialog v-model="verifyDialogVisible" :title="t('projectReview.verifyDialogTitle')" width="560px" destroy-on-close>
+      <el-form label-width="120px">
         <el-form-item :label="t('projectReview.labelVerifiedReduction')">
-          <el-input v-model="verifyForm.verifiedReduction" />
+          <el-input v-model="verifyForm.verifiedReduction" :placeholder="t('projectReview.verifyReduction')" />
         </el-form-item>
         <el-form-item :label="t('projectReview.labelVerificationReport')">
           <el-input v-model="verifyForm.verificationReport" type="textarea" :rows="3" :placeholder="t('projectReview.enterVerificationReport')" />
         </el-form-item>
         <el-form-item :label="t('projectReview.labelMonitoringData')">
-          <el-input v-model="verifyForm.monitoringData" type="textarea" :rows="3" :placeholder="t('projectReview.enterMonitoringData')" />
+          <el-input v-model="verifyForm.monitoringData" type="textarea" :rows="4" :placeholder="t('projectReview.verifyMonitoringData')" />
         </el-form-item>
         <el-form-item :label="t('projectReview.labelRemark')">
-          <el-input v-model="verifyForm.remark" type="textarea" :rows="3" :placeholder="t('projectReview.enterRemark')" />
+          <el-input v-model="verifyForm.remark" :placeholder="t('projectReview.enterRemark')" />
         </el-form-item>
-        <div v-if="verifyErrorMessage" class="form-error-text">{{ verifyErrorMessage }}</div>
+        <p v-if="verifyErrorMessage" class="form-error-text">{{ verifyErrorMessage }}</p>
       </el-form>
       <template #footer>
         <el-button @click="verifyDialogVisible = false">{{ t('common.cancel') }}</el-button>
-        <el-button type="primary" :loading="verifyLoading" @click="submitVerify">{{ t('common.submit') }}</el-button>
+        <el-button type="primary" :loading="verifyLoading" @click="onSubmitVerify">{{ t('projectReview.verifySubmit') }}</el-button>
       </template>
     </el-dialog>
 

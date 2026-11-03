@@ -28,24 +28,28 @@ public class MockBlockchainService implements BlockchainServicePort {
     /**
      * 将数据上链
      *
+     * <p><b>永不返回假哈希</b>：历史实现返回 {@code tx_mock_xxx}，这个值会被
+     * {@code CarbonService} 当作真实存证写进 {@code blockchain_tx_hash}，
+     * 报告随即被置为「已上链」，而对账页无法把它和真实 Fabric 交易区分开。
+     * 实测库中因此留下了 11 份 {@code tx_mock_} 报告。</p>
+     *
+     * <p>返回 {@code null} 是刻意的：调用方 {@code CarbonService.autoCommitToChain}
+     * 会捕获由此引发的异常、清空 txHash 并让报告停留在「审核通过」，
+     * 由 {@code /carbon/certify} 补救入口重试——这是「有链就上、没链不假装」的正确语义。</p>
+     *
      * @param channelName 通道名称
      * @param chaincodeName 链码名称
      * @param functionName 函数名称
      * @param args 参数
-     * @return 交易哈希
+     * @return 恒为 null（Mock 模式不产生任何可被误认为真实存证的哈希）
      */
     @Override
     public String invokeChaincode(String channelName, String chaincodeName,
             String functionName, String... args) {
-        log.info("[MOCK] Invoking chaincode: channel={}, chaincode={}, function={}", 
+        log.warn("[MOCK] 拒绝伪造交易哈希: channel={}, chaincode={}, function={} — "
+                        + "Mock 模式不产出 txHash，业务方应停留在未上链状态",
                 channelName, chaincodeName, functionName);
-
-        // 模拟交易哈希
-        String txHash = "tx_mock_" + System.currentTimeMillis() + "_" + 
-                UUID.randomUUID().toString().substring(0, 8);
-
-        log.info("[MOCK] Transaction committed: {}", txHash);
-        return txHash;
+        return null;
     }
 
     /**
@@ -120,7 +124,9 @@ public class MockBlockchainService implements BlockchainServicePort {
                 payload
         );
 
-        log.info("[MOCK] Snapshot committed: reportId={}, txHash={}", snapshot.getReportId(), txHash);
+        // txHash 恒为 null（见 invokeChaincode 的说明）。这里显式记录「未上链」，
+        // 避免日志出现 "txHash=null" 被误读成实现缺陷。
+        log.warn("[MOCK] 快照未上链（Mock 模式不产出存证）: reportId={}", snapshot.getReportId());
         return txHash;
     }
 
@@ -143,7 +149,7 @@ public class MockBlockchainService implements BlockchainServicePort {
                 tradeData
         );
 
-        log.info("[MOCK] Trade committed: tradeId={}, txHash={}", tradeId, txHash);
+        log.warn("[MOCK] 交易未上链（Mock 模式不产出存证）: tradeId={}", tradeId);
         return txHash;
     }
 
@@ -215,19 +221,11 @@ public class MockBlockchainService implements BlockchainServicePort {
      */
     @Override
     public Page<Map<String, Object>> listTransactions(Integer page, Integer size) {
-        log.info("[MOCK] Listing transactions: page={}, size={}", page, size);
-
-        List<Map<String, Object>> transactions = new ArrayList<>();
-        for (int i = 0; i < size; i++) {
-            Map<String, Object> tx = new HashMap<>();
-            tx.put("txHash", "tx_mock_" + System.currentTimeMillis() + "_" + i);
-            tx.put("blockNumber", 1000 + (page - 1) * size + i);
-            tx.put("status", "VALID");
-            tx.put("timestamp", LocalDateTime.now().minusMinutes(i).toString());
-            transactions.add(tx);
-        }
-
-        return new PageImpl<>(transactions, PageRequest.of(page - 1, size), 100);
+        // 返回空页而非编造的 tx_mock_ 流水。
+        // 区块链浏览器在 Mock 模式下应当显示「无链上交易」，而不是一屏假交易——
+        // 后者会被演示现场当作真实存证来核对。
+        log.warn("[MOCK] 拒绝伪造链上交易列表: page={}, size={} — Mock 模式无链上数据", page, size);
+        return new PageImpl<>(List.of(), PageRequest.of(Math.max(page - 1, 0), size), 0);
     }
 
     /**

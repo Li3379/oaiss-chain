@@ -73,7 +73,7 @@ const dialogFormRef = ref()
 const dialogForm = reactive({
   buyerId: null as number | null,
   quantity: null as number | null,
-  unitPrice: null as number | null,
+  // 2026-11-03：P2P 改为「碳币换碳币」，无单价维度
   remark: "",
 })
 
@@ -85,17 +85,17 @@ const dialogRules = {
     { required: true, message: t("tradingP2P.enterQuantity"), trigger: "blur" },
     { type: "number", min: 0.01, message: t("tradingP2P.quantityPositive"), trigger: "blur" }
   ],
-  unitPrice: [
-    { required: true, message: t("tradingP2P.enterPrice"), trigger: "blur" },
-    { type: "number", min: 0.01, message: t("tradingP2P.pricePositive"), trigger: "blur" }
-  ],
 }
 
+/**
+ * 转让总量 = 数量本身。
+ *
+ * 2026-11-03：P2P 是「碳币换碳币」，1 枚换 1 枚，没有单价维度。
+ * 保留这个 computed 只是为了让模板不必内联算式。
+ */
 const estimatedTotal = computed(() => {
   const q = Number(dialogForm.quantity || 0)
-  const p = Number(dialogForm.unitPrice || 0)
-  if (!Number.isFinite(q) || !Number.isFinite(p) || q <= 0 || p <= 0) return '0.00'
-  return (q * p).toFixed(2)
+  return Number.isFinite(q) && q > 0 ? q.toFixed(2) : '0.00'
 })
 
 const buildTradeQuery = () => ({
@@ -141,7 +141,7 @@ const onPageChange = (val: number) => {
 const resetDialogForm = () => {
   dialogForm.buyerId = null
   dialogForm.quantity = null
-  dialogForm.unitPrice = null
+  // unitPrice 已移除：P2P 无价格维度
   dialogForm.remark = ""
 }
 
@@ -220,7 +220,7 @@ const onSave = async () => {
       tradeType: 2,
       buyerId: Number(dialogForm.buyerId),
       quantity: Number(dialogForm.quantity),
-      unitPrice: Number(dialogForm.unitPrice),
+      // 2026-11-03：P2P 无单价维度，后端按 1 处理。不传，避免误以为它在生效。
       remark: dialogForm.remark || "",
     })
 
@@ -270,8 +270,14 @@ const onConfirmTrade = async (row: TradeResponse) => {
       type: "warning",
     })
 
-    await confirmTrade(row.id)
-    ElMessage.success(t("tradingP2P.confirmSuccess"))
+    // W3：命中风控时交易停在待审核、资产仍在冻结态。
+    // 必须据此区分提示语——否则用户看到「交易完成」会以为配额与碳币已到账。
+    const result = await confirmTrade(row.id)
+    if (result?.auditStatus === 1) {
+      ElMessage.warning(t("tradingP2P.confirmPendingAudit"))
+    } else {
+      ElMessage.success(t("tradingP2P.confirmSuccess"))
+    }
     await loadTrades()
   } catch (error) {
     if (error !== "cancel") {
@@ -452,15 +458,15 @@ const p2pStats = computed(() => {
 
         <el-form-item :label="t('tradingP2P.colQuantity')" prop="quantity">
           <el-input-number v-model="dialogForm.quantity" :min="0.01" :precision="2" :step="1" style="width: 100%" :placeholder="t('tradingP2P.enterQuantity')" />
+          <span class="field-hint">{{ t('tradingP2P.quantityHintCoin') }}</span>
         </el-form-item>
 
-        <el-form-item :label="t('tradingP2P.colUnitPrice')" prop="unitPrice">
-          <el-input-number v-model="dialogForm.unitPrice" :min="0.01" :precision="2" :step="0.01" style="width: 100%" :placeholder="t('tradingP2P.enterPrice')" />
-        </el-form-item>
+        <!-- 2026-11-03：P2P 改为「碳币换碳币」，1 枚换 1 枚，无价格维度。
+             单价输入已移除——填了后端也按 1 处理，展示它只会误导。 -->
 
-        <div v-if="Number(dialogForm.quantity) > 0 && Number(dialogForm.unitPrice) > 0" class="p2p-estimate-card">
+        <div v-if="Number(dialogForm.quantity) > 0" class="p2p-estimate-card">
           <div class="p2p-estimate-label">{{ t('tradingP2P.estimatedTotal') }}</div>
-          <div class="p2p-estimate-val">{{ estimatedTotal }} <small>{{ t('common.unit_coin') || '碳币' }}</small></div>
+          <div class="p2p-estimate-val">{{ formatNumber(Number(dialogForm.quantity)) }} <small>{{ t('common.unit_coin') || '碳币' }}</small></div>
         </div>
 
         <el-form-item :label="t('ordersManage.labelRemark')" prop="remark">

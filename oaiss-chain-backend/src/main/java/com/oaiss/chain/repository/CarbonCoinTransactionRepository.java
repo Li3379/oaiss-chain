@@ -22,4 +22,17 @@ public interface CarbonCoinTransactionRepository extends JpaRepository<CarbonCoi
 
     @Query("SELECT COALESCE(SUM(t.amount), 0) FROM CarbonCoinTransaction t WHERE t.userId = :userId AND t.txType = :txType AND t.deleted = false")
     java.math.BigDecimal sumAmountByUserIdAndTxType(@Param("userId") Long userId, @Param("txType") Integer txType);
+
+    /**
+     * 统计某报告已发放的次数——用于生成发放序号与幂等预查。
+     *
+     * <p>只数 ISSUE 类行（{@code related_seq} 非空）：回收行 seq 为 null，
+     * 一起数会让「驳回后重发」的序号跳号。
+     */
+    long countByRelatedReportIdAndRelatedSeqIsNotNull(Long relatedReportId);
+
+    /**
+     * 按报告查全部流水（含发放与回收），供对账与「这份报告发了多少币」查询。
+     */
+    java.util.List<CarbonCoinTransaction> findByRelatedReportIdAndDeletedFalseOrderByIdAsc(Long relatedReportId);
 }

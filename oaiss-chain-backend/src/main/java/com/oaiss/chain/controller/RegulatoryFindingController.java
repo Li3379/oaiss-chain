@@ -99,6 +99,30 @@ public class RegulatoryFindingController {
     }
 
     /**
+     * 【业务功能】：查询未履约清单——实排超出配额且尚未用碳信用抵扣完的报告
+     *
+     * <p>用途：监管要知道「哪些企业超排了、还差多少吨」。
+     * 线索列表（{@code /findings}）只回答「有没有问题」，
+     * 本端点回答「差多少」——后者才是催缴与处罚的依据。
+     *
+     * <p>缺口算法：{@code scope1Emission − quotaAllocatedAmount − shortfallOffset}。
+     * 未结算（配额为空）的报告不参与，因为它们还没有可比基准。
+     */
+    @AuditLog(module = "监管线索", action = "LIST_SHORTFALL", description = "监管线索 未履约清单")
+    @GetMapping("/shortfalls")
+    @PreAuthorize("hasAnyRole('THIRD_PARTY', 'ADMIN')")
+    @Operation(summary = "查询未履约清单",
+            description = "返回实排超出配额、且碳信用抵扣后仍有缺口的报告")
+    @ApiResponses(value = {
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "查询成功"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "无权限")
+    })
+    @SecurityRequirement(name = "Bearer Authentication")
+    public ApiResponse<java.util.List<java.util.Map<String, Object>>> listShortfalls() {
+        return ApiResponse.success(findingService.listShortfalls());
+    }
+
+    /**
      * 处置说明请求体。
      */
     public record ResolveRequest(String note) {

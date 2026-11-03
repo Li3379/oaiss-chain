@@ -4,18 +4,22 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.oaiss.chain.dto.CarbonNeutralProjectRequest;
 import com.oaiss.chain.dto.CarbonNeutralProjectResponse;
 import com.oaiss.chain.dto.ProjectVerificationRequest;
+import com.oaiss.chain.entity.CarbonReport;
 import com.oaiss.chain.entity.CarbonNeutralProject;
 import com.oaiss.chain.entity.Enterprise;
 import com.oaiss.chain.entity.Reviewer;
 import com.oaiss.chain.entity.User;
+import com.oaiss.chain.enums.CreditEventTypeEnum;
 import com.oaiss.chain.exception.BusinessException;
 import com.oaiss.chain.repository.CarbonNeutralProjectRepository;
+import com.oaiss.chain.repository.CreditEventRepository;
 import com.oaiss.chain.repository.EnterpriseRepository;
 import com.oaiss.chain.repository.ReviewerRepository;
 import com.oaiss.chain.repository.UserRepository;
 import com.oaiss.chain.security.JwtUserDetails;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -31,6 +35,7 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -64,6 +69,12 @@ public class CarbonNeutralProjectService {
     private final ReviewerRepository reviewerRepository;
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
+    /** 碳信用抵扣缺口时要写报告的 shortfall_offset，故需报告仓库 */
+    private final com.oaiss.chain.repository.CarbonReportRepository carbonReportRepository;
+    /** 碳中和认证加分的幂等判据（每企业只加一次） */
+    private final CreditEventRepository creditEventRepository;
+    /** 认证通过后发放信誉分奖励 */
+    private final CreditScoreService creditScoreService;
 
     // ==================== 项目状态常量 ====================
     public static final int STATUS_DRAFT = 0;          // 筹备/草稿
@@ -293,6 +304,30 @@ public class CarbonNeutralProjectService {
      */
     @Transactional
     public CarbonNeutralProjectResponse useCredits(JwtUserDetails currentUser, Long projectId, BigDecimal amount) {
+        return useCredits(currentUser, projectId, amount, null);
+    }
+
+    /**
+     * 消耗碳信用，可选择抵扣某份报告的超排缺口。
+     *
+     * <p><b>为什么需要 relatedReportId</b>：碳信用原来只改项目自己的
+     * {@code usedCredits}，不关联任何业务对象——于是「用碳信用抵消了排放」
+     * 这句话在数据上无从验证：不知道抵消的是哪份报告的哪个缺口、抵消了多少。
+     *
+     * <p>接上之后，抵扣会写入报告的 {@code shortfallOffset}，
+     * 「这份报告还差多少吨」因此可以算出来：
+     * <pre>
+     * 剩余缺口 = scope1Emission − quotaAllocatedAmount − shortfallOffset
+     * </pre>
+     *
+     * <p>抵扣上限是当前缺口：超过缺口会让「已抵消」大于「该抵消」，
+     * 多出的部分凭空消失，账面上看不出异常。
+     *
+     * @param relatedReportId 要抵扣缺口的报告；null 表示仅消耗信用、不关联报告
+     */
+    @Transactional
+    public CarbonNeutralProjectResponse useCredits(JwtUserDetails currentUser, Long projectId,
+                                                   BigDecimal amount, Long relatedReportId) {
         CarbonNeutralProject project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new BusinessException(3002, "项目不存在"));
 
@@ -301,6 +336,26 @@ public class CarbonNeutralProjectService {
         BigDecimal available = project.getIssuedCredits().subtract(project.getUsedCredits());
         if (available.compareTo(amount) < 0) {
             throw new BusinessException(3004, "可用碳信用不足");
+        }
+
+        // 关联报告时校验抵扣上限：不允许抵扣超过该报告的实际缺口
+        if (relatedReportId != null) {
+            CarbonReport report = carbonReportRepository.findByIdAndDeletedFalse(relatedReportId)
+                    .orElseThrow(() -> new BusinessException(3002, "碳报告不存在: " + relatedReportId));
+            BigDecimal gap = currentShortfall(report);
+            if (gap.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BusinessException(3005, "该报告没有超排缺口，无需抵扣");
+            }
+            if (amount.compareTo(gap) > 0) {
+                throw new BusinessException(3005,
+                        String.format("抵扣量超过缺口：当前缺口 %s 吨，本次抵扣 %s 吨",
+                                gap.toPlainString(), amount.toPlainString()));
+            }
+            report.setShortfallOffset(nz(report.getShortfallOffset()).add(amount));
+            carbonReportRepository.save(report);
+            log.info("Shortfall offset: report={}, amount={}, remaining={}",
+                    relatedReportId, amount.toPlainString(),
+                    currentShortfall(report).toPlainString());
         }
 
         project.setUsedCredits(project.getUsedCredits().add(amount));
@@ -353,10 +408,16 @@ public class CarbonNeutralProjectService {
     }
 
     /**
-     * 完成认证
+     * 完成认证。
+     *
+     * <p>证书编号由服务端生成（D-05/D-06），客户端不提供输入面；
+     * 唯一索引冲突说明并发请求算出了同一序号，转 3007 让调用方重试。
+     *
+     * @param projectId  项目ID
+     * @param operatorId 操作人用户ID（认证动作的 REVIEWER/ADMIN）
      */
     @Transactional
-    public CarbonNeutralProjectResponse completeCertification(Long projectId, String certNo) {
+    public CarbonNeutralProjectResponse completeCertification(Long projectId, Long operatorId) {
         CarbonNeutralProject project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new BusinessException(3002, "项目不存在"));
 
@@ -364,13 +425,78 @@ public class CarbonNeutralProjectService {
             throw new BusinessException(3003, "项目不在待认证状态");
         }
 
+        String certNo = project.getCertNo();
+        if (certNo == null || certNo.isBlank()) {
+            certNo = generateCertNo();
+        }
+
         project.setCertStatus(CERT_STATUS_CERTIFIED);
         project.setCertNo(certNo);
         project.setCertDate(LocalDate.now());
-        project = projectRepository.save(project);
+        try {
+            project = projectRepository.save(project);
+        } catch (DataIntegrityViolationException e) {
+            // uk_cnp_cert_no 兜底：并发请求算出了同一序号。
+            // 保留 cause：否则日志里只剩一句「编号冲突」，看不出到底是唯一键
+            // 冲突还是别的完整性违规（例如非空约束），排查时会被误导。
+            throw new BusinessException(3007, "证书编号生成冲突，请重试", e);
+        }
 
-        log.info("Project certified: {} -> {}", project.getProjectNo(), certNo);
+        awardCarbonNeutralCredit(project, certNo, operatorId);
+
+        if (log.isInfoEnabled()) {
+            log.info("Project certified: {} -> {}", project.getProjectNo(), certNo);
+        }
         return toResponse(project);
+    }
+
+    /**
+     * 认证通过时发放碳中和信誉分奖励（D-07..D-11）。
+     *
+     * <p>每企业只加一次：该企业已存在 {@code event_type=9} 的事件则跳过（D-09）。
+     * 后续项目照常发证但不再加分。{@code CreditEvent} 无项目维度，
+     * 归属信息通过描述文本承载（D-11）。
+     */
+    private void awardCarbonNeutralCredit(CarbonNeutralProject project, String certNo, Long operatorId) {
+        boolean alreadyAwarded = creditEventRepository.existsByEnterpriseIdAndEventTypeAndDeletedFalse(
+                project.getOwnerId(), CreditEventTypeEnum.CARBON_NEUTRAL_CERTIFIED.getCode());
+        if (alreadyAwarded) {
+            if (log.isInfoEnabled()) {
+                log.info("Carbon neutral credit already awarded for enterprise {}, skip project {}",
+                        project.getOwnerId(), project.getProjectNo());
+            }
+            return;
+        }
+
+        creditScoreService.addBonusPoints(
+                project.getOwnerId(),
+                CreditEventTypeEnum.CARBON_NEUTRAL_CERTIFIED.getDefaultPoints(),
+                "碳中和认证 " + project.getProjectNo() + " / 证书 " + certNo,
+                operatorId,
+                CreditEventTypeEnum.CARBON_NEUTRAL_CERTIFIED);
+    }
+
+    /**
+     * 生成证书编号 {@code CNE-{四位年份}-{六位序号}}，同一年的序号连续递增。
+     */
+    private String generateCertNo() {
+        String prefix = "CNE-" + LocalDate.now().getYear() + "-";
+        int next = 1;
+
+        Optional<CarbonNeutralProject> latest =
+                projectRepository.findTopByCertNoStartingWithAndDeletedFalseOrderByCertNoDesc(prefix);
+        if (latest.isPresent()) {
+            String latestCertNo = latest.get().getCertNo();
+            try {
+                next = Integer.parseInt(latestCertNo.substring(prefix.length())) + 1;
+            } catch (RuntimeException e) {
+                // 历史数据格式非预期：不阻塞发证，从头计数并留痕
+                log.warn("Unexpected cert no format, restarting sequence at 1: {}", latestCertNo);
+                next = 1;
+            }
+        }
+
+        return String.format("%s%06d", prefix, next);
     }
 
     /**
@@ -392,7 +518,9 @@ public class CarbonNeutralProjectService {
         project.setReviewComment("项目终止: " + reason);
         project = projectRepository.save(project);
 
-        log.info("Project terminated: {} - {}", project.getProjectNo(), reason);
+        if (log.isInfoEnabled()) {
+            log.info("Project terminated: {} - {}", project.getProjectNo(), reason);
+        }
         return toResponse(project);
     }
 
@@ -713,5 +841,28 @@ public class CarbonNeutralProjectService {
         }
 
         return context.userRealNamesById().get(verifierUserId);
+    }
+
+    /**
+     * 某报告当前剩余的超排缺口。
+     *
+     * <pre>
+     * 缺口 = scope1Emission − quotaAllocatedAmount − shortfallOffset
+     * </pre>
+     * 未结算（配额为空）或已抵扣完时返回 0。
+     */
+    public BigDecimal currentShortfall(CarbonReport report) {
+        BigDecimal allocated = report.getQuotaAllocatedAmount();
+        if (allocated == null) {
+            return BigDecimal.ZERO; // 未结算的报告判不了缺口
+        }
+        BigDecimal gap = nz(report.getScope1Emission())
+                .subtract(allocated)
+                .subtract(nz(report.getShortfallOffset()));
+        return gap.compareTo(BigDecimal.ZERO) > 0 ? gap : BigDecimal.ZERO;
+    }
+
+    private static BigDecimal nz(BigDecimal v) {
+        return v == null ? BigDecimal.ZERO : v;
     }
 }

@@ -210,4 +210,19 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
      * 按哈希前缀查找（标记历史 Mock 脏数据用）
      */
     java.util.List<Transaction> findByBlockchainTxHashLikeAndDeletedFalse(String prefix);
+
+    /**
+     * 取最近 N 笔**已成交**交易（供市场预测做日频聚合）。
+     *
+     * <p><b>为什么不用 AuctionOrder</b>：市场预测此前读 {@code auction_order} 逐条挂单，
+     * 但挂单不是成交——价格是「希望成交的报价」而非「实际成交价」，且该表可能长期为空
+     * （实测 0 行），导致三个预测端点全部返回空态。已成交交易才是市场行情的真实来源。</p>
+     *
+     * <p>按 {@code completedAt} 倒序取，只取 status=2（已完成）：
+     * 未完成/已取消的交易没有成交价，纳入会污染时间序列。</p>
+     */
+    @Query("SELECT t FROM Transaction t "
+            + "WHERE t.deleted = false AND t.status = 2 AND t.completedAt IS NOT NULL "
+            + "ORDER BY t.completedAt DESC")
+    java.util.List<Transaction> findRecentCompletedForForecast(Pageable pageable);
 }

@@ -9,7 +9,6 @@
  *   2. 监测期数据填报与历史记录：实施阶段追加实测监测数据（实测发电、减排凭证）
  *   3. 减排核证与碳信用签发跟踪：查看第三方专家核定减排量与正式签发证书编号
  *   4. 碳信用抵消注销操作：录入额度执行企业自身超标排放的碳信用冲抵核销
- *   5. 生命周期推进操作：提交立项、启动实施、申请核证、申请认证与项目终止
  * 【对应后端 Controller & API】：
  *   - CarbonNeutralProjectController:
  *     * GET  /api/v1/carbon-neutral/{id}                     -> getProject() 获取项目详情
@@ -77,8 +76,6 @@ const loading = ref(false)
 const project = ref<CarbonNeutralProjectResponse | null>(null)
 
 const activeTab = ref('info')
-const monitorForm = ref({ emissionData: '', description: '' })
-const monitorLoading = ref(false)
 
 const loadProject = async () => {
   try {
@@ -149,7 +146,7 @@ const onStart = () => handleAction(
 )
 
 /**
- * 申请核证：后端 SubmitVerificationRequest 必填 verifierId（审核员 userId 或 reviewer 主键），
+ * 申请核证：后端 SubmitVerificationRequest 必填 verifierId（审核员 userId），
  * 项目ID 走路径参数。当前没有面向企业端的审核员名录接口，故由企业填写核证员 ID。
  */
 const onSubmitVerification = async () => {
@@ -173,6 +170,35 @@ const onSubmitVerification = async () => {
   await handleAction(
     () => submitVerification(projectId.value, { verifierId }),
     t('carbonNeutralDetail.confirmSubmitVerification'),
+  )
+}
+
+/** 追加监测数据：后端 MonitoringUpdateRequest.monitoringData 为 @NotBlank 字符串，空值不发请求 */
+const onUpdateMonitoring = async () => {
+  let monitoringData: string
+  try {
+    const { value } = await ElMessageBox.prompt(
+      t('carbonNeutralDetail.monitorEmissionPlaceholder'),
+      t('carbonNeutralDetail.panelMonitorTitle'),
+      {
+        confirmButtonText: t('common.confirm'),
+        cancelButtonText: t('common.cancel'),
+        inputType: 'textarea',
+        inputPattern: /\S+/,
+        inputErrorMessage: t('carbonNeutralDetail.monitoringRequired'),
+      },
+    )
+    monitoringData = value.trim()
+  } catch {
+    return
+  }
+  if (!monitoringData) {
+    ElMessage.warning(t('carbonNeutralDetail.monitoringRequired'))
+    return
+  }
+  await handleAction(
+    () => updateMonitoring(projectId.value, { monitoringData }),
+    t('carbonNeutralDetail.confirmUpdateMonitoring'),
   )
 }
 
@@ -205,57 +231,61 @@ const onApplyCertification = async () => {
   )
 }
 
-const onTerminate = () => handleAction(
-  () => terminateProject(projectId.value, { reason: t('carbonNeutral.terminateReason') }),
-  t('carbonNeutralDetail.confirmTerminate'),
-)
-
-const onSaveMonitoring = async () => {
+/** 终止项目：后端 TerminateProjectRequest.reason 为 @NotBlank，必须随请求提交 */
+const onTerminate = async () => {
+  let reason: string
   try {
-    monitorLoading.value = true
-    await updateMonitoring(projectId.value, { monitoringData: monitorForm.value })
-    ElMessage.success(t('carbonNeutralDetail.monitorUpdateSuccess'))
-    monitorForm.value = { emissionData: '', description: '' }
-    await loadProject()
+    const { value } = await ElMessageBox.prompt(
+      t('carbonNeutralDetail.confirmTerminate'),
+      t('carbonNeutralDetail.actionTerminate'),
+      {
+        confirmButtonText: t('common.confirm'),
+        cancelButtonText: t('common.cancel'),
+        inputType: 'textarea',
+        inputValue: t('carbonNeutral.terminateReason'),
+        inputPattern: /\S+/,
+        inputErrorMessage: t('carbonNeutralDetail.terminateReasonRequired'),
+      },
+    )
+    reason = value.trim()
   } catch {
-    ElMessage.error(t('carbonNeutralDetail.monitorUpdateFailed'))
-  } finally {
-    monitorLoading.value = false
+    return
   }
+  if (!reason) {
+    ElMessage.warning(t('carbonNeutralDetail.terminateReasonRequired'))
+    return
+  }
+  await handleAction(
+    () => terminateProject(projectId.value, { reason }),
+    t('carbonNeutralDetail.confirmTerminate'),
+  )
 }
 
 const canSubmit = computed(() => currentStatus.value === PROJECT_STATUS.DRAFT)
 const canStart = computed(() => currentStatus.value === PROJECT_STATUS.APPROVED)
-/** 申请核证：后端接受 status=3/4 且未核证（verificationStatus=0）的项目 */
-const canSubmitVerify = computed(() => {
-  const status = currentStatus.value
-  return (status === PROJECT_STATUS.IMPLEMENTING || status === PROJECT_STATUS.COMPLETED)
-    && currentVerificationStatus.value === VERIFY_STATUS.NONE
-})
-/**
- * 申请认证：后端 applyForCertification 校验的是 verificationStatus===VERIFIED(2)，
- * 与项目 status 无关。此前按 status===IMPLEMENTING 判断，点击必报 3003「项目需先完成核证」。
- */
-const canCertify = computed(() => currentVerificationStatus.value === VERIFY_STATUS.VERIFIED
+/** 申请核证：后端接受实施中/已完成且未核证的项目，本阶段按钮按计划只在实施中展示 */
+const canSubmitVerification = computed(() => currentStatus.value === PROJECT_STATUS.IMPLEMENTING)
+const canUpdateMonitoring = computed(() => currentStatus.value === PROJECT_STATUS.IMPLEMENTING)
+const canApplyCertification = computed(() => currentVerificationStatus.value === VERIFY_STATUS.VERIFIED
   && currentCertStatus.value === CERT_STATUS.NONE)
-const canTerminate = computed(() => {
-  const status = currentStatus.value
-  return status === PROJECT_STATUS.APPROVED || status === PROJECT_STATUS.IMPLEMENTING
-})
-const canEditMonitoring = computed(() => currentStatus.value === PROJECT_STATUS.IMPLEMENTING)
+const canTerminate = computed(() => currentStatus.value === PROJECT_STATUS.APPROVED
+  || currentStatus.value === PROJECT_STATUS.IMPLEMENTING)
 
 /**
  * 页头生命周期动作：按钮集合完全由当前状态推导，与原 v-if 条件一一对应；
  * 事件索引 → 处理函数也按同一份列表映射，行为与迁移前一致。
  */
-type LifecycleKey = 'submit' | 'start' | 'submitVerify' | 'certify' | 'terminate'
+// W6 裁剪已于 Phase 7 撤销（依据见 07-CONTEXT D-02/D-12）：申请核证、追加监测数据、
+// 申请认证、终止四个动作及其后端端点全部恢复。
+type LifecycleKey = 'submit' | 'start' | 'submitVerification' | 'updateMonitoring' | 'applyCertification' | 'terminate'
 
 const lifecycleActions = computed<Array<{ key: LifecycleKey; label: string; variant: 'primary' | 'default' }>>(() => {
   const actions: Array<{ key: LifecycleKey; label: string; variant: 'primary' | 'default' }> = []
   if (canSubmit.value) actions.push({ key: 'submit', label: t('carbonNeutralDetail.actionSubmitReview'), variant: 'primary' })
   if (canStart.value) actions.push({ key: 'start', label: t('carbonNeutralDetail.actionStartImplement'), variant: 'primary' })
-  if (canSubmitVerify.value) actions.push({ key: 'submitVerify', label: t('carbonNeutralDetail.actionSubmitVerify'), variant: 'primary' })
-  if (canCertify.value) actions.push({ key: 'certify', label: t('carbonNeutralDetail.actionApplyCertification'), variant: 'primary' })
+  if (canSubmitVerification.value) actions.push({ key: 'submitVerification', label: t('carbonNeutralDetail.actionSubmitVerification'), variant: 'primary' })
+  if (canUpdateMonitoring.value) actions.push({ key: 'updateMonitoring', label: t('carbonNeutralDetail.actionUpdateMonitoring'), variant: 'default' })
+  if (canApplyCertification.value) actions.push({ key: 'applyCertification', label: t('carbonNeutralDetail.actionApplyCertification'), variant: 'primary' })
   if (canTerminate.value) actions.push({ key: 'terminate', label: t('carbonNeutralDetail.actionTerminate'), variant: 'default' })
   return actions
 })
@@ -263,14 +293,15 @@ const lifecycleActions = computed<Array<{ key: LifecycleKey; label: string; vari
 const lifecycleHandlers: Record<LifecycleKey, () => Promise<void> | void> = {
   submit: onSubmit,
   start: onStart,
-  submitVerify: onSubmitVerification,
-  certify: onApplyCertification,
+  submitVerification: onSubmitVerification,
+  updateMonitoring: onUpdateMonitoring,
+  applyCertification: onApplyCertification,
   terminate: onTerminate,
 }
 
 function onHeaderAction(index: number) {
   const action = lifecycleActions.value[index]
-  if (action) lifecycleHandlers[action.key]()
+  if (action) lifecycleHandlers[action.key]?.()
 }
 
 /** 首屏统计条：全部取自已加载的项目详情，不新增接口请求 */
@@ -361,37 +392,6 @@ onMounted(() => {
                 <el-descriptions-item :label="t('common.status')">{{ statusText }}</el-descriptions-item>
                 <el-descriptions-item :label="t('carbonNeutralDetail.labelDescription')" :span="2">{{ project.description }}</el-descriptions-item>
               </el-descriptions>
-            </div>
-          </DataPanel>
-        </el-tab-pane>
-
-        <el-tab-pane :label="t('carbonNeutralDetail.tabMonitor')" name="monitoring" :disabled="!canEditMonitoring">
-          <DataPanel
-            :title="t('carbonNeutralDetail.panelMonitorTitle')"
-            :meta="t('carbonNeutralDetail.panelMonitorMeta')"
-          >
-            <div class="monitor-body">
-              <el-form label-width="120px">
-                <el-form-item :label="t('carbonNeutralDetail.monitorEmissionData')">
-                  <el-input
-                    v-model="monitorForm.emissionData"
-                    type="textarea"
-                    :rows="6"
-                    :placeholder="t('carbonNeutralDetail.monitorEmissionPlaceholder')"
-                  />
-                </el-form-item>
-                <el-form-item :label="t('carbonNeutralDetail.monitorDescription')">
-                  <el-input
-                    v-model="monitorForm.description"
-                    type="textarea"
-                    :rows="3"
-                    :placeholder="t('carbonNeutralDetail.monitorDescriptionPlaceholder')"
-                  />
-                </el-form-item>
-                <el-form-item>
-                  <el-button type="primary" :loading="monitorLoading" @click="onSaveMonitoring">{{ t('carbonNeutralDetail.monitorUpdate') }}</el-button>
-                </el-form-item>
-              </el-form>
             </div>
           </DataPanel>
         </el-tab-pane>

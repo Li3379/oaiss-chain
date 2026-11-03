@@ -4,7 +4,6 @@ import com.oaiss.chain.dto.ApiResponse;
 import com.oaiss.chain.dto.ApplyCertificationRequest;
 import com.oaiss.chain.dto.CarbonNeutralProjectRequest;
 import com.oaiss.chain.dto.CarbonNeutralProjectResponse;
-import com.oaiss.chain.dto.CompleteCertificationRequest;
 import com.oaiss.chain.dto.MonitoringUpdateRequest;
 import com.oaiss.chain.dto.ProjectReviewRequest;
 import com.oaiss.chain.dto.ProjectVerificationRequest;
@@ -316,7 +315,7 @@ public class CarbonNeutralProjectController {
             @AuthenticationPrincipal JwtUserDetails currentUser,
             @Parameter(description = "项目ID", required = true, example = "1") @PathVariable Long id,
             @Valid @RequestBody UseCreditsRequest request) {
-        return ApiResponse.success(projectService.useCredits(currentUser, id, request.getAmount()));
+        return ApiResponse.success(projectService.useCredits(currentUser, id, request.getAmount(), request.getRelatedReportId()));
     }
 
     /**
@@ -372,7 +371,7 @@ public class CarbonNeutralProjectController {
      */
     @AuditLog(module = "碳中和项目", action = "COMPLETECERTIFICATION", description = "碳中和项目 COMPLETECERTIFICATION")
     @PostMapping("/{id}/certify")
-    @Operation(summary = "完成认证", description = "认证机构完成项目认证")
+    @Operation(summary = "完成认证", description = "认证机构完成项目认证，证书编号由系统生成")
     @ApiResponses(value = {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "认证成功"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "项目不在待认证状态"),
@@ -382,9 +381,9 @@ public class CarbonNeutralProjectController {
     @SecurityRequirement(name = "Bearer Authentication")
     @PreAuthorize("hasRole('REVIEWER') or hasRole('ADMIN')")
     public ApiResponse<CarbonNeutralProjectResponse> completeCertification(
-            @Parameter(description = "项目ID", required = true, example = "1") @PathVariable Long id,
-            @Valid @RequestBody CompleteCertificationRequest request) {
-        return ApiResponse.success(projectService.completeCertification(id, request.getCertNo()));
+            @AuthenticationPrincipal JwtUserDetails reviewer,
+            @Parameter(description = "项目ID", required = true, example = "1") @PathVariable Long id) {
+        return ApiResponse.success(projectService.completeCertification(id, reviewer.getUserId()));
     }
 
     /**

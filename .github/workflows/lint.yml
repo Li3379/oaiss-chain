@@ -79,6 +79,15 @@ jobs:
           echo ""
           echo "全部门禁通过"
 
+      # 并发护栏的反向验证。
+      #
+      # 这些脚本验证的是「护栏会不会拦」，不是「代码对不对」——所以必须能
+      # 在 CI 里跑。2026-11-04 的教训是：护栏写好了但没人调用，
+      # 等于不存在；调用链断了（`sh` 把 spawnSync 的失败当成功）也没人发现。
+      # 让 CI 每次跑一遍，护栏自身失修会立刻暴露。
+      - name: Concurrency Guard Self-Test
+        run: node scripts/agent/concurrency-sim.mjs
+
   python-lint:
     name: Python (ruff)
     runs-on: ubuntu-latest

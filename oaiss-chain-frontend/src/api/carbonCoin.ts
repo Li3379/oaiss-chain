@@ -38,6 +38,19 @@ export function getTransactions(params?: PageRequest): Promise<CarbonCoinTransac
 
 
 /**
+ * 【业务功能】：碳币兑换配额（1 枚碳币 = 1 吨排放权）
+ * 【对应前端页面】：CarbonCoin.vue (/enterprise/carbon-coin/account)
+ * 【界面触发操作】：点击【兑换配额】输入枚数并确认
+ * 【后端对应端点】：CarbonCoinController -> POST /carbon-coin/redeem-quota
+ *
+ * <p>这是碳币的唯一出口。碳币不支持提现，只能换回配额用于履约或挂单。
+ */
+export function redeemQuota(amount: number): Promise<CarbonCoinAccountResponse> {
+  if (!amount || amount <= 0) return Promise.reject(new Error('兑换数量必须大于0'))
+  return request.post(`/carbon-coin/redeem-quota?amount=${amount}`)
+}
+
+/**
  * 【业务功能】：向指定用户或企业碳币账户进行充值（资金入账）
  * 【对应前端页面】：CarbonCoin.vue (/enterprise/carbon-coin/account)
  * 【界面触发操作】：点击【充值】按钮输入充值金额并确认

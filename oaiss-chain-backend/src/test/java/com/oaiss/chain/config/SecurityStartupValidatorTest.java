@@ -81,6 +81,7 @@ class SecurityStartupValidatorTest {
         // Given: dev profile with weak JWT secret
         when(environment.getActiveProfiles()).thenReturn(new String[]{"dev"});
         SecurityStartupValidator validator = new SecurityStartupValidator(environment);
+        setField(validator, "allowMockChain", true); // W0: 隔离 fabric 校验，只测本用例职责
         setField(validator, "jwtSecret",
                 "dev-only-jwt-secret-key-must-be-at-least-256-bits-long-for-hmac-sha");
         setField(validator, "dbPassword", "123456");
@@ -100,6 +101,7 @@ class SecurityStartupValidatorTest {
         // Given: no active profile with weak secrets
         when(environment.getActiveProfiles()).thenReturn(new String[]{});
         SecurityStartupValidator validator = new SecurityStartupValidator(environment);
+        setField(validator, "allowMockChain", true); // W0: 隔离 fabric 校验，只测本用例职责
         setField(validator, "jwtSecret",
                 "oaiss-chain-dev-jwt-secret-key-must-be-at-least-256-bits-long");
         setField(validator, "dbPassword", "123456");
@@ -152,6 +154,7 @@ class SecurityStartupValidatorTest {
     void validateOnStartup_devWithWeakMinioCredentials_shouldOnlyWarn() {
         when(environment.getActiveProfiles()).thenReturn(new String[]{"dev"});
         SecurityStartupValidator validator = new SecurityStartupValidator(environment);
+        setField(validator, "allowMockChain", true); // W0: 隔离 fabric 校验，只测本用例职责
         setField(validator, "jwtSecret", STRONG_JWT_SECRET);
         setField(validator, "dbPassword", "strongDbPassword123!");
         setField(validator, "redisPassword", "strongRedisPassword123!");
@@ -324,6 +327,7 @@ class SecurityStartupValidatorTest {
     void validateOnStartup_devWithBlankMlServiceSecret_shouldOnlyWarn() {
         when(environment.getActiveProfiles()).thenReturn(new String[]{"dev"});
         SecurityStartupValidator validator = new SecurityStartupValidator(environment);
+        setField(validator, "allowMockChain", true); // W0: 隔离 fabric 校验，只测本用例职责
         setField(validator, "jwtSecret", STRONG_JWT_SECRET);
         setField(validator, "dbPassword", "strongDbPassword123!");
         setField(validator, "redisPassword", "strongRedisPassword123!");
@@ -433,6 +437,7 @@ class SecurityStartupValidatorTest {
     void validateOnStartup_devWithWeakRedisPassword_shouldOnlyWarn() {
         when(environment.getActiveProfiles()).thenReturn(new String[]{"dev"});
         SecurityStartupValidator validator = new SecurityStartupValidator(environment);
+        setField(validator, "allowMockChain", true); // W0: 隔离 fabric 校验，只测本用例职责
         setField(validator, "jwtSecret", STRONG_JWT_SECRET);
         setField(validator, "dbPassword", "strongDbPassword123!");
         setField(validator, "redisPassword", "123456");
@@ -449,6 +454,7 @@ class SecurityStartupValidatorTest {
     void validateOnStartup_devWithInvalidRsaKek_shouldOnlyWarn() {
         when(environment.getActiveProfiles()).thenReturn(new String[]{"dev"});
         SecurityStartupValidator validator = new SecurityStartupValidator(environment);
+        setField(validator, "allowMockChain", true); // W0: 隔离 fabric 校验，只测本用例职责
         setField(validator, "jwtSecret", STRONG_JWT_SECRET);
         setField(validator, "dbPassword", "strongDbPassword123!");
         setField(validator, "redisPassword", "strongRedisPassword123!");
@@ -465,6 +471,7 @@ class SecurityStartupValidatorTest {
     void validateOnStartup_devWithWrongLengthRsaKek_shouldOnlyWarn() {
         when(environment.getActiveProfiles()).thenReturn(new String[]{"dev"});
         SecurityStartupValidator validator = new SecurityStartupValidator(environment);
+        setField(validator, "allowMockChain", true); // W0: 隔离 fabric 校验，只测本用例职责
         setField(validator, "jwtSecret", STRONG_JWT_SECRET);
         setField(validator, "dbPassword", "strongDbPassword123!");
         setField(validator, "redisPassword", "strongRedisPassword123!");
@@ -481,6 +488,7 @@ class SecurityStartupValidatorTest {
     void validateOnStartup_devWithBlankCors_shouldOnlyWarn() {
         when(environment.getActiveProfiles()).thenReturn(new String[]{"dev"});
         SecurityStartupValidator validator = new SecurityStartupValidator(environment);
+        setField(validator, "allowMockChain", true); // W0: 隔离 fabric 校验，只测本用例职责
         setField(validator, "jwtSecret", STRONG_JWT_SECRET);
         setField(validator, "dbPassword", "strongDbPassword123!");
         setField(validator, "redisPassword", "strongRedisPassword123!");
@@ -521,6 +529,7 @@ class SecurityStartupValidatorTest {
     void validateOnStartup_fabricProfileNotActive_fabricCaSkipped() {
         when(environment.getActiveProfiles()).thenReturn(new String[]{"dev"});
         SecurityStartupValidator validator = new SecurityStartupValidator(environment);
+        setField(validator, "allowMockChain", true); // W0: 隔离 fabric 校验，只测本用例职责
         setField(validator, "jwtSecret", STRONG_JWT_SECRET);
         setField(validator, "dbPassword", "strongDbPassword123!");
         setField(validator, "redisPassword", "strongRedisPassword123!");
@@ -596,6 +605,7 @@ class SecurityStartupValidatorTest {
     void validateOnStartup_devWithBlankMinioCredentials_shouldOnlyWarn() {
         when(environment.getActiveProfiles()).thenReturn(new String[]{"dev"});
         SecurityStartupValidator validator = new SecurityStartupValidator(environment);
+        setField(validator, "allowMockChain", true); // W0: 隔离 fabric 校验，只测本用例职责
         setField(validator, "jwtSecret", STRONG_JWT_SECRET);
         setField(validator, "dbPassword", "strongDbPassword123!");
         setField(validator, "redisPassword", "strongRedisPassword123!");
@@ -712,6 +722,7 @@ class SecurityStartupValidatorTest {
     void validateOnStartup_devWithBlankGrafanaPassword_shouldOnlyWarn() {
         when(environment.getActiveProfiles()).thenReturn(new String[]{"dev"});
         SecurityStartupValidator validator = new SecurityStartupValidator(environment);
+        setField(validator, "allowMockChain", true); // W0: 隔离 fabric 校验，只测本用例职责
         setField(validator, "jwtSecret", STRONG_JWT_SECRET);
         setField(validator, "dbPassword", "strongDbPassword123!");
         setField(validator, "redisPassword", "strongRedisPassword123!");
@@ -730,6 +741,7 @@ class SecurityStartupValidatorTest {
     void validateOnStartup_devWithWeakGrafanaPassword_shouldOnlyWarn() {
         when(environment.getActiveProfiles()).thenReturn(new String[]{"dev"});
         SecurityStartupValidator validator = new SecurityStartupValidator(environment);
+        setField(validator, "allowMockChain", true); // W0: 隔离 fabric 校验，只测本用例职责
         setField(validator, "jwtSecret", STRONG_JWT_SECRET);
         setField(validator, "dbPassword", "strongDbPassword123!");
         setField(validator, "redisPassword", "strongRedisPassword123!");
@@ -787,6 +799,7 @@ class SecurityStartupValidatorTest {
     void validateOnStartup_devWithNonBlankMlServiceSecret_shouldPass() {
         when(environment.getActiveProfiles()).thenReturn(new String[]{"dev"});
         SecurityStartupValidator validator = new SecurityStartupValidator(environment);
+        setField(validator, "allowMockChain", true); // W0: 隔离 fabric 校验，只测本用例职责
         setField(validator, "jwtSecret", STRONG_JWT_SECRET);
         setField(validator, "dbPassword", "strongDbPassword123!");
         setField(validator, "redisPassword", "strongRedisPassword123!");
@@ -805,6 +818,7 @@ class SecurityStartupValidatorTest {
     void validateOnStartup_devWithShortJwtSecret_shouldOnlyWarn() {
         when(environment.getActiveProfiles()).thenReturn(new String[]{"dev"});
         SecurityStartupValidator validator = new SecurityStartupValidator(environment);
+        setField(validator, "allowMockChain", true); // W0: 隔离 fabric 校验，只测本用例职责
         setField(validator, "jwtSecret", "short");
         setField(validator, "dbPassword", "strongDbPassword123!");
         setField(validator, "redisPassword", "strongRedisPassword123!");
@@ -821,6 +835,7 @@ class SecurityStartupValidatorTest {
     void validateOnStartup_devWithBlankJwtSecret_shouldOnlyWarn() {
         when(environment.getActiveProfiles()).thenReturn(new String[]{"dev"});
         SecurityStartupValidator validator = new SecurityStartupValidator(environment);
+        setField(validator, "allowMockChain", true); // W0: 隔离 fabric 校验，只测本用例职责
         setField(validator, "jwtSecret", "");
         setField(validator, "dbPassword", "strongDbPassword123!");
         setField(validator, "redisPassword", "strongRedisPassword123!");
@@ -837,6 +852,7 @@ class SecurityStartupValidatorTest {
     void validateOnStartup_devWithBlankDbPassword_shouldOnlyWarn() {
         when(environment.getActiveProfiles()).thenReturn(new String[]{"dev"});
         SecurityStartupValidator validator = new SecurityStartupValidator(environment);
+        setField(validator, "allowMockChain", true); // W0: 隔离 fabric 校验，只测本用例职责
         setField(validator, "jwtSecret", STRONG_JWT_SECRET);
         setField(validator, "dbPassword", "");
         setField(validator, "redisPassword", "strongRedisPassword123!");
@@ -853,6 +869,7 @@ class SecurityStartupValidatorTest {
     void validateOnStartup_devWithBlankRsaKek_shouldOnlyWarn() {
         when(environment.getActiveProfiles()).thenReturn(new String[]{"dev"});
         SecurityStartupValidator validator = new SecurityStartupValidator(environment);
+        setField(validator, "allowMockChain", true); // W0: 隔离 fabric 校验，只测本用例职责
         setField(validator, "jwtSecret", STRONG_JWT_SECRET);
         setField(validator, "dbPassword", "strongDbPassword123!");
         setField(validator, "redisPassword", "strongRedisPassword123!");
@@ -970,6 +987,7 @@ class SecurityStartupValidatorTest {
     void validateOnStartup_devWithPlaceholderMinioSecretKey_shouldOnlyWarn() {
         when(environment.getActiveProfiles()).thenReturn(new String[]{"dev"});
         SecurityStartupValidator validator = new SecurityStartupValidator(environment);
+        setField(validator, "allowMockChain", true); // W0: 隔离 fabric 校验，只测本用例职责
         setField(validator, "jwtSecret", STRONG_JWT_SECRET);
         setField(validator, "dbPassword", "strongDbPassword123!");
         setField(validator, "redisPassword", "strongRedisPassword123!");
@@ -1053,6 +1071,7 @@ class SecurityStartupValidatorTest {
     void validateOnStartup_devWithPlaceholderDbPassword_shouldOnlyWarn() {
         when(environment.getActiveProfiles()).thenReturn(new String[]{"dev"});
         SecurityStartupValidator validator = new SecurityStartupValidator(environment);
+        setField(validator, "allowMockChain", true); // W0: 隔离 fabric 校验，只测本用例职责
         setField(validator, "jwtSecret", STRONG_JWT_SECRET);
         setField(validator, "dbPassword", "replace_with_db_password");
         setField(validator, "redisPassword", "strongRedisPassword123!");
@@ -1060,6 +1079,47 @@ class SecurityStartupValidatorTest {
         setField(validator, "minioSecretKey", "strong-secret-key");
         setField(validator, "rsaKek", VALID_RSA_KEK);
         setField(validator, "allowedOrigins", "http://localhost:5173");
+
+        assertDoesNotThrow(validator::validateOnStartup);
+    }
+
+    // ==================== W0：区块链 profile 闸门（fail-closed） ====================
+
+    @Test
+    @DisplayName("非fabric且未设逃生门：拒绝启动（防止伪造 tx_mock_ 存证）")
+    void validateOnStartup_noFabricProfileWithoutEscapeHatch_shouldThrow() {
+        // Given: docker profile（不含 fabric），逃生门未开
+        when(environment.getActiveProfiles()).thenReturn(new String[]{"docker"});
+        SecurityStartupValidator validator = new SecurityStartupValidator(environment);
+        setStrongProductionFields(validator);
+        setField(validator, "allowMockChain", false);
+
+        // When & Then
+        SecurityException ex = assertThrows(SecurityException.class, validator::validateOnStartup);
+        assertTrue(ex.getMessage().contains("fabric"),
+                "错误信息必须告诉运维缺的是 fabric profile；实际: " + ex.getMessage());
+        assertTrue(ex.getMessage().contains("OAISS_ALLOW_MOCK_CHAIN"),
+                "错误信息必须给出逃生门开关名；实际: " + ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("非fabric但显式打开逃生门：允许启动（仅本地调试/单测）")
+    void validateOnStartup_noFabricProfileWithEscapeHatch_shouldPass() {
+        when(environment.getActiveProfiles()).thenReturn(new String[]{"docker"});
+        SecurityStartupValidator validator = new SecurityStartupValidator(environment);
+        setStrongProductionFields(validator);
+        setField(validator, "allowMockChain", true);
+
+        assertDoesNotThrow(validator::validateOnStartup);
+    }
+
+    @Test
+    @DisplayName("激活fabric profile：无需逃生门即可启动")
+    void validateOnStartup_fabricProfileWithoutEscapeHatch_shouldPass() {
+        when(environment.getActiveProfiles()).thenReturn(new String[]{"local", "fabric"});
+        SecurityStartupValidator validator = new SecurityStartupValidator(environment);
+        setStrongProductionFields(validator);
+        setField(validator, "allowMockChain", false);
 
         assertDoesNotThrow(validator::validateOnStartup);
     }

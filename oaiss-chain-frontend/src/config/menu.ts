@@ -85,7 +85,6 @@ export const MENU_BY_ROLE: Record<RoleType, MenuItem[]> = {
       label: 'menu.aiPrediction',
       children: [
         { label: 'menu.marketPrediction', path: '/enterprise/market-prediction', tab: 'intel', rail: true },
-        { label: 'menu.enterpriseInference', path: '/enterprise/enterprise-inference', tab: 'intel', rail: false },
       ],
     },
     { label: 'menu.searchCenter', path: '/search', tab: 'search', rail: true },
@@ -144,7 +143,7 @@ export const RAIL_BY_ROLE: Record<RoleType, RailItem[]> = {
     { label: 'menu.carbonCoinAccount', railLabel: 'menu.railCoin', path: '/enterprise/carbon-coin/account', icon: 'Wallet', match: ['/enterprise/carbon-coin/account'] },
     { label: 'menu.blockchain', railLabel: 'menu.railChain', path: '/enterprise/blockchain/browser', icon: 'Link', match: ['/enterprise/blockchain/browser'] },
     { label: 'menu.carbonNeutral', railLabel: 'menu.railNeutral', path: '/enterprise/carbon-neutral/projects', icon: 'Aim', match: ['/enterprise/carbon-neutral/projects'] },
-    { label: 'menu.aiPrediction', railLabel: 'menu.railAI', path: '/enterprise/market-prediction', icon: 'Cpu', match: ['/enterprise/market-prediction', '/enterprise/enterprise-inference'] },
+    { label: 'menu.aiPrediction', railLabel: 'menu.railAI', path: '/enterprise/market-prediction', icon: 'Cpu', match: ['/enterprise/market-prediction'] },
     { label: 'menu.searchCenter', railLabel: 'menu.railSearch', path: '/search', icon: 'Search', match: ['/search'] },
     { label: 'menu.personalCenter', railLabel: 'menu.railMine', path: '/enterprise/user/profile', icon: 'User', match: ['/enterprise/user/profile'] },
   ],

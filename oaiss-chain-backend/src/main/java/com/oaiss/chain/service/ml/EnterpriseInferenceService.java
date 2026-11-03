@@ -64,8 +64,8 @@ public class EnterpriseInferenceService {
      * @return inference response from the ML service
      */
     public EnterpriseInferenceResponse inferEnterprise(Long enterpriseId) {
-        // Validate enterprise exists
-        User enterprise = userRepository.findByIdAndDeletedFalse(enterpriseId)
+        // Validate enterprise exists（只为 404 语义，不持有返回值）
+        userRepository.findByIdAndDeletedFalse(enterpriseId)
                 .orElseThrow(() -> new BusinessException(
                         4001, "Enterprise not found: " + enterpriseId));
 

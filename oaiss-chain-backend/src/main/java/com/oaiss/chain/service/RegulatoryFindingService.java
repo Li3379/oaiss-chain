@@ -49,6 +49,8 @@ public class RegulatoryFindingService {
     private final TradeAuditRepository tradeAuditRepository;
     private final CreditEventRepository creditEventRepository;
     private final EnterpriseRepository enterpriseRepository;
+    /** 缺口判定改为按报告：配额 = 产量×基准值 只在报告上，不在企业余额上 */
+    private final com.oaiss.chain.repository.CarbonReportRepository carbonReportRepository;
 
     /**
      * 扫描单个企业，产出（通过幂等判据后）新的线索。
@@ -57,7 +59,8 @@ public class RegulatoryFindingService {
      */
     @Transactional
     public List<RegulatoryFinding> scanEnterprise(Long enterpriseId) {
-        Enterprise enterprise = enterpriseRepository.findById(enterpriseId)
+        // 存在性校验：只为 404 语义，不持有返回值（后续全部按 enterpriseId 查询）
+        enterpriseRepository.findById(enterpriseId)
                 .orElseThrow(() -> new com.oaiss.chain.exception.BusinessException(
                         com.oaiss.chain.constant.ErrorCode.RESOURCE_NOT_FOUND,
                         "企业不存在: " + enterpriseId));
@@ -75,15 +78,36 @@ public class RegulatoryFindingService {
                             REJECTION_WINDOW_DAYS, rejected, REJECTION_THRESHOLD));
         }
 
-        // 规则 2：额度异常（已用 > 持有）
-        BigDecimal quota = nz(enterprise.getCarbonQuota());
-        BigDecimal used = nz(enterprise.getCarbonUsed());
-        if (quota.compareTo(BigDecimal.ZERO) > 0 && used.compareTo(quota) > 0) {
-            addIfAbsent(produced, enterpriseId, RegulatoryFinding.RULE_QUOTA_OVERDRAFT,
+        // 规则 2：超排缺口（配额 < 实排）
+        //
+        // 2026-11-03 变更：原判据是「carbon_used > carbon_quota」（企业余额口径）。
+        // 配额退出资产层后 carbon_quota 不再增长，该判据恒为假——规则静默失效。
+        //
+        // 改为按**报告**判：配额 = 产量 × 基准值，记在 quotaAllocatedAmount；
+        // 缺口 = quotaAllocatedAmount − scope1Emission < 0。
+        // 这是唯一仍能真实反映「排放超过许可」的地方。
+        List<com.oaiss.chain.entity.CarbonReport> reports =
+                carbonReportRepository.findByEnterpriseIdAndDeletedFalse(enterpriseId);
+        BigDecimal totalGap = BigDecimal.ZERO;
+        int shortfallReports = 0;
+        for (com.oaiss.chain.entity.CarbonReport r : reports) {
+            BigDecimal allocated = r.getQuotaAllocatedAmount();
+            if (allocated == null) {
+                continue; // 未结算的报告没有配额基准，判不了
+            }
+            BigDecimal actual = r.getScope1Emission() == null
+                    ? BigDecimal.ZERO : r.getScope1Emission();
+            BigDecimal gap = actual.subtract(allocated);
+            if (gap.compareTo(BigDecimal.ZERO) > 0) {
+                totalGap = totalGap.add(gap);
+                shortfallReports++;
+            }
+        }
+        if (shortfallReports > 0) {
+            addIfAbsent(produced, enterpriseId, RegulatoryFinding.RULE_QUOTA_SHORTFALL,
                     RegulatoryFinding.SEVERITY_CRITICAL,
-                    String.format("已用配额 %s 吨超过持有配额 %s 吨，超出 %s 吨",
-                            used.toPlainString(), quota.toPlainString(),
-                            used.subtract(quota).toPlainString()));
+                    String.format("%d 份报告排放超出配额，累计缺口 %s 吨",
+                            shortfallReports, totalGap.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()));
         }
 
         for (RegulatoryFinding f : produced) {
@@ -174,5 +198,46 @@ public class RegulatoryFindingService {
 
     private BigDecimal nz(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
+    }
+
+    /**
+     * 未履约清单：实排超出配额、且碳信用抵扣后仍有缺口的报告。
+     *
+     * <p>与线索列表的分工：线索回答「有没有问题」，清单回答「差多少」。
+     * 监管催缴与处罚依据的是后者。
+     *
+     * <p>缺口 = {@code scope1Emission − quotaAllocatedAmount − shortfallOffset}。
+     * 未结算（配额为空）的报告不参与——它们还没有可比基准。
+     */
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> listShortfalls() {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (com.oaiss.chain.entity.CarbonReport r : carbonReportRepository.findByDeletedFalse()) {
+            BigDecimal allocated = r.getQuotaAllocatedAmount();
+            if (allocated == null) {
+                continue;
+            }
+            BigDecimal gap = nz(r.getScope1Emission())
+                    .subtract(allocated)
+                    .subtract(nz(r.getShortfallOffset()));
+            if (gap.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("reportId", r.getId());
+            row.put("reportNo", r.getReportNo());
+            row.put("enterpriseId", r.getEnterpriseId());
+            row.put("periodYear", r.getPeriodYear());
+            row.put("periodQuarter", r.getPeriodQuarter());
+            row.put("quotaAllocatedAmount", allocated);
+            row.put("scope1Emission", nz(r.getScope1Emission()));
+            row.put("shortfallOffset", nz(r.getShortfallOffset()));
+            row.put("remainingShortfall", gap.setScale(2, java.math.RoundingMode.HALF_UP));
+            result.add(row);
+        }
+        if (log.isInfoEnabled()) {
+            log.info("未履约清单查询完成: {} 份报告仍有缺口", result.size());
+        }
+        return result;
     }
 }

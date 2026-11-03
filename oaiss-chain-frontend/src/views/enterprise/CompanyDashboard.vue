@@ -589,10 +589,8 @@ onBeforeUnmount(() => {
           <el-icon><TrendCharts /></el-icon>
           <span>{{ t('companyDashboard.btnMarketTerminal') }}</span>
         </router-link>
-        <router-link to="/enterprise/enterprise-inference" class="pen-action-link">
-          <el-icon><DataAnalysis /></el-icon>
-          <span>{{ t('companyDashboard.btnHealthCenter') }}</span>
-        </router-link>
+        <!-- 「企业健康诊断」入口已移除：其 AI 模型用 RandomState(42) 合成样本训练，
+             结论不具备业务意义；保留入口等于邀请用户依据噪声做判断。 -->
       </template>
 
       <div class="briefing-body">
