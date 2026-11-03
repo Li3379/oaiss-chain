@@ -1187,6 +1187,7 @@ export default {
     monitorUpdate: 'Update Monitoring Data',
     actionSubmitReview: 'Submit for Review',
     actionStartImplement: 'Start Implementation',
+    actionSubmitVerification: 'Apply Verification',
     actionSubmitVerify: 'Apply Verification',
     actionApplyCertification: 'Apply Certification',
     actionTerminate: 'Terminate Project',

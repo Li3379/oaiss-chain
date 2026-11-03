@@ -1187,6 +1187,7 @@ export default {
     monitorUpdate: '更新监测数据',
     actionSubmitReview: '提交审核',
     actionStartImplement: '开始实施',
+    actionSubmitVerification: '申请核证',
     actionSubmitVerify: '申请核证',
     actionApplyCertification: '申请认证',
     actionTerminate: '终止项目',

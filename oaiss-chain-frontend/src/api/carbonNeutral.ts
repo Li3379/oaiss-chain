@@ -92,8 +92,16 @@ export function startProject(projectId: number): Promise<void> {
   return request.post(`/carbon-neutral/${projectId}/start`)
 }
 
-
-
+/**
+ * 【业务功能】：企业向第三方专业核证机构提交现场核查申请
+ * 【对应前端页面】：CarbonNeutralDetail.vue, CarbonNeutral.vue
+ * 【界面触发操作】：实施阶段完成周期监测后，点击【申请第三方核证】
+ * 【后端对应端点】：CarbonNeutralProjectController -> POST /carbon-neutral/{id}/submit-verification
+ * 注意：后端 SubmitVerificationRequest 只接收 verifierId（项目ID 走路径参数），缺失会 400。
+ */
+export function submitVerification(projectId: number, data: SubmitVerificationRequest): Promise<void> {
+  return request.post(`/carbon-neutral/${projectId}/submit-verification`, data)
+}
 
 
 /**

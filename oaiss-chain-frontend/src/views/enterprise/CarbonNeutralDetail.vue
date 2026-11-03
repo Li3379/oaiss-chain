@@ -14,6 +14,7 @@
  *     * GET  /api/v1/carbon-neutral/{id}                     -> getProject() 获取项目详情
  *     * POST /api/v1/carbon-neutral/{id}/submit              -> submitProject() 提交立项
  *     * POST /api/v1/carbon-neutral/{id}/start               -> startProject() 启动实施
+ *     * POST /api/v1/carbon-neutral/{id}/submit-verification -> submitVerification() 申请核证
  * ==============================================================================
  */
 import { ref, computed, onMounted } from 'vue'
@@ -25,6 +26,7 @@ import {
   getProject,
   submitProject,
   startProject,
+  submitVerification,
 } from '../../api/carbonNeutral'
 import type { CarbonNeutralProjectResponse } from '../../types'
 import { formatDateTime, formatNumber } from '../../utils/format'
@@ -137,35 +139,66 @@ const onStart = () => handleAction(
   t('carbonNeutralDetail.confirmStartImplement'),
 )
 
+/**
+ * 申请核证：后端 SubmitVerificationRequest 必填 verifierId（审核员 userId），
+ * 项目ID 走路径参数。当前没有面向企业端的审核员名录接口，故由企业填写核证员 ID。
+ */
+const onSubmitVerification = async () => {
+  let verifierId: number
+  try {
+    const { value } = await ElMessageBox.prompt(
+      t('carbonNeutralDetail.enterVerifierId'),
+      t('carbonNeutralDetail.dialogSubmitVerifyTitle'),
+      {
+        confirmButtonText: t('common.confirm'),
+        cancelButtonText: t('common.cancel'),
+        inputValue: project.value?.verifierId ? String(project.value.verifierId) : '',
+        inputPattern: /^[1-9]\d*$/,
+        inputErrorMessage: t('carbonNeutralDetail.verifierIdInvalid'),
+      },
+    )
+    verifierId = Number(value)
+  } catch {
+    return
+  }
+  await handleAction(
+    () => submitVerification(projectId.value, { verifierId }),
+    t('carbonNeutralDetail.confirmSubmitVerification'),
+  )
+}
 
 const canSubmit = computed(() => currentStatus.value === PROJECT_STATUS.DRAFT)
 const canStart = computed(() => currentStatus.value === PROJECT_STATUS.APPROVED)
+/** 申请核证：后端接受实施中/已完成且未核证的项目，本阶段按钮按计划只在实施中展示 */
+const canSubmitVerification = computed(() => currentStatus.value === PROJECT_STATUS.IMPLEMENTING)
 
 /**
  * 页头生命周期动作：按钮集合完全由当前状态推导，与原 v-if 条件一一对应；
  * 事件索引 → 处理函数也按同一份列表映射，行为与迁移前一致。
  */
-// W6 收口：生命周期只保留前四步（创建 → 提交 → 审核 → 实施）。
-// 申请核证 / 认证 / 终止三个动作已移除，对应后端端点同步删除。
-// 理由：后三步不产生新的真实数据（核证=第三方再确认一次，认证=审核员再通过一次），
-// 且该业务全程不上链，不产生任何可信证据——保留只会让状态机看起来完整而实际空转。
-type LifecycleKey = 'submit' | 'start'
+// W6 裁剪已于 Phase 7 撤销（依据见 07-CONTEXT D-02/D-12）：申请核证、追加监测数据、
+// 申请认证、终止四个动作及其后端端点全部恢复。本任务先接通「申请核证」，
+// 其余三个在下一任务补齐，避免出现有按钮无处理函数的状态。
+type LifecycleKey = 'submit' | 'start' | 'submitVerification' | 'updateMonitoring' | 'applyCertification' | 'terminate'
 
 const lifecycleActions = computed<Array<{ key: LifecycleKey; label: string; variant: 'primary' | 'default' }>>(() => {
   const actions: Array<{ key: LifecycleKey; label: string; variant: 'primary' | 'default' }> = []
   if (canSubmit.value) actions.push({ key: 'submit', label: t('carbonNeutralDetail.actionSubmitReview'), variant: 'primary' })
   if (canStart.value) actions.push({ key: 'start', label: t('carbonNeutralDetail.actionStartImplement'), variant: 'primary' })
+  if (canSubmitVerification.value) actions.push({ key: 'submitVerification', label: t('carbonNeutralDetail.actionSubmitVerification'), variant: 'primary' })
   return actions
 })
 
-const lifecycleHandlers: Record<LifecycleKey, () => Promise<void> | void> = {
+// Task 1 只登记已实现的 handler；Task 2 补齐其余三个后恢复为完整 Record。
+const lifecycleHandlers: Partial<Record<LifecycleKey, () => Promise<void> | void>> = {
   submit: onSubmit,
   start: onStart,
+  submitVerification: onSubmitVerification,
 }
 
 function onHeaderAction(index: number) {
   const action = lifecycleActions.value[index]
-  if (action) lifecycleHandlers[action.key]()
+  if (action) lifecycleHandlers[action.key]?.()
 }
 
 /** 首屏统计条：全部取自已加载的项目详情，不新增接口请求 */
