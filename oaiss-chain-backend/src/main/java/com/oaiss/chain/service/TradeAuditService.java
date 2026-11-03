@@ -119,15 +119,14 @@ public class TradeAuditService {
         Long sellerEnterpriseId = resolveEnterpriseId(trade.getSellerId());
         Long buyerEnterpriseId = resolveEnterpriseId(trade.getBuyerId());
 
-        // 1) 额度结算：卖方从冻结直接转已用（原子，避免"已解冻未扣减"的中间态），买方额度增加
-        quotaLedgerService.settleSell(sellerEnterpriseId, quantity,
-                "成交审核通过，卖方额度结算", auditorId, tradeId);
-        quotaLedgerService.increase(buyerEnterpriseId, quantity,
-                "成交审核通过，买方额度入账", auditorId, "AUDIT", tradeId);
-
-        // 2) 碳币结算：买方冻结款划转、卖方入账
-        carbonCoinService.deductFrozenBalance(trade.getBuyerId(), amount, quantity, tradeId);
-        carbonCoinService.sellQuota(trade.getSellerId(), amount, quantity, tradeId);
+        // 2026-11-03 模型变更：配额退出资产层，结算对象改为碳币。
+        //
+        // 原实现四步：卖方配额冻结转已用 + 买方配额入账 + 买方扣碳币 + 卖方收碳币。
+        // 现在配额只算不发（企业账上无配额），P2P/拍卖都是「碳币换碳币」：
+        // 卖方挂单时冻结的碳币，审核通过后直接转给买方——一进一出，
+        // 卖方不再收到任何对价。四步合并为一步。
+        carbonCoinService.transferFrozen(trade.getSellerId(), trade.getBuyerId(),
+                quantity, tradeId);
 
         // 3) 状态落定
         trade.setAuditStatus(TradeAudit.AUDIT_APPROVED);
@@ -168,13 +167,16 @@ public class TradeAuditService {
         Long sellerEnterpriseId = resolveEnterpriseId(trade.getSellerId());
         Long buyerEnterpriseId = resolveEnterpriseId(trade.getBuyerId());
 
-        // 1) 额度解冻：卖方挂单冻结的额度退回可交易
-        quotaLedgerService.unfreeze(sellerEnterpriseId, quantity,
-                "成交审核驳回，卖方额度解冻", auditorId, "AUDIT", tradeId);
-        // 买方在待审期没有额度变动（increase 尚未执行），故无需额度回滚
-
-        // 2) 碳币解冻：买方挂单冻结的资金退回可用余额；卖方待审期未入账，无需扣回
-        carbonCoinService.unfreezeBalance(trade.getBuyerId(), amount);
+        // 驳回：解冻**卖方**挂单时冻结的碳币，退回可用余额。
+        //
+        // 2026-11-03 变更：原实现解冻的是 buyerId（买家冻结的货款），
+        // 但现在 P2P/拍卖都不再冻结买方——冻结的是卖方的碳币。
+        // 若继续对买家 unfreezeBalance，会让买家**凭空多出一笔币**
+        // （unfreeze 会按冻结额截断并把差额计入可用余额，见 CarbonCoinService.unfreezeBalance）。
+        //
+        // 卖方在待审期也未入账（transferFrozen 尚未执行），故无需扣回。
+        // 配额四列在待审期同样未被修改，也无需回滚。
+        carbonCoinService.unfreezeBalance(trade.getSellerId(), quantity);
 
         // 3) 信誉扣分并归因到该笔交易（双方都参与价格形成，只罚一方会留下规避口子）
         creditScoreService.deductPointsForTrade(sellerEnterpriseId,
