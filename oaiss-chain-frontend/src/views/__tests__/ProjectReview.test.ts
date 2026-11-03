@@ -13,6 +13,8 @@ vi.mock('../../api/carbonNeutral', () => ({
   getPendingVerification: vi.fn(() => Promise.resolve({ items: [], total: 0, page: 0, size: 10, totalPages: 0 })),
   getProjects: vi.fn(() => Promise.resolve({ items: [], total: 0, page: 0, size: 10, totalPages: 0 })),
   reviewProject: vi.fn(() => Promise.resolve()),
+  verifyProject: vi.fn(() => Promise.resolve()),
+  completeCertification: vi.fn(() => Promise.resolve({ certNo: 'CNE-2026-000001' })),
 }))
 
 vi.mock('../../api/credit', () => ({

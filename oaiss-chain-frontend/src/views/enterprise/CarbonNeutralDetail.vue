@@ -15,6 +15,9 @@
  *     * POST /api/v1/carbon-neutral/{id}/submit              -> submitProject() 提交立项
  *     * POST /api/v1/carbon-neutral/{id}/start               -> startProject() 启动实施
  *     * POST /api/v1/carbon-neutral/{id}/submit-verification -> submitVerification() 申请核证
+ *     * PUT  /api/v1/carbon-neutral/{id}/monitoring          -> updateMonitoring() 追加监测数据
+ *     * POST /api/v1/carbon-neutral/{id}/apply-certification -> applyCertification() 申请认证
+ *     * POST /api/v1/carbon-neutral/{id}/terminate           -> terminateProject() 终止项目
  * ==============================================================================
  */
 import { ref, computed, onMounted } from 'vue'
@@ -27,6 +30,9 @@ import {
   submitProject,
   startProject,
   submitVerification,
+  updateMonitoring,
+  applyCertification,
+  terminateProject,
 } from '../../api/carbonNeutral'
 import type { CarbonNeutralProjectResponse } from '../../types'
 import { formatDateTime, formatNumber } from '../../utils/format'
@@ -167,18 +173,110 @@ const onSubmitVerification = async () => {
   )
 }
 
+/** 追加监测数据：后端 MonitoringUpdateRequest.monitoringData 为 @NotBlank 字符串，空值不发请求 */
+const onUpdateMonitoring = async () => {
+  let monitoringData: string
+  try {
+    const { value } = await ElMessageBox.prompt(
+      t('carbonNeutralDetail.monitorEmissionPlaceholder'),
+      t('carbonNeutralDetail.panelMonitorTitle'),
+      {
+        confirmButtonText: t('common.confirm'),
+        cancelButtonText: t('common.cancel'),
+        inputType: 'textarea',
+        inputPattern: /\S+/,
+        inputErrorMessage: t('carbonNeutralDetail.monitoringRequired'),
+      },
+    )
+    monitoringData = value.trim()
+  } catch {
+    return
+  }
+  if (!monitoringData) {
+    ElMessage.warning(t('carbonNeutralDetail.monitoringRequired'))
+    return
+  }
+  await handleAction(
+    () => updateMonitoring(projectId.value, { monitoringData }),
+    t('carbonNeutralDetail.confirmUpdateMonitoring'),
+  )
+}
+
+/** 申请认证：后端 ApplyCertificationRequest.certOrg 为 @NotBlank，必须随请求提交 */
+const onApplyCertification = async () => {
+  let certOrg: string
+  try {
+    const { value } = await ElMessageBox.prompt(
+      t('carbonNeutralDetail.enterCertOrg'),
+      t('carbonNeutralDetail.dialogApplyCertificationTitle'),
+      {
+        confirmButtonText: t('common.confirm'),
+        cancelButtonText: t('common.cancel'),
+        inputValue: project.value?.certOrg || '',
+        inputPattern: /\S+/,
+        inputErrorMessage: t('carbonNeutralDetail.certOrgRequired'),
+      },
+    )
+    certOrg = value.trim()
+  } catch {
+    return
+  }
+  if (!certOrg) {
+    ElMessage.warning(t('carbonNeutralDetail.certOrgRequired'))
+    return
+  }
+  await handleAction(
+    () => applyCertification(projectId.value, { certOrg }),
+    t('carbonNeutralDetail.confirmApplyCertification'),
+  )
+}
+
+/** 终止项目：后端 TerminateProjectRequest.reason 为 @NotBlank，必须随请求提交 */
+const onTerminate = async () => {
+  let reason: string
+  try {
+    const { value } = await ElMessageBox.prompt(
+      t('carbonNeutralDetail.confirmTerminate'),
+      t('carbonNeutralDetail.actionTerminate'),
+      {
+        confirmButtonText: t('common.confirm'),
+        cancelButtonText: t('common.cancel'),
+        inputType: 'textarea',
+        inputValue: t('carbonNeutral.terminateReason'),
+        inputPattern: /\S+/,
+        inputErrorMessage: t('carbonNeutralDetail.terminateReasonRequired'),
+      },
+    )
+    reason = value.trim()
+  } catch {
+    return
+  }
+  if (!reason) {
+    ElMessage.warning(t('carbonNeutralDetail.terminateReasonRequired'))
+    return
+  }
+  await handleAction(
+    () => terminateProject(projectId.value, { reason }),
+    t('carbonNeutralDetail.confirmTerminate'),
+  )
+}
+
 const canSubmit = computed(() => currentStatus.value === PROJECT_STATUS.DRAFT)
 const canStart = computed(() => currentStatus.value === PROJECT_STATUS.APPROVED)
 /** 申请核证：后端接受实施中/已完成且未核证的项目，本阶段按钮按计划只在实施中展示 */
 const canSubmitVerification = computed(() => currentStatus.value === PROJECT_STATUS.IMPLEMENTING)
+const canUpdateMonitoring = computed(() => currentStatus.value === PROJECT_STATUS.IMPLEMENTING)
+const canApplyCertification = computed(() => currentVerificationStatus.value === VERIFY_STATUS.VERIFIED
+  && currentCertStatus.value === CERT_STATUS.NONE)
+const canTerminate = computed(() => currentStatus.value === PROJECT_STATUS.APPROVED
+  || currentStatus.value === PROJECT_STATUS.IMPLEMENTING)
 
 /**
  * 页头生命周期动作：按钮集合完全由当前状态推导，与原 v-if 条件一一对应；
  * 事件索引 → 处理函数也按同一份列表映射，行为与迁移前一致。
  */
 // W6 裁剪已于 Phase 7 撤销（依据见 07-CONTEXT D-02/D-12）：申请核证、追加监测数据、
-// 申请认证、终止四个动作及其后端端点全部恢复。本任务先接通「申请核证」，
-// 其余三个在下一任务补齐，避免出现有按钮无处理函数的状态。
+// 申请认证、终止四个动作及其后端端点全部恢复。
 type LifecycleKey = 'submit' | 'start' | 'submitVerification' | 'updateMonitoring' | 'applyCertification' | 'terminate'
 
 const lifecycleActions = computed<Array<{ key: LifecycleKey; label: string; variant: 'primary' | 'default' }>>(() => {
@@ -186,14 +284,19 @@ const lifecycleActions = computed<Array<{ key: LifecycleKey; label: string; vari
   if (canSubmit.value) actions.push({ key: 'submit', label: t('carbonNeutralDetail.actionSubmitReview'), variant: 'primary' })
   if (canStart.value) actions.push({ key: 'start', label: t('carbonNeutralDetail.actionStartImplement'), variant: 'primary' })
   if (canSubmitVerification.value) actions.push({ key: 'submitVerification', label: t('carbonNeutralDetail.actionSubmitVerification'), variant: 'primary' })
+  if (canUpdateMonitoring.value) actions.push({ key: 'updateMonitoring', label: t('carbonNeutralDetail.actionUpdateMonitoring'), variant: 'default' })
+  if (canApplyCertification.value) actions.push({ key: 'applyCertification', label: t('carbonNeutralDetail.actionApplyCertification'), variant: 'primary' })
+  if (canTerminate.value) actions.push({ key: 'terminate', label: t('carbonNeutralDetail.actionTerminate'), variant: 'default' })
   return actions
 })
 
-// Task 1 只登记已实现的 handler；Task 2 补齐其余三个后恢复为完整 Record。
-const lifecycleHandlers: Partial<Record<LifecycleKey, () => Promise<void> | void>> = {
+const lifecycleHandlers: Record<LifecycleKey, () => Promise<void> | void> = {
   submit: onSubmit,
   start: onStart,
   submitVerification: onSubmitVerification,
+  updateMonitoring: onUpdateMonitoring,
+  applyCertification: onApplyCertification,
+  terminate: onTerminate,
 }
 
 function onHeaderAction(index: number) {
