@@ -18,7 +18,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { CircleCheck, ShoppingCart, TrendCharts, Wallet } from '@element-plus/icons-vue'
-import { getMyAccount, getTransactions } from '../../api/carbonCoin'
+import { getMyAccount, getTransactions, redeemQuota } from '../../api/carbonCoin'
 import TermTip from '../../components/TermTip.vue'
 import PageHint from '../../components/PageHint.vue'
 import { formatDateTime, formatNumber } from '../../utils/format'
@@ -93,6 +93,10 @@ const getTransactionTypeText = (type: number) => {
     2: t('carbonCoin.txTypeBuy'),
     3: t('carbonCoin.txTypeSell'),
     4: t('carbonCoin.txTypeLegacy'),
+    // 2026-11-03 碳币闭环新增：发放（减排成果）与回收（驳回冲减）
+    5: t('carbonCoin.txTypeIssue'),
+    6: t('carbonCoin.txTypeClawback'),
+    7: t('carbonCoin.txTypeRedeem'),
   }
   return map[type] || t('common.status')
 }
@@ -102,14 +106,54 @@ const getAccountStatusText = (status?: number) => (
 )
 
 const getAmountClass = (type: number) => {
-  const positiveTypes = [1, 3]
+  // 5=发放（增加）、6=回收（减少）、7=兑换（减少），与 1/3 同属正向的只有 1/3/5
+  const positiveTypes = [1, 3, 5]
   return positiveTypes.includes(type) ? 'amount-positive' : 'amount-negative'
 }
 
 const formatAmount = (type: number, amount: number) => {
-  const positiveTypes = [1, 3]
+  const positiveTypes = [1, 3, 5]
   const prefix = positiveTypes.includes(type) ? '+' : ''
   return prefix + amount
+}
+
+// ==================== 兑换配额 ====================
+
+const redeemDialogVisible = ref(false)
+const redeemAmount = ref<number | null>(null)
+const redeemSubmitting = ref(false)
+
+const openRedeemDialog = () => {
+  redeemAmount.value = null
+  redeemDialogVisible.value = true
+}
+
+const submitRedeem = async () => {
+  const amount = Number(redeemAmount.value || 0)
+  if (amount <= 0) {
+    ElMessage.warning(t('carbonCoin.redeemAmountRequired'))
+    return
+  }
+  if (accountData.value && amount > Number(accountData.value.balance)) {
+    ElMessage.warning(t('carbonCoin.redeemExceedsBalance'))
+    return
+  }
+  redeemSubmitting.value = true
+  try {
+    await redeemQuota(amount)
+    ElMessage.success(t('carbonCoin.redeemSuccess'))
+    redeemDialogVisible.value = false
+    await loadAccount()
+    await loadTransactions()
+  } catch (error: unknown) {
+    const backendMsg =
+      error && typeof error === 'object' && 'response' in error
+        ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+        : undefined
+    ElMessage.error(backendMsg || t('carbonCoin.redeemFailed'))
+  } finally {
+    redeemSubmitting.value = false
+  }
 }
 
 onMounted(() => {
@@ -172,6 +216,19 @@ const accountStats = computed(() => {
     <div class="account-info" data-testid="carbon-coin-status-card">
       <p class="info-label">{{ t('carbonCoin.accountInfo') }}<TermTip term="carbonCoin" /></p>
       <StatStrip :items="accountStats" :loading="accountLoading" />
+      <!-- 兑换配额：碳币的唯一出口。碳币不支持提现，只能换回配额用于履约或挂单。 -->
+      <div class="redeem-action">
+        <el-button
+          type="primary"
+          :icon="ShoppingCart"
+          :disabled="!accountData || Number(accountData.balance) <= 0"
+          data-testid="redeem-quota-btn"
+          @click="openRedeemDialog"
+        >
+          {{ t('carbonCoin.redeemQuota') }}
+        </el-button>
+        <span class="field-hint">{{ t('carbonCoin.redeemQuotaHint') }}</span>
+      </div>
     </div>
 
     <EmptyHint
@@ -226,6 +283,38 @@ const accountStats = computed(() => {
         />
       </template>
     </DataPanel>
+
+    <!-- 兑换配额弹窗：碳币 → 配额（1 枚 = 1 吨） -->
+    <el-dialog
+      v-model="redeemDialogVisible"
+      :title="t('carbonCoin.redeemQuota')"
+      width="480px"
+      destroy-on-close
+      data-testid="redeem-quota-dialog"
+    >
+      <el-form label-width="110px">
+        <el-form-item :label="t('carbonCoin.redeemAmount')">
+          <el-input-number
+            v-model="redeemAmount"
+            :min="0.01"
+            :precision="2"
+            :step="10"
+            style="width: 220px"
+            data-testid="redeem-amount-input"
+          />
+          <span class="field-hint">{{ t('carbonCoin.redeemQuotaHint') }}</span>
+        </el-form-item>
+        <el-form-item :label="t('carbonCoin.redeemAvailable')">
+          <span>{{ formatNumber(accountData?.balance ?? 0) }}</span>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="redeemDialogVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" :loading="redeemSubmitting" data-testid="redeem-confirm" @click="submitRedeem">
+          {{ t('common.confirm') }}
+        </el-button>
+      </template>
+    </el-dialog>
 
   </section>
 </template>

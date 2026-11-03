@@ -3,8 +3,15 @@ export interface TradeRequest {
   tradeType: number
   buyerId?: number
   sellerId?: number
+  /** 数量：P2P 为碳币枚数，拍卖为配额吨数 */
   quantity: number
-  unitPrice: number
+  /**
+   * 单价（碳币/吨）。
+   *
+   * 2026-11-03：P2P 改为「碳币换碳币」后不再使用，后端按 1 处理；
+   * 拍卖仍需单价，故保留为可选。
+   */
+  unitPrice?: number
   reportId?: number
   remark?: string
 }

@@ -161,7 +161,13 @@ public class CarbonCoinService {
     @DistributedLock(key = "'carbon:coin:' + #userId", expireTime = 30)
     @Transactional
     public CarbonCoinAccountResponse freezeBalance(Long userId, BigDecimal amount) {
-        CarbonCoinAccount account = getAccountEntity(userId);
+        // 挂单入口：账户不存在时自动创建（余额 0）。
+        //
+        // 不能用 getAccountEntity——企业第一次挂单时通常还没有碳币账户
+        // （从未访问过碳币页），直接抛 4002「碳币账户不存在」会让挂单失败。
+        // 自动建账户后，余额为 0 会被 validateBalance 拒成「碳币余额不足」，
+        // 那个错误信息才指向真正的原因（企业没有币，不是系统找不到账户）。
+        CarbonCoinAccount account = getOrCreateAccountEntity(userId);
         validateAccountActive(account);
         validateBalance(account, amount);
 
@@ -181,7 +187,9 @@ public class CarbonCoinService {
     @DistributedLock(key = "'carbon:coin:' + #userId", expireTime = 30)
     @Transactional
     public CarbonCoinAccountResponse unfreezeBalance(Long userId, BigDecimal amount) {
-        CarbonCoinAccount account = getAccountEntity(userId);
+        // 与 freezeBalance 对称：撤单入口也用自动建账户，
+        // 否则「挂单时自动建了账户、撤单时找不到」这种不对称会在边缘场景炸掉。
+        CarbonCoinAccount account = getOrCreateAccountEntity(userId);
         validateAccountActive(account);
 
         BigDecimal currentFrozen = account.getFrozenBalance() != null ? account.getFrozenBalance() : BigDecimal.ZERO;
