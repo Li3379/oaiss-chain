@@ -494,16 +494,24 @@ public class CarbonService {
      */
     private void issueCoinQuietly(CarbonReport report, Long operatorUserId) {
         try {
-            // 先算盈余：配额（审计值）− 范围一实排
-            BigDecimal quota = report.getQuotaAllocatedAmount();
+            // 第一步：算出并记录配额（配额 = 产量 × 基准值）。
+            //
+            // 这一步不能省。配额虽然不发给企业，但它是盈余计算的被减数：
+            //   盈余 = 配额 − 实排
+            // 若不先算，quotaAllocatedAmount 为 null，发币环节拿不到被减数，
+            // 只能在日志里写一句「无配额计算值」然后静默跳过——
+            // 实机验证时正是这个表现：报告已上链、allocation_state 却是 NULL。
+            //
+            // allocateForReport 内部已完成「产量/机组/年度/基准值」四项校验，
+            // 校验不过会抛异常，由下面的 catch 转成 PENDING_RETRY。
+            com.oaiss.chain.service.QuotaAllocationService.AllocationResult allocation =
+                    quotaAllocationService.allocateForReport(report.getId(), operatorUserId);
+
+            BigDecimal quota = allocation.getQuotaAmount();
             BigDecimal actual = report.getScope1Emission();
-            if (quota == null) {
-                log.warn("[COIN] 报告 {} 无配额计算值（quotaAllocatedAmount 为空），跳过发币",
-                        report.getReportNo());
-                return;
-            }
             BigDecimal surplus = quota.subtract(actual == null ? BigDecimal.ZERO : actual);
 
+            // 第二步：按盈余发币
             // 驳回后重发要跳过幂等检查并使用新序号，否则会撞 uk_coin_issue
             boolean isReissue = com.oaiss.chain.enums.AllocationStateEnum.REVOKED.getCode()
                     .equals(report.getAllocationState());
@@ -514,6 +522,7 @@ public class CarbonService {
             }
             report.setAllocationState(
                     com.oaiss.chain.enums.AllocationStateEnum.ALLOCATED.getCode());
+            report.setQuotaAllocatedAmount(quota);
         } catch (Exception ex) {
             log.error("[COIN] 报告 {} 碳币发放失败，已置为待重试: {}",
                     report.getReportNo(), ex.getMessage(), ex);
