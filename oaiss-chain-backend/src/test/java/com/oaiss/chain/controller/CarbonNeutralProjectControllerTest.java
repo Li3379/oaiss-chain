@@ -19,6 +19,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -30,6 +31,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -543,9 +545,126 @@ class CarbonNeutralProjectControllerTest {
 
     // ==================== POST /carbon-neutral/{id}/submit-verification Tests ====================
 
-            // ==================== POST /carbon-neutral/verify Tests ====================
+    @Test
+    @DisplayName("提交核证申请成功")
+    void testSubmitForVerificationSuccess() throws Exception {
+        // Given
+        setAuthentication(normalUser);
+        CarbonNeutralProjectResponse verifPendingResponse = CarbonNeutralProjectResponse.builder()
+                .id(1L)
+                .projectNo("CNP202605050001")
+                .projectName("林业碳汇项目")
+                .status(3)
+                .statusText("实施中")
+                .verificationStatus(1)
+                .verificationStatusText("核证中")
+                .verifierId(10L)
+                .build();
 
-            // ==================== POST /carbon-neutral/{id}/use-credits Tests ====================
+        when(projectService.submitForVerification(any(JwtUserDetails.class), eq(1L), eq(10L)))
+                .thenReturn(verifPendingResponse);
+
+        // When & Then
+        mockMvc.perform(post("/carbon-neutral/1/submit-verification")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"verifierId\": 10}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.verificationStatus").value(1))
+                .andExpect(jsonPath("$.data.verifierId").value(10));
+
+        verify(projectService, times(1))
+                .submitForVerification(any(JwtUserDetails.class), eq(1L), eq(10L));
+    }
+
+    @Test
+    @DisplayName("提交核证申请失败-项目不在可核证状态")
+    void testSubmitForVerificationInvalidStatus() throws Exception {
+        // Given
+        setAuthentication(normalUser);
+        when(projectService.submitForVerification(any(JwtUserDetails.class), eq(1L), eq(10L)))
+                .thenThrow(new BusinessException(3003, "项目不在可核证状态"));
+
+        // When & Then
+        mockMvc.perform(post("/carbon-neutral/1/submit-verification")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"verifierId\": 10}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(3003));
+
+        verify(projectService, times(1))
+                .submitForVerification(any(JwtUserDetails.class), eq(1L), eq(10L));
+    }
+
+    // ==================== POST /carbon-neutral/verify Tests ====================
+
+    @Test
+    @DisplayName("核证项目成功")
+    void testVerifyProjectSuccess() throws Exception {
+        // Given
+        setAuthentication(adminUser);
+        CarbonNeutralProjectResponse verifiedResponse = CarbonNeutralProjectResponse.builder()
+                .id(1L)
+                .projectNo("CNP202605050001")
+                .projectName("林业碳汇项目")
+                .status(4)
+                .statusText("已完成")
+                .verificationStatus(2)
+                .verificationStatusText("已核证")
+                .actualReduction(new BigDecimal("950.00"))
+                .issuedCredits(new BigDecimal("950.00"))
+                .build();
+
+        when(projectService.verifyProject(any(JwtUserDetails.class), any(ProjectVerificationRequest.class)))
+                .thenReturn(verifiedResponse);
+
+        String requestJson = objectMapper.writeValueAsString(
+                ProjectVerificationRequest.builder()
+                        .projectId(1L)
+                        .verifiedReduction(new BigDecimal("950.00"))
+                        .verificationReport("核证报告")
+                        .monitoringData("监测数据")
+                        .build());
+
+        // When & Then
+        mockMvc.perform(post("/carbon-neutral/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.verificationStatus").value(2))
+                .andExpect(jsonPath("$.data.issuedCredits").value(950));
+
+        verify(projectService, times(1))
+                .verifyProject(any(JwtUserDetails.class), any(ProjectVerificationRequest.class));
+    }
+
+    @Test
+    @DisplayName("核证项目失败-项目不在待核证状态")
+    void testVerifyProjectInvalidStatus() throws Exception {
+        // Given
+        setAuthentication(adminUser);
+        when(projectService.verifyProject(any(JwtUserDetails.class), any(ProjectVerificationRequest.class)))
+                .thenThrow(new BusinessException(3003, "项目不在待核证状态"));
+
+        String requestJson = objectMapper.writeValueAsString(
+                ProjectVerificationRequest.builder()
+                        .projectId(1L)
+                        .verifiedReduction(new BigDecimal("950.00"))
+                        .build());
+
+        // When & Then
+        mockMvc.perform(post("/carbon-neutral/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestJson))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(3003));
+
+        verify(projectService, times(1))
+                .verifyProject(any(JwtUserDetails.class), any(ProjectVerificationRequest.class));
+    }
+
+    // ==================== POST /carbon-neutral/{id}/use-credits Tests ====================
 
     @Test
     @DisplayName("使用碳信用成功")
@@ -597,12 +716,322 @@ class CarbonNeutralProjectControllerTest {
 
     // ==================== PUT /carbon-neutral/{id}/monitoring Tests ====================
 
-            // ==================== POST /carbon-neutral/{id}/apply-certification Tests ====================
+    @Test
+    @DisplayName("更新监测数据成功")
+    void testUpdateMonitoringSuccess() throws Exception {
+        // Given
+        setAuthentication(normalUser);
+        CarbonNeutralProjectResponse monitoringResponse = CarbonNeutralProjectResponse.builder()
+                .id(1L)
+                .projectNo("CNP202605050001")
+                .projectName("林业碳汇项目")
+                .monitoringData("最新监测数据")
+                .lastMonitoringDate(LocalDate.now())
+                .build();
 
-            // ==================== POST /carbon-neutral/{id}/certify Tests ====================
+        when(projectService.updateMonitoring(any(JwtUserDetails.class), eq(1L), eq("最新监测数据")))
+                .thenReturn(monitoringResponse);
 
-            // ==================== POST /carbon-neutral/{id}/terminate Tests ====================
+        // When & Then
+        mockMvc.perform(put("/carbon-neutral/1/monitoring")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"monitoringData\": \"最新监测数据\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.monitoringData").value("最新监测数据"));
 
-            // ==================== GET /carbon-neutral/pending-verification Tests ====================
+        verify(projectService, times(1))
+                .updateMonitoring(any(JwtUserDetails.class), eq(1L), eq("最新监测数据"));
+    }
 
-            }
+    @Test
+    @DisplayName("更新监测数据失败-项目不存在")
+    void testUpdateMonitoringNotFound() throws Exception {
+        // Given
+        setAuthentication(normalUser);
+        when(projectService.updateMonitoring(any(JwtUserDetails.class), eq(999L), eq("监测数据")))
+                .thenThrow(new BusinessException(3002, "项目不存在"));
+
+        // When & Then
+        mockMvc.perform(put("/carbon-neutral/999/monitoring")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"monitoringData\": \"监测数据\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(3002));
+
+        verify(projectService, times(1))
+                .updateMonitoring(any(JwtUserDetails.class), eq(999L), eq("监测数据"));
+    }
+
+    // ==================== POST /carbon-neutral/{id}/apply-certification Tests ====================
+
+    @Test
+    @DisplayName("申请认证成功")
+    void testApplyForCertificationSuccess() throws Exception {
+        // Given
+        setAuthentication(normalUser);
+        CarbonNeutralProjectResponse certPendingResponse = CarbonNeutralProjectResponse.builder()
+                .id(1L)
+                .projectNo("CNP202605050001")
+                .projectName("林业碳汇项目")
+                .certStatus(1)
+                .certStatusText("认证中")
+                .certOrg("中国质量认证中心")
+                .build();
+
+        when(projectService.applyForCertification(any(JwtUserDetails.class), eq(1L), eq("中国质量认证中心")))
+                .thenReturn(certPendingResponse);
+
+        // When & Then
+        mockMvc.perform(post("/carbon-neutral/1/apply-certification")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"certOrg\": \"中国质量认证中心\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.certStatus").value(1))
+                .andExpect(jsonPath("$.data.certOrg").value("中国质量认证中心"));
+
+        verify(projectService, times(1))
+                .applyForCertification(any(JwtUserDetails.class), eq(1L), eq("中国质量认证中心"));
+    }
+
+    @Test
+    @DisplayName("申请认证失败-项目需先完成核证")
+    void testApplyForCertificationNotVerified() throws Exception {
+        // Given
+        setAuthentication(normalUser);
+        when(projectService.applyForCertification(any(JwtUserDetails.class), eq(1L), eq("管理员")))
+                .thenThrow(new BusinessException(3003, "项目需先完成核证"));
+
+        // When & Then
+        mockMvc.perform(post("/carbon-neutral/1/apply-certification")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"certOrg\": \"管理员\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(3003))
+                .andExpect(jsonPath("$.message").value("项目需先完成核证"));
+
+        verify(projectService, times(1))
+                .applyForCertification(any(JwtUserDetails.class), eq(1L), eq("管理员"));
+    }
+
+    // ==================== POST /carbon-neutral/{id}/certify Tests ====================
+
+    @Test
+    @DisplayName("完成认证成功")
+    void testCompleteCertificationSuccess() throws Exception {
+        // Given
+        CarbonNeutralProjectResponse certifiedResponse = CarbonNeutralProjectResponse.builder()
+                .id(1L)
+                .projectNo("CNP202605050001")
+                .projectName("林业碳汇项目")
+                .certStatus(2)
+                .certStatusText("已认证")
+                .certNo("CERT-2026-001")
+                .certDate(LocalDate.now())
+                .build();
+
+        when(projectService.completeCertification(eq(1L), eq("CERT-2026-001")))
+                .thenReturn(certifiedResponse);
+
+        // When & Then
+        mockMvc.perform(post("/carbon-neutral/1/certify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"certNo\": \"CERT-2026-001\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.certStatus").value(2))
+                .andExpect(jsonPath("$.data.certStatusText").value("已认证"))
+                .andExpect(jsonPath("$.data.certNo").value("CERT-2026-001"));
+
+        verify(projectService, times(1)).completeCertification(eq(1L), eq("CERT-2026-001"));
+    }
+
+    @Test
+    @DisplayName("完成认证失败-项目不在待认证状态")
+    void testCompleteCertificationInvalidStatus() throws Exception {
+        // Given
+        when(projectService.completeCertification(eq(1L), eq("CERT-2026-001")))
+                .thenThrow(new BusinessException(3003, "项目不在待认证状态"));
+
+        // When & Then
+        mockMvc.perform(post("/carbon-neutral/1/certify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"certNo\": \"CERT-2026-001\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(3003))
+                .andExpect(jsonPath("$.message").value("项目不在待认证状态"));
+
+        verify(projectService, times(1)).completeCertification(eq(1L), eq("CERT-2026-001"));
+    }
+
+    // ==================== POST /carbon-neutral/{id}/terminate Tests ====================
+
+    @Test
+    @DisplayName("终止项目成功")
+    void testTerminateProjectSuccess() throws Exception {
+        // Given
+        setAuthentication(normalUser);
+        CarbonNeutralProjectResponse terminatedResponse = CarbonNeutralProjectResponse.builder()
+                .id(1L)
+                .projectNo("CNP202605050001")
+                .projectName("林业碳汇项目")
+                .status(5)
+                .statusText("已终止")
+                .reviewComment("项目终止: 资金不足")
+                .build();
+
+        when(projectService.terminateProject(any(JwtUserDetails.class), eq(1L), eq("资金不足")))
+                .thenReturn(terminatedResponse);
+
+        // When & Then
+        mockMvc.perform(post("/carbon-neutral/1/terminate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\": \"资金不足\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.status").value(5))
+                .andExpect(jsonPath("$.data.statusText").value("已终止"));
+
+        verify(projectService, times(1))
+                .terminateProject(any(JwtUserDetails.class), eq(1L), eq("资金不足"));
+    }
+
+    @Test
+    @DisplayName("终止项目失败-项目不存在")
+    void testTerminateProjectNotFound() throws Exception {
+        // Given
+        setAuthentication(normalUser);
+        when(projectService.terminateProject(any(JwtUserDetails.class), eq(999L), eq("原因")))
+                .thenThrow(new BusinessException(3002, "项目不存在"));
+
+        // When & Then
+        mockMvc.perform(post("/carbon-neutral/999/terminate")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\": \"原因\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(3002));
+
+        verify(projectService, times(1))
+                .terminateProject(any(JwtUserDetails.class), eq(999L), eq("原因"));
+    }
+
+    // ==================== GET /carbon-neutral/pending-verification Tests ====================
+
+    @Test
+    @DisplayName("获取待核证项目列表成功")
+    void testGetPendingVerificationSuccess() throws Exception {
+        // Given
+        setAuthentication(adminUser);
+        Page<CarbonNeutralProjectResponse> page = new PageImpl<>(
+                List.of(testResponse), PageRequest.of(0, 20), 1);
+
+        // 控制器对「纯 ADMIN」走全局池分支（getAllPendingVerificationProjects），
+        // 因为 ADMIN 不是被指派人，按 verifierId 过滤会恒为空。adminUser 的 roles 只有
+        // ADMIN，因此这里必须 mock 全局池方法，否则返回 null → data 缺 content。
+        when(projectService.getAllPendingVerificationProjects(eq(1), eq(20)))
+                .thenReturn(page);
+
+        // When & Then
+        mockMvc.perform(get("/carbon-neutral/pending-verification"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.content[0].projectName").value("林业碳汇项目"))
+                .andExpect(jsonPath("$.data.totalElements").value(1));
+
+        verify(projectService, times(1))
+                .getAllPendingVerificationProjects(eq(1), eq(20));
+    }
+
+    @Test
+    @DisplayName("获取待核证项目列表成功-空结果")
+    void testGetPendingVerificationEmpty() throws Exception {
+        // Given
+        setAuthentication(adminUser);
+        Page<CarbonNeutralProjectResponse> page = new PageImpl<>(
+                List.of(), PageRequest.of(0, 20), 0);
+
+        // 同 testGetPendingVerificationSuccess：纯 ADMIN 走全局池分支
+        when(projectService.getAllPendingVerificationProjects(eq(1), eq(20)))
+                .thenReturn(page);
+
+        // When & Then
+        mockMvc.perform(get("/carbon-neutral/pending-verification")
+                        .param("page", "1")
+                        .param("size", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.content").isEmpty());
+
+        verify(projectService, times(1))
+                .getAllPendingVerificationProjects(eq(1), eq(20));
+    }
+
+    @Test
+    @DisplayName("纯 REVIEWER 走按 verifierId 过滤的分支")
+    void testGetPendingVerificationAsReviewerUsesVerifierFilter() throws Exception {
+        // REVIEWER 不是 ADMIN，控制器应走 getPendingVerificationProjects(verifierId, ...)
+        JwtUserDetails reviewerUser = JwtUserDetails.builder()
+                .userId(9L)
+                .username("reviewer_user")
+                .userType(2)
+                .roles(List.of("REVIEWER"))
+                .enabled(true)
+                .build();
+        setAuthentication(reviewerUser);
+
+        Page<CarbonNeutralProjectResponse> page = new PageImpl<>(
+                List.of(testResponse), PageRequest.of(0, 20), 1);
+        when(projectService.getPendingVerificationProjects(eq(9L), eq(1), eq(20)))
+                .thenReturn(page);
+
+        mockMvc.perform(get("/carbon-neutral/pending-verification"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(1));
+
+        verify(projectService, times(1))
+                .getPendingVerificationProjects(eq(9L), eq(1), eq(20));
+        verify(projectService, never()).getAllPendingVerificationProjects(any(), any());
+    }
+
+    @Test
+    @DisplayName("纯 ADMIN（非 REVIEWER）走全局池分支")
+    void testGetPendingVerificationAsAdmin() throws Exception {
+        // Given: 显式 stub 角色判定，把「ADMIN 且非 REVIEWER」这一分支条件锁死，
+        // 不依赖 roles 列表的内容推导
+        JwtUserDetails adminOnly = mock(JwtUserDetails.class);
+        when(adminOnly.isAdmin()).thenReturn(true);
+        when(adminOnly.isReviewer()).thenReturn(false);
+        when(adminOnly.getUserId()).thenReturn(2L);
+        when(adminOnly.getRoles()).thenReturn(List.of("ADMIN"));
+        setAuthentication(adminOnly);
+
+        Page<CarbonNeutralProjectResponse> page = new PageImpl<>(
+                List.of(testResponse), PageRequest.of(0, 20), 1);
+        when(projectService.getAllPendingVerificationProjects(eq(1), eq(20)))
+                .thenReturn(page);
+
+        // When & Then
+        mockMvc.perform(get("/carbon-neutral/pending-verification"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.content[0].projectName").value("林业碳汇项目"));
+
+        verify(projectService, times(1)).getAllPendingVerificationProjects(eq(1), eq(20));
+        verify(projectService, never()).getPendingVerificationProjects(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("待核证端点仅 REVIEWER/ADMIN 可达")
+    void testGetPendingVerificationForbidden() throws Exception {
+        // @WebMvcTest 切片不加载 SecurityConfig，方法级 @PreAuthorize 在切片内不生效，
+        // 因此企业角色发请求会返回 200 而非 403。这里直接断言端点声明的权限表达式，
+        // 与 role-matrix-verify.mjs 门禁共同保证 ENTERPRISE 被拦截。
+        var handler = CarbonNeutralProjectController.class.getMethod(
+                "getPendingVerification", JwtUserDetails.class, Integer.class, Integer.class);
+        PreAuthorize preAuthorize = handler.getAnnotation(PreAuthorize.class);
+
+        assertThat(preAuthorize).isNotNull();
+        assertThat(preAuthorize.value()).isEqualTo("hasRole('REVIEWER') or hasRole('ADMIN')");
+    }
+}
