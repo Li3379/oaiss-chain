@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+#
+# pre-commit 钩子：拦住「在 main 上直接提交」。
+#
+# ============================================================
+# 为什么需要它
+# ============================================================
+# 仓库已有 pre-push 拦「直推 main」，看上去已经够了。但 2026-11-04 与
+# 2026-11-05 两次实测说明了它不够：
+#
+#   2026-11-04  main 上积压 26 个提交，从未推送 → pre-push 永不触发 → 未验证
+#   2026-11-05  main 上又积压 13 个提交（含 V29_1 迁移）→ 同样从未经过 CI
+#
+# pre-push 的检查时机是「推送时」。而提交可以无限积压、永不推送，
+# 于是护栏在这条路径上形同不存在。这是**时机错配**，不是护栏太弱。
+#
+# 另一个更隐蔽的后果：本地 main 一旦领先 origin/main，这些提交就再也不会
+# 被 CI 看见——分支保护只在 PR 上跑检查。人在本地跑一遍门禁就以为验过了，
+# 而 CI 的 8 项必需检查（含后端 174 个测试类）一次都没跑。
+#
+# 所以把拦截点前移到**产生提交的那一刻**：main 上不允许新建提交。
+#
+# ============================================================
+# 为什么不是「一律禁止」
+# ============================================================
+# 合并 PR、revert 发布、紧急热修都需要在 main 上落提交。因此：
+#   - 合并提交 / 不带新改动的提交（--allow-empty 之外的 merge、revert）放行
+#   - 显式 ALLOW_COMMIT_MAIN=1 放行（并打印提醒，让它在 log 里留痕）
+#   - 其余一律拒绝，并给出照抄即可的 worktree 命令
+#
+# 安装（克隆后执行一次）：
+#   git config core.hooksPath .githooks
+
+set -uo pipefail
+
+# 只拦 main（master 一并拦，避免老仓库沿用旧默认名时漏网）。
+# detached HEAD 下 symbolic-ref 失败，此时不拦——rebase 中间态需要能落提交。
+current_branch="$(git symbolic-ref --short -q HEAD 2>/dev/null || true)"
+case "$current_branch" in
+  main|master) ;;
+  *) exit 0 ;;
+esac
+
+if [ "${ALLOW_COMMIT_MAIN:-0}" = "1" ]; then
+  echo "⚠ ALLOW_COMMIT_MAIN=1：允许在 $current_branch 上提交。"
+  echo "  该提交在推送前不会经过 CI。请尽快走 PR 让 8 项必需检查真正执行。" >&2
+  exit 0
+fi
+
+cat >&2 <<EOF
+
+✗ 拒绝在受保护分支「$current_branch」上直接提交。
+
+  为什么拦在「提交」而不是「推送」：
+    pre-push 只在推送时检查。提交可以无限积压、永不推送——
+    2026-11-04 积压 26 个、2026-11-05 积压 13 个，两次都没被任何检查看见。
+    而分支保护只在 PR 上跑 CI，这些提交等于「本地跑过就算过」。
+
+  正确做法（一个任务 = 一个 worktree = 一个分支）：
+
+    git fetch origin
+    git worktree add ../oaiss-task-<编号> -b <type>/<scope>-<slug> origin/main
+    cd ../oaiss-task-<编号>
+    # 在这里改代码、提交、推送，然后开 PR
+
+  已经改好、只差提交？把改动挪到新分支即可，不丢工作：
+
+    git stash push -u -m "wip"
+    git worktree add ../oaiss-task-<编号> -b <type>/<scope>-<slug> origin/main
+    cd ../oaiss-task-<编号>
+    git stash pop
+
+  确需在 $current_branch 上落提交（合并 PR / revert / 紧急热修）：
+    ALLOW_COMMIT_MAIN=1 git commit ...
+
+EOF
+exit 1
