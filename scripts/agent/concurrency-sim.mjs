@@ -266,6 +266,70 @@ function scenario3() {
 }
 
 // ------------------------------------------------------------------
+// S5：小数版本号（V29_1）不得被误判为「命名不合规」
+// ------------------------------------------------------------------
+// 这是一次真实事故的回归锁：pre-push 的 version_of() 原本只认 ^V([0-9]+)__，
+// V29_1 解析为空 → 被判成命名不合规 → 整条推送 exit 1。表现是 main 上
+// 13 个提交全部推不出去，护栏从「保护」变成「封锁」。
+//
+// 本场景同时锁住三件事：
+//   1 小数版本不再触发「命名不合规」
+//   2 out-of-order 关闭时，低于水位线仍必须硬拦（保护没被削弱）
+//   3 out-of-order 开启时降级为提示（与运行期策略一致）
+function scenario5() {
+  const sb = makeSandbox('s5')
+  const A = sb.agents.agentA
+  const mig = 'oaiss-chain-backend/src/main/resources/db/migration'
+  const hook = join(REPO, '.githooks/pre-push')
+
+  // 基线已有 V30（makeSandbox 种入），这里新增 V29_1——版本号低于水位线
+  writeFileSync(join(A, `${mig}/V29_1__dedupe.sql`), '-- dedupe\n')
+  g(A, 'add', '-A')
+  g(A, 'commit', '-m', 'fix(db): agentA 加 V29_1 数据前置修复')
+
+  const headSha = g(A, 'rev-parse', 'HEAD').out
+  const remoteSha = g(A, 'rev-parse', 'origin/main').out
+  const stdin = `refs/heads/main ${headSha} refs/heads/main ${remoteSha}\n`
+
+  // 情形 A：out-of-order 未开启（沙盒里没有 application.yml）
+  //         期望：仍被 Flyway 水位线拦下，且**不得**报「命名不合规」
+  const rStrict = sh(A, 'bash', [hook, 'origin'], {
+    input: stdin,
+    env: { ...process.env, ALLOW_PUSH_MAIN: '1' },
+  })
+  const namingFalsePositive = /命名不合规/.test(rStrict.out)
+  const blockedByWatermark = /Flyway 版本冲突/.test(rStrict.out)
+
+  // 情形 B：out-of-order 开启 → 降级为提示，不阻塞
+  mkdirSync(join(A, 'oaiss-chain-backend/src/main/resources'), { recursive: true })
+  writeFileSync(
+    join(A, 'oaiss-chain-backend/src/main/resources/application.yml'),
+    'spring:\n  flyway:\n    out-of-order: true\n',
+  )
+  g(A, 'add', '-A')
+  g(A, 'commit', '-m', 'chore(sim): 开启 flyway out-of-order')
+  const headSha2 = g(A, 'rev-parse', 'HEAD').out
+  const stdin2 = `refs/heads/main ${headSha2} refs/heads/main ${remoteSha}\n`
+  const rOoo = sh(A, 'bash', [hook, 'origin'], {
+    input: stdin2,
+    env: { ...process.env, ALLOW_PUSH_MAIN: '1' },
+  })
+
+  const pass = !namingFalsePositive && blockedByWatermark && rOoo.ok
+  record(
+    'S5',
+    '小数迁移版本（V29_1）不得误判为命名不合规',
+    '关闭乱序时按水位线拦截且不报命名错误；开启乱序时降级为提示',
+    namingFalsePositive
+      ? '误报「命名不合规」（回归）'
+      : `拦截=${blockedByWatermark ? '水位线' : '无'}，乱序放行=${rOoo.ok ? 'yes' : 'no'}`,
+    pass,
+    '真实事故回归锁：version_of 只认 ^V([0-9]+)__ 时，V29_1 解析为空导致推送全被封锁。',
+  )
+  return sb
+}
+
+// ------------------------------------------------------------------
 // S4：落后远端时开工 → Preflight 必须 BLOCK
 // ------------------------------------------------------------------
 function scenario4() {
@@ -313,7 +377,7 @@ function scenario4() {
 // ------------------------------------------------------------------
 // 主流程
 // ------------------------------------------------------------------
-const scenarios = { S1: scenario1, S2: scenario2, S3: scenario3, S4: scenario4 }
+const scenarios = { S1: scenario1, S2: scenario2, S3: scenario3, S4: scenario4, S5: scenario5 }
 const picked = ONLY ? { [ONLY]: scenarios[ONLY] } : scenarios
 
 if (ONLY && !scenarios[ONLY]) {
