@@ -1,10 +1,10 @@
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-prophet==1.1.6
-scikit-learn==1.6.1
+fastapi==0.162.0
+uvicorn[standard]==0.54.0
+prophet==1.5.0
+scikit-learn==1.9.1
 xgboost==2.1.4
 pandas==2.2.3
-numpy==2.2.3
-pydantic==2.10.6
-pydantic-settings==2.7.1
+numpy==2.5.4
+pydantic==2.14.2
+pydantic-settings==2.16.2
 httpx==0.28.1
