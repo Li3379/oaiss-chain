@@ -42,6 +42,13 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '订单管理', roles: [ROLE.ENTERPRISE] },
       },
       {
+        // 交易详情由弹窗改为独立页面：链接可直接分享，且不再在列表页堆叠详情态。
+        path: 'enterprise/trading/orders/:id',
+        name: 'EnterpriseTradeDetail',
+        component: () => import('../views/enterprise/TradeDetail.vue'),
+        meta: { title: '交易详情', roles: [ROLE.ENTERPRISE] },
+      },
+      {
         path: 'enterprise/trading/market',
         name: 'EnterpriseTradingMarket',
         component: () => import('../views/enterprise/TradingMarket.vue'),
