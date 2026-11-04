@@ -352,7 +352,7 @@ class CarbonNeutralProjectServiceTest {
     void verifyProject_issuedCreditsEqualVerifiedReduction() {
         testProject.setVerificationStatus(CarbonNeutralProjectService.VERIFY_STATUS_PENDING);
         testProject.setStatus(CarbonNeutralProjectService.STATUS_IMPLEMENTING);
-        testProject.setIssuedCredits(BigDecimal.valueOf(10));
+        testProject.setIssuedCredits(BigDecimal.ZERO);
 
         ProjectVerificationRequest request = new ProjectVerificationRequest();
         request.setProjectId(1L);
@@ -363,8 +363,31 @@ class CarbonNeutralProjectServiceTest {
 
         CarbonNeutralProjectResponse response = service.verifyProject(testUser, request);
 
-        assertEquals(0, BigDecimal.valueOf(52.5).compareTo(response.getIssuedCredits()));
+        assertEquals(0, BigDecimal.valueOf(42.5).compareTo(response.getIssuedCredits()));
         assertEquals(CarbonNeutralProjectService.VERIFY_STATUS_VERIFIED, response.getVerificationStatus());
+    }
+
+    @Test
+    @DisplayName("核证失败-已签发碳信用的项目不可重复核证")
+    void verifyProject_alreadyIssuedCreditsRejected() {
+        testProject.setStatus(CarbonNeutralProjectService.STATUS_IMPLEMENTING);
+        testProject.setVerificationStatus(CarbonNeutralProjectService.VERIFY_STATUS_PENDING);
+        testProject.setIssuedCredits(BigDecimal.valueOf(10));
+
+        ProjectVerificationRequest request = new ProjectVerificationRequest();
+        request.setProjectId(1L);
+        request.setVerifiedReduction(BigDecimal.valueOf(800));
+
+        when(projectRepository.findById(1L)).thenReturn(Optional.of(testProject));
+        when(projectRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> service.verifyProject(testUser, request));
+
+        assertEquals(3003, ex.getCode());
+        verify(projectRepository, never()).save(any());
+        assertEquals(0, BigDecimal.valueOf(10).compareTo(testProject.getIssuedCredits()));
+        assertEquals(CarbonNeutralProjectService.VERIFY_STATUS_PENDING, testProject.getVerificationStatus());
     }
 
     @Test

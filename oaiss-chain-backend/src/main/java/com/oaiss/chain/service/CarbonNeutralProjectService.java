@@ -284,6 +284,11 @@ public class CarbonNeutralProjectService {
             throw new BusinessException(3003, "项目不在待核证状态");
         }
 
+        // 第二道防线：已签发过碳信用的项目不可再次签发
+        if (nz(project.getIssuedCredits()).compareTo(BigDecimal.ZERO) > 0) {
+            throw new BusinessException(3003, "项目已签发碳信用，不能重复核证");
+        }
+
         project.setActualReduction(request.getVerifiedReduction());
         project.setVerificationReport(request.getVerificationReport());
         project.setMonitoringData(request.getMonitoringData());
