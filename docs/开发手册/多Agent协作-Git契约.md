@@ -29,7 +29,7 @@
 
 | # | 规则 | 违反后果 | 由谁强制 |
 |---|---|---|---|
-| 1 | **一个任务 = 一个分支 = 一个 worktree** | 两个会话互相覆盖未提交文件 | `scripts/agent/preflight.mjs` + 流程 |
+| 1 | **一个任务 = 一个分支 = 一个 worktree** | 两个会话互相覆盖未提交文件 | `.githooks/pre-commit` + `scripts/agent/preflight.mjs` |
 | 2 | **改动前取得路径租约** | 版本号/接口撞车，合并时才发现 | `scripts/agent/lease.mjs` |
 | 3 | **禁止直推 main，只走 PR** | CI 在合并后才发现红，修复成本翻倍 | `.githooks/pre-push` + 分支保护 |
 | 4 | **动手前必须基线同步** | 两侧各自实现同一需求，合并时冲突密集 | `preflight` + `pre-push` 护栏 4 |
@@ -51,15 +51,20 @@
 | `pre-push` 护栏 1-3 | 推送时 | 本地 main **从未推送**，等于永不触发 |
 | `lease.mjs` | 人工调用 | 全仓没有任何脚本/CI 调用它 |
 
-所以补了两处**自动**执行：
+所以补了三处**自动**执行：
 
+- **`.githooks/pre-commit`**：拦截「在 main 上直接提交」。这是 2026-11-05 补上的
+  最后一块拼图。两次积压（26 个、13 个）的根因是**时机错配**——
+  `pre-push` 只在推送时检查，而提交可以无限积压、永不推送。更隐蔽的后果是：
+  本地 main 一旦领先远端，这些提交就再也不会被 CI 看见（分支保护只在 PR 上跑），
+  于是「本地跑过门禁」被当成「验过了」，而 8 项必需检查一次都没执行。
 - **`scripts/agent/preflight.mjs`**：开工前跑，只读、不改状态。
   它以 `BEHIND_ORIGIN` / `DIVERGED` / `OVERLAPPING_FILES` 三个码直接阻断
   「在漂移基线上开工 + 已产生冲突面」这一组合。
 - **`pre-push` 护栏 4**：推送前复查基线漂移。默认只警告（避免逼人 `--no-verify`），
   CI 与发布流程用 `REQUIRE_UP_TO_DATE=1` 硬拦。
 
-两条都有可执行的反向测试：`node scripts/agent/concurrency-sim.mjs`。
+三条都有可执行的反向测试：`node scripts/agent/concurrency-sim.mjs`（S1-S5）。
 
 ---
 
@@ -214,10 +219,55 @@ fix stuff
 
 ## 5. 版本与发布
 
-- SemVer：`MAJOR.MINOR.PATCH`，当前以 `CHANGELOG.md` 为准
-- Tag 格式：`v<MAJOR>.<MINOR>.<PATCH>`
+- SemVer：`MAJOR.MINOR.PATCH`，**唯一事实源是 `CHANGELOG.md`**
+  （`pom.xml` / `oaiss-chain-backend/pom.xml` / 前端 `package.json` 必须与之对齐，
+  由 `scripts/gates/version-verify.mjs` 强制）
+- Tag 格式：`v<MAJOR>.<MINOR>.<PATCH>`，**附注 tag**（`git tag -a`），不是轻量 tag
 - 打标签前必须：`main` 全绿 + `CHANGELOG.md` 顶部有对应段落
-- 流程见 `docs/开发手册/` 的发布章节
+
+### 5.1 发布流水（照抄即可）
+
+```bash
+# 0. 前提：改动已经通过 PR 合入 main，且 CI 全绿
+git switch main && git pull --ff-only
+
+# 1. 先写 CHANGELOG —— 顺序不能反。
+#    先打 tag 再补文档，等于发布了一个「没人知道改了什么」的版本。
+#    编辑 CHANGELOG.md，在顶部新增：
+#      ## [1.7.2] - YYYY-MM-DD
+#      （正文说明改了什么，release.mjs 会拒绝少于 30 字的空壳段落）
+
+# 2. 对齐三处版本号（pom / 后端 pom / package.json）
+#    改完跑门禁确认：
+node scripts/gates/version-verify.mjs
+
+# 3. 提交版本变更
+git add CHANGELOG.md pom.xml oaiss-chain-backend/pom.xml oaiss-chain-frontend/package.json
+ALLOW_COMMIT_MAIN=1 git commit -m "chore(release): 1.7.2"
+
+# 4. 干跑：检查 7 项前置条件，不做任何动作
+node scripts/release.mjs 1.7.2
+
+# 5. 打标签并推送
+node scripts/release.mjs 1.7.2 --tag --push
+
+# 6. 创建 GitHub Release（从 tag 抓 notes）
+gh release create v1.7.2 --title "v1.7.2" --notes-from-tag
+```
+
+`release.mjs` 会检查的 7 项：
+版本递增 / CHANGELOG 段落非占位 / 版本门禁通过 / 在 main 上 / 工作区干净 /
+不落后 origin/main / 当前提交 CI 全绿 / tag 未占用。
+
+**为什么需要脚本而不是几条命令**：发布最容易漏的不是打 tag，而是**前置条件**——
+在红色 CI 上打 tag、在没写 CHANGELOG 的版本上打 tag、在落后远端时打 tag。
+这些都能在 5 秒内查出来，但人工执行时通常一条都不查。
+
+### 5.2 关于 tag 与 worktree 的并发
+
+Tag 是**全局命名空间**，没有路径可以租。两个会话同时发布同一版本，
+后者会在 `--push` 阶段被远端拒绝（non-fast-forward），不会静默覆盖。
+但更早的失败信号是 `release.mjs` 的「tag 未占用」检查——**发布前先干跑一次**。
 
 ---
 
@@ -266,7 +316,7 @@ gh pr merge --squash --delete-branch && git worktree remove ../t-<id>
 怀疑护栏是否真的生效时，不要在文档里找答案，直接跑反向验证：
 
 ```bash
-node scripts/agent/concurrency-sim.mjs          # 4 个真实场景，全部在临时沙盒里跑
+node scripts/agent/concurrency-sim.mjs          # 5 个真实场景，全部在临时沙盒里跑
 node scripts/agent/concurrency-sim.mjs --only S3 # 单场景
 ```
 
@@ -276,6 +326,11 @@ node scripts/agent/concurrency-sim.mjs --only S3 # 单场景
 | S2 | 两个 Agent 改同一 i18n 文件 | **确实冲突**（证明独占租约不是多余门槛） |
 | S3 | 两侧各自 +1 到同一迁移版本号 | `pre-push` 以 Flyway 水位线拦截 |
 | S4 | 在落后远端的基线上开工 | `preflight` 以 `BEHIND_ORIGIN` 阻断 |
+| S5 | 小数迁移版本（`V29_1`） | 不误判「命名不合规」；乱序关闭时仍按水位线拦、开启时降级提示 |
 
 S2 的期望结果是「冲突」，这一点容易误读：我们的策略是**禁止同改**（高危路径独占），
 不是**解决同改**。S2 证明冲突真实存在，从而证明那条禁令不是形式主义。
+
+S5 是一次真实事故的回归锁：`version_of()` 只认 `^V([0-9]+)__` 时，`V29_1` 解析为空
+被判成「命名不合规」，导致 main 上 13 个提交全部推不出去——护栏从保护变成了封锁。
+验证时做过 A/B：把正则还原成旧版后 S5 立刻 FAIL，恢复后 PASS，确认它不是空转的锁。

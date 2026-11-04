@@ -120,6 +120,7 @@ docker compose -f deploy/compose/docker-compose.infra.yml up -d
    git config core.hooksPath .githooks
    ```
    * `commit-msg` 强制 Conventional Commits 格式
+   * `pre-commit` 拦截在 `main` 上直接提交（放行合并/revert：`ALLOW_COMMIT_MAIN=1`）
    * `pre-push` 拦截直推 main、Flyway 版本号撞车、提交信息回退
    * 多会话/多 Agent 并发作业的完整契约见
      [`docs/开发手册/多Agent协作-Git契约.md`](docs/开发手册/多Agent协作-Git契约.md)
