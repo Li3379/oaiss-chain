@@ -506,7 +506,7 @@ export default {
     sectionReport: 'Report Linkage',
     sectionTimeline: 'Status Timeline',
     sectionAudit: 'Remark & Audit',
-    reportLink: 'View linked carbon report',
+    reportLink: 'Go to carbon report list',
     backToList: 'Back to Orders',
     notFound: 'Trade not found, or you are not allowed to view it',
     labelAuditStatus: 'Trade Audit Status',

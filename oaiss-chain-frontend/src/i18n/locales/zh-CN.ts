@@ -506,7 +506,7 @@ export default {
     sectionReport: '核算关联',
     sectionTimeline: '状态时间线',
     sectionAudit: '备注与审计',
-    reportLink: '查看关联的碳核算报告',
+    reportLink: '前往碳核算报告列表',
     backToList: '返回订单列表',
     notFound: '未找到该交易，或您无权查看',
     labelAuditStatus: '成交审核状态',

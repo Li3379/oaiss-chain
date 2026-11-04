@@ -316,15 +316,17 @@ class BlockchainControllerTest {
         }
 
         @Test
-        @DisplayName("报告存证查询端点保留企业角色")
-        void testQueryReportSnapshotKeepsEnterprise() throws Exception {
+        @DisplayName("报告存证查询端点不再对企开放")
+        void testQueryReportSnapshotExcludesEnterprise() throws Exception {
             // @WebMvcTest(addFilters=false) 不执行方法级 @PreAuthorize（见 08-PATTERNS.md Trap 6），
             // 因此断言注解字面量而非 HTTP 状态码。
+            // CR-01：快照含 txHash / enterpriseId / 签名且无归属校验，对企业开放即跨租户读取。
             var handler = BlockchainController.class.getMethod("queryReportSnapshot", Long.class);
             PreAuthorize preAuthorize = handler.getAnnotation(PreAuthorize.class);
 
             assertThat(preAuthorize).isNotNull();
-            assertThat(preAuthorize.value()).contains("ENTERPRISE");
+            assertThat(preAuthorize.value()).doesNotContain("ENTERPRISE");
+            assertThat(preAuthorize.value()).isEqualTo("hasAnyRole('ADMIN', 'REVIEWER', 'THIRD_PARTY')");
         }
     }
 

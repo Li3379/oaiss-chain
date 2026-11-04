@@ -9,7 +9,7 @@
  *   2. 附件凭证上传组件：支持上传发票、电费单、化验单佐证原件至 MinIO
  *   3. RSA 电子签名状态面板：展示企业公钥证书与防篡改签名就绪状态
  *   4. 历史填报报告列表：分页展示草稿、待初审、审核通过、已驳回、已上链状态
- *   5. 报告详情抽屉：穿透查看核算因数、上传材料、TxHash 链上凭证
+ *   5. 报告详情抽屉：穿透查看核算因数、上传材料、存证状态（不展示哈希）
  *   6. AI 减排诊断分析弹窗：调用 Copilot 大模型生成报告诊断与减排建议
  * 【对应后端 Controller & API】：
  *   - CarbonController:
@@ -1125,7 +1125,6 @@ onMounted(() => {
             <!-- 历史 Mock 欠账：哈希在库里、链上没有。必须显式告知，否则企业会误以为存证有效 -->
             <el-alert
               v-if="detailData.chainMark === 'HISTORICAL_MOCK'"
-              class="chain-mark-alert"
               type="warning"
               :closable="false"
               :title="t('carbonUpload.chainMarkHistoricalMockTitle')"

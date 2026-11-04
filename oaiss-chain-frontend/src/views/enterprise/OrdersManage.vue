@@ -268,7 +268,7 @@ const orderStats = computed(() => {
         <el-table-column prop="createdAt" :label="t('ordersManage.colCreateTime')" min-width="170" :formatter="(row: TradeResponse) => formatDateTime(row.createdAt)" />
         <el-table-column :label="t('ordersManage.colOperation')" width="150" fixed="right">
           <template #default="{ row }">
-            <router-link :to="`/enterprise/trading/orders/${row.id}`">
+            <router-link v-if="row.id" :to="`/enterprise/trading/orders/${row.id}`">
               <el-button link type="primary">{{ t('common.viewDetail') }}</el-button>
             </router-link>
             <el-button v-if="row.status === 0" link type="danger" @click="handleCancel(row)">{{ t('ordersManage.btnCancel') }}</el-button>

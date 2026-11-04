@@ -276,4 +276,45 @@ describe('CarbonUpload.vue', () => {
     expect(wrapper.text()).toContain('这条存证的链上记录不可核验')
     wrapper.unmount()
   })
+
+  it('HISTORICAL_MOCK 告警在没有 onChainAt 时也必须显示', async () => {
+    vi.mocked(getReport).mockResolvedValueOnce({
+      id: 10,
+      status: 5,
+      chainMark: 'HISTORICAL_MOCK',
+      onChainAt: null,
+    } as never)
+
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    await (wrapper.vm as unknown as { viewDetail: (row: { id: number; status: number }) => Promise<void> })
+      .viewDetail({ id: 10, status: 5 })
+    await flushPromises()
+
+    // 外层卡片条件是 chainMark === 'HISTORICAL_MOCK' || onChainAt，
+    // 只靠 onChainAt 才显示会把「链上没有、库里写着」的最危险情况藏起来
+    expect(wrapper.text()).toContain('这条存证的链上记录不可核验')
+    wrapper.unmount()
+  })
+
+  it('详情弹窗不渲染区块链哈希（D-02）', async () => {
+    vi.mocked(getReport).mockResolvedValueOnce({
+      id: 11,
+      status: 5,
+      blockchainTxHash: 'tx-should-never-render',
+      onChainAt: '2026-10-01T10:00:00',
+    } as never)
+
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    await (wrapper.vm as unknown as { viewDetail: (row: { id: number; status: number }) => Promise<void> })
+      .viewDetail({ id: 11, status: 5 })
+    await flushPromises()
+
+    // 即便后端仍返回 blockchainTxHash，企业端详情也不得出现该值
+    expect(wrapper.text()).not.toContain('tx-should-never-render')
+    wrapper.unmount()
+  })
 })

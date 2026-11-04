@@ -36,7 +36,7 @@ export class Layout {
     await expect(this.page.locator('.top-tab')).toHaveCount(count)
   }
 
-  /** 图标栏条数（企业 12 / 审核 5 / 监管 2 / 管理 6，含「搜索查询」入口） */
+  /** 图标栏条数（企业 11 / 审核 5 / 监管 3 / 管理 7，含「搜索查询」入口；Phase 8 区块浏览器移交监管/管理员） */
   async expectRailCount(count: number): Promise<void> {
     await expect(this.page.locator('.pen-rail__item')).toHaveCount(count)
   }

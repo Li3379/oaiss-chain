@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { nextTick } from 'vue'
+import { createPinia } from 'pinia'
 
 vi.mock('element-plus', async (importOriginal) => {
   const actual = (await importOriginal() as any)
@@ -41,9 +42,12 @@ vi.mock('../../api/search', () => ({
   })),
 }))
 
-vi.mock('../../utils/auth', () => ({
-  getAccessToken: vi.fn(() => null),
-}))
+// 只覆盖 getAccessToken，其余导出保留真实实现——Pinia store 初始化会用到
+// clearTokens / isTokenExpired / parseJwtPayload
+vi.mock('../../utils/auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../utils/auth')>()
+  return { ...actual, getAccessToken: vi.fn(() => null) }
+})
 
 import OfficialHome from '../OfficialHome.vue'
 import { useRouter } from 'vue-router'
@@ -66,7 +70,7 @@ const stubs = {
 
 function mountOfficialHome() {
   return mount(OfficialHome, {
-    global: { stubs },
+    global: { plugins: [createPinia()], stubs },
     attachTo: document.body,
   })
 }

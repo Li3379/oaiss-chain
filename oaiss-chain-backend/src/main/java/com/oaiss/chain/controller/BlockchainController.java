@@ -18,9 +18,11 @@ import com.oaiss.chain.annotation.AuditLog;
 /**
  * ==============================================================================
  * 【业务模块】：09. 超级账本（Hyperledger Fabric）区块链浏览器与存证溯源 (Blockchain Explorer)
- * 【服务角色】：企业用户 (ENTERPRISE)、系统管理员 (ADMIN)、第三方监管 (THIRD_PARTY)
+ * 【服务角色】：系统管理员 (ADMIN)、第三方监管 (THIRD_PARTY)、审核员 (REVIEWER，仅报告快照)
+ *   - 企业用户 (ENTERPRISE) 仅保留 GET /status（链可用性探活），
+ *     区块、交易、报告快照对企业一律不可见（Phase 8 D-02/D-06 收口）。
  * 【对应前端页面与路由】：
- *   - 区块链浏览器: views/enterprise/Blockchain.vue -> 路由: /enterprise/blockchain/browser
+ *   - 区块链浏览器: views/enterprise/Blockchain.vue -> 路由: /enterprise/blockchain/browser（ADMIN/THIRD_PARTY）
  *   - 官网首页链状态: views/OfficialHome.vue -> 路由: /official-home
  *   - 管理员终审上链: views/admin/VerifyList.vue -> 路由: /admin/verify/list
  * 【调用前端 API 模块】：src/api/blockchain.ts
@@ -80,13 +82,17 @@ public class BlockchainController {
 
     /**
      * 【业务功能】：读回某份碳报告在链上的原始快照（链码 QueryReportHistory 最新一版）
-     * 【对应前端页面】：views/enterprise/CarbonUpload.vue 报告详情「链上原始快照」折叠区
-     * 【对应前端API】：api/blockchain.ts -> getReportSnapshot()
-     * 【可见UI操作】：展开折叠区，逐字段核对「链上写了什么」与本地库记录是否一致
+     * 【对应前端页面】：无（企业端「链上原始快照」折叠区已于 Phase 8 D-02 移除）
+     * 【对应前端API】：无（管理端对账直接调用 Service，不经过本端点）
+     * 【可见UI操作】：监管/审核/管理员按报告 ID 穿透核查链上记录
      *
      * <p>这是链上数据唯一对外可读的业务入口：区块/交易列表只回答「哪笔交易进了哪个块」，
      * 回答不了「这份报告的周期、三范围排放、签名长什么样」。数据本就在链上，
      * 此前没有任何端点能取回。</p>
+     *
+     * <p>Phase 8 CR-01：该端点返回的是原始账本快照（含 txHash、enterpriseId、签名），
+     * 且没有归属校验，对 ENTERPRISE 开放等同于跨租户任意读取。企业端已无消费方，
+     * 故授权收口为 ADMIN / REVIEWER / THIRD_PARTY。</p>
      */
     @AuditLog(module = "区块链", action = "查询报告链上快照", description = "区块链 查询报告链上快照")
     @GetMapping("/report/{reportId}")
@@ -98,7 +104,7 @@ public class BlockchainController {
     })
     @SecurityRequirement(name = "Bearer Authentication")
     @Parameter(name = "reportId", description = "碳报告ID（链上主键）", required = true, example = "1")
-    @PreAuthorize("hasAnyRole('ADMIN', 'ENTERPRISE', 'REVIEWER', 'THIRD_PARTY')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'REVIEWER', 'THIRD_PARTY')")
     public ApiResponse<String> queryReportSnapshot(@PathVariable Long reportId) {
         return ApiResponse.success(blockchainService.queryReportSnapshot(reportId));
     }

@@ -56,13 +56,3 @@ export function getLatestBlocks(params?: PageRequest): Promise<PageResponse<Bloc
 export function queryBlock(blockNumber: number): Promise<BlockchainBlockResponse | Record<string, unknown>> {
   return request.get(`/blockchain/block/${blockNumber}`)
 }
-
-/**
- * 【业务功能】：查询某份碳报告在链上的原始快照（链码 QueryReportHistory）
- * 【对应前端页面】：CarbonUpload.vue 报告详情「链上原始快照」折叠区
- * 【界面触发操作】：展开折叠区，核对链上存证与本地记录是否一致
- * 【后端对应端点】：BlockchainController -> GET /blockchain/report/{reportId}
- */
-export function getReportSnapshot(reportId: number): Promise<Record<string, unknown>> {
-  return request.get(`/blockchain/report/${reportId}`)
-}

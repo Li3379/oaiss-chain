@@ -14,7 +14,7 @@
  * 【刻意不展示】区块链哈希等基础设施细节（Phase 8 D-02）。
  * ==============================================================================
  */
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { getTrade } from '../../api/trade'
@@ -30,7 +30,6 @@ const route = useRoute()
 const tradeId = computed(() => Number(route.params.id))
 
 const loading = ref(false)
-const notFound = ref(false)
 const trade = ref<TradeResponse | null>(null)
 
 /** 交易类型文案走前端 i18n（后端 tradeTypeText 为中文，en 界面下会混语言） */
@@ -57,46 +56,65 @@ const auditStatusText = computed(() => {
 
 const reportId = computed(() => Number(trade.value?.reportId) || 0)
 
+/** 终态文案：取消/失败时末节点必须写明结局，不能继续显示「尚未完成」 */
+const terminalStep = computed(() => {
+  const row = trade.value
+  if (!row) return null
+  const at = formatDateTime(row.completedAt) || '-'
+  if (row.status === 3) return { title: t('statusMeta.tradeCancelled'), description: at }
+  if (row.status === 4) return { title: t('statusMeta.tradeFailed'), description: at }
+  return {
+    title: t('tradeDetail.timelineCompleted'),
+    description: formatDateTime(row.completedAt) || t('tradeDetail.timelinePending'),
+  }
+})
+
 const timelineSteps = computed(() => {
   const row = trade.value
-  if (!row) return []
+  if (!row || !terminalStep.value) return []
   const steps = [
     { title: t('tradeDetail.timelineCreated'), description: formatDateTime(row.createdAt) || '-' },
   ]
   if (hasAuditStatus.value) {
     steps.push({ title: t('tradeDetail.timelineAudit'), description: auditStatusText.value })
   }
-  steps.push({
-    title: t('tradeDetail.timelineCompleted'),
-    description: formatDateTime(row.completedAt) || t('tradeDetail.timelinePending'),
-  })
+  steps.push(terminalStep.value)
   return steps
 })
 
-/** 已完成走到末节点，其余停在首节点——状态时间线只表达已发生的事实 */
-const timelineActive = computed(() => (trade.value?.status === 2 ? timelineSteps.value.length : 1))
+/**
+ * 状态时间线只表达已发生的事实：
+ * - 已完成 → 全部节点走完；
+ * - 已取消/已失败 → 停在末节点（有审核节点时 0/1 已完成）；
+ * - 成交审核已通过但未完成 → 审核节点已完成，末节点进行中；
+ * - 其余 → 停在首节点之后。
+ */
+const timelineActive = computed(() => {
+  const status = trade.value?.status
+  if (status === 2) return timelineSteps.value.length
+  if (status === 3 || status === 4) return hasAuditStatus.value ? 2 : 1
+  if (trade.value?.auditStatus === 2) return 2
+  return 1
+})
 
 const loadTrade = async () => {
   if (!tradeId.value) {
-    notFound.value = true
+    trade.value = null
     return
   }
   try {
     loading.value = true
-    notFound.value = false
     trade.value = await getTrade(tradeId.value)
   } catch {
     // 404/403 的提示由 axios 拦截器统一弹出，这里只负责页面级空态
     trade.value = null
-    notFound.value = true
   } finally {
     loading.value = false
   }
 }
 
-onMounted(() => {
-  loadTrade()
-})
+// 路由复用同一组件实例时 detail→detail 导航不会重新挂载，监听 id 变化重新加载
+watch(tradeId, () => { void loadTrade() }, { immediate: true })
 </script>
 
 <template>
@@ -166,7 +184,7 @@ onMounted(() => {
       </div>
     </template>
 
-    <el-empty v-else-if="notFound" :description="t('tradeDetail.notFound')">
+    <el-empty v-else-if="!loading" :description="t('tradeDetail.notFound')">
       <router-link :to="'/enterprise/orders/manage'">
         <el-button type="primary">{{ t('tradeDetail.backToList') }}</el-button>
       </router-link>
