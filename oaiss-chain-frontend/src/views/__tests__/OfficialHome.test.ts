@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { nextTick } from 'vue'
+import { createPinia } from 'pinia'
 
 vi.mock('element-plus', async (importOriginal) => {
   const actual = (await importOriginal() as any)
@@ -23,6 +24,7 @@ vi.mock('../config/images', () => ({
 
 vi.mock('../../api/blockchain', () => ({
   getStatus: vi.fn(() => Promise.resolve({ connected: false, mode: 'STANDBY', channel: 'mychannel', chaincode: 'carbon-chaincode' })),
+  getLatestBlocks: vi.fn(() => Promise.resolve({ items: [], total: 0 })),
 }))
 
 vi.mock('../../api/search', () => ({
@@ -41,13 +43,29 @@ vi.mock('../../api/search', () => ({
   })),
 }))
 
-vi.mock('../../utils/auth', () => ({
-  getAccessToken: vi.fn(() => null),
-}))
+// 只覆盖 getAccessToken，其余导出保留真实实现——Pinia store 初始化会用到
+// clearTokens / isTokenExpired / parseJwtPayload
+vi.mock('../../utils/auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../utils/auth')>()
+  return { ...actual, getAccessToken: vi.fn(() => null) }
+})
 
 import OfficialHome from '../OfficialHome.vue'
 import { useRouter } from 'vue-router'
 import { getMarketOverview } from '../../api/search'
+import { getLatestBlocks } from '../../api/blockchain'
+import { getAccessToken } from '../../utils/auth'
+
+/** 造一个结构合法、未过期的 JWT（前端只解码 payload，不验签） */
+function fakeJwt(roles: string[]): string {
+  const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
+  const payload = btoa(JSON.stringify({
+    sub: 'tester',
+    roles,
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  }))
+  return `${header}.${payload}.signature`
+}
 
 const stubs = {
   'el-card': { template: '<div class="el-card"><slot /></div>' },
@@ -66,7 +84,7 @@ const stubs = {
 
 function mountOfficialHome() {
   return mount(OfficialHome, {
-    global: { stubs },
+    global: { plugins: [createPinia()], stubs },
     attachTo: document.body,
   })
 }
@@ -134,6 +152,28 @@ describe('OfficialHome.vue', () => {
     await nextTick()
 
     expect(wrapper.find('.pulse-value').text()).toBe('MOCK · ONLINE')
+    wrapper.unmount()
+  })
+
+  it('企业登录态不请求区块流，避免 403 轮询', async () => {
+    vi.mocked(getAccessToken).mockReturnValueOnce(fakeJwt(['ENTERPRISE']))
+
+    const wrapper = mountOfficialHome()
+    await flushPromises()
+
+    // /blockchain/blocks/latest 对 ENTERPRISE 已关闭（Phase 8 D-06），
+    // 拦截器会对 403 弹「无权限」，所以首页必须按角色跳过请求
+    expect(getLatestBlocks).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('监管登录态正常拉取区块流', async () => {
+    vi.mocked(getAccessToken).mockReturnValueOnce(fakeJwt(['THIRD_PARTY']))
+
+    const wrapper = mountOfficialHome()
+    await flushPromises()
+
+    expect(getLatestBlocks).toHaveBeenCalled()
     wrapper.unmount()
   })
 

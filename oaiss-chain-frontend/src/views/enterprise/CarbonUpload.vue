@@ -9,7 +9,7 @@
  *   2. 附件凭证上传组件：支持上传发票、电费单、化验单佐证原件至 MinIO
  *   3. RSA 电子签名状态面板：展示企业公钥证书与防篡改签名就绪状态
  *   4. 历史填报报告列表：分页展示草稿、待初审、审核通过、已驳回、已上链状态
- *   5. 报告详情抽屉：穿透查看核算因数、上传材料、TxHash 链上凭证
+ *   5. 报告详情抽屉：穿透查看核算因数、上传材料、存证状态（不展示哈希）
  *   6. AI 减排诊断分析弹窗：调用 Copilot 大模型生成报告诊断与减排建议
  * 【对应后端 Controller & API】：
  *   - CarbonController:
@@ -31,7 +31,6 @@ import { useI18n } from 'vue-i18n'
 import { getMyReports, createReport, updateReport, deleteReport, submitReport, getReport, getAiReportAnalysis, type AiReportAnalysisResponse } from '../../api/carbon'
 import { getKeyPair } from '../../api/signature'
 import { useCertificateStatus } from '../../composables/useCertificateStatus'
-import { getReportSnapshot } from '../../api/blockchain'
 import { uploadFile } from '../../api/file'
 import type { CarbonReportResponse, RsaKeyPairResponse } from '../../types'
 import { formatDateTime, formatNumber } from '../../utils/format'
@@ -138,16 +137,6 @@ const formRef = ref()
 const submitting = ref(false)
 const detailDialogVisible = ref(false)
 const detailData = ref<CarbonReportResponse | null>(null)
-/**
- * 链上原始快照（读自 Fabric 账本，非本地库）。
- *
- * 存证卡此前的 TxHash 来自 MySQL 的 blockchain_tx_hash 自填字段——它只能证明
- * 「我们记了一笔哈希」，证明不了「链上真的写了这份报告」。快照是从链上读回来的，
- * 才让「链上存了什么」变成可核对的事实。
- */
-const chainSnapshot = ref<Record<string, unknown> | null>(null)
-const chainSnapshotLoading = ref(false)
-const chainSnapshotError = ref('')
 const detailLoading = ref(false)
 const formModel = reactive({
   accountingPeriod: '',
@@ -783,45 +772,13 @@ const overviewStats = computed(() => {
 const viewDetail = async (row: CarbonReportResponse) => {
   detailLoading.value = true
   detailDialogVisible.value = true
-  chainSnapshot.value = null
-  chainSnapshotError.value = ''
   try {
-    const data = await getReport(row.id)
-    detailData.value = data
-    // 只有已上链的报告才去读账本；草稿/待审阶段链上没有东西可读
-    if (data?.blockchainTxHash) {
-      loadChainSnapshot(data.id)
-    }
+    detailData.value = await getReport(row.id)
   } catch {
     ElMessage.error(t('carbonUpload.loadDetailFailed'))
     detailDialogVisible.value = false
   } finally {
     detailLoading.value = false
-  }
-}
-
-/** 快照字段值展示：对象/数组转 JSON，其余原样；空值统一显示为 '-'。 */
-const formatSnapshotValue = (value: unknown): string => {
-  if (value === null || value === undefined || value === '') return '-'
-  if (typeof value === 'object') return JSON.stringify(value)
-  if (typeof value === 'string' && value.length > 120) return `${value.slice(0, 120)}…`
-  return String(value)
-}
-
-const loadChainSnapshot = async (reportId: number) => {
-  chainSnapshotLoading.value = true
-  try {
-    const snapshot = await getReportSnapshot(reportId)
-    chainSnapshot.value = snapshot || null
-    if (!snapshot) {
-      chainSnapshotError.value = t('carbonUpload.chainSnapshotEmpty')
-    }
-  } catch {
-    // 链上读不到不等于数据有问题：可能是节点不可达。提示「无法核对」而不是「存证缺失」。
-    chainSnapshot.value = null
-    chainSnapshotError.value = t('carbonUpload.chainSnapshotFailed')
-  } finally {
-    chainSnapshotLoading.value = false
   }
 }
 
@@ -1150,20 +1107,16 @@ onMounted(() => {
             </el-steps>
           </div>
 
-          <!-- 区块链不可篡改凭证卡片 -->
-          <div v-if="detailData.blockchainTxHash" style="margin-bottom: 16px; padding: 12px 16px; background: var(--pen-success-soft); border: 1px solid var(--color-status-success-soft); border-radius: 6px;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+          <!-- 存证状态卡片：只保留「数据完整性」信号，不再暴露哈希与链上原始快照 -->
+          <div
+            v-if="detailData.chainMark === 'HISTORICAL_MOCK' || detailData.onChainAt"
+            style="margin-bottom: 16px; padding: 12px 16px; background: var(--pen-success-soft); border: 1px solid var(--color-status-success-soft); border-radius: 6px;"
+          >
+            <div style="margin-bottom: 6px;">
               <span style="font-weight: 600; color: var(--color-status-success); font-size: 13px; display: inline-flex; align-items: center; gap: 5px;">
                 <el-icon><Link /></el-icon>
                 {{ t('carbonUpload.blockchainCertifiedTitle') }}
               </span>
-              <router-link to="/enterprise/blockchain/browser" style="font-size: 12px; color: var(--color-chart-1); text-decoration: none; display: inline-flex; align-items: center; gap: 3px;">
-                <span>{{ t('carbonUpload.viewInExplorer') }}</span>
-                <el-icon :size="12"><ArrowRight /></el-icon>
-              </router-link>
-            </div>
-            <div style="font-size: 12px; color: var(--color-text-muted); word-break: break-all;">
-              <span style="color: var(--color-text-muted);">TxHash:</span> <code>{{ detailData.blockchainTxHash }}</code>
             </div>
             <div v-if="detailData.onChainAt" style="font-size: 11px; color: var(--color-text-muted); margin-top: 4px;">
               {{ t('carbonUpload.onChainAtLabel') }}: {{ formatDateTime(detailData.onChainAt) }}
@@ -1172,33 +1125,11 @@ onMounted(() => {
             <!-- 历史 Mock 欠账：哈希在库里、链上没有。必须显式告知，否则企业会误以为存证有效 -->
             <el-alert
               v-if="detailData.chainMark === 'HISTORICAL_MOCK'"
-              class="chain-mark-alert"
               type="warning"
               :closable="false"
               :title="t('carbonUpload.chainMarkHistoricalMockTitle')"
               :description="t('carbonUpload.chainMarkHistoricalMockBody')"
             />
-
-            <!-- 链上原始快照：从 Fabric 账本读回，用于核对「链上到底写了什么」 -->
-            <el-collapse class="chain-snapshot" data-testid="chain-snapshot">
-              <el-collapse-item :title="t('carbonUpload.chainSnapshotTitle')" name="snapshot">
-                <div v-loading="chainSnapshotLoading" class="chain-snapshot__body">
-                  <p v-if="chainSnapshotError" class="chain-snapshot__hint">{{ chainSnapshotError }}</p>
-                  <template v-else-if="chainSnapshot">
-                    <el-descriptions :column="2" size="small" border>
-                      <el-descriptions-item
-                        v-for="(value, key) in chainSnapshot"
-                        :key="String(key)"
-                        :label="String(key)"
-                      >
-                        <span class="chain-snapshot__value">{{ formatSnapshotValue(value) }}</span>
-                      </el-descriptions-item>
-                    </el-descriptions>
-                    <pre class="chain-snapshot__raw">{{ JSON.stringify(chainSnapshot, null, 2) }}</pre>
-                  </template>
-                </div>
-              </el-collapse-item>
-            </el-collapse>
           </div>
 
           <el-descriptions :column="2" border>

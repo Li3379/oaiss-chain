@@ -16,12 +16,14 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -119,6 +121,18 @@ class BlockchainControllerTest {
                     .andExpect(jsonPath("$.data.peers").value(0));
 
             verify(blockchainService, times(1)).checkConnection();
+        }
+
+        @Test
+        @DisplayName("状态查询端点保留企业角色")
+        void testCheckStatusKeepsEnterprise() throws Exception {
+            // @WebMvcTest(addFilters=false) 不执行方法级 @PreAuthorize（见 08-PATTERNS.md Trap 6），
+            // 因此断言注解字面量而非 HTTP 状态码。
+            var handler = BlockchainController.class.getMethod("checkStatus");
+            PreAuthorize preAuthorize = handler.getAnnotation(PreAuthorize.class);
+
+            assertThat(preAuthorize).isNotNull();
+            assertThat(preAuthorize.value()).contains("ENTERPRISE");
         }
     }
 
@@ -234,6 +248,20 @@ class BlockchainControllerTest {
 
             verify(blockchainService, times(1)).queryBlock(blockNumber);
         }
+
+        @Test
+        @DisplayName("区块查询端点仅 ADMIN/THIRD_PARTY 可达")
+        void testQueryBlockRestrictedToAdminAndThirdParty() throws Exception {
+            // @WebMvcTest(addFilters=false) 不执行方法级 @PreAuthorize（见 08-PATTERNS.md Trap 6），
+            // 因此断言注解字面量而非 HTTP 状态码。
+            var handler = BlockchainController.class.getMethod("queryBlock", Long.class);
+            PreAuthorize preAuthorize = handler.getAnnotation(PreAuthorize.class);
+
+            assertThat(preAuthorize).isNotNull();
+            assertThat(preAuthorize.value()).doesNotContain("ENTERPRISE");
+            assertThat(preAuthorize.value()).contains("ADMIN");
+            assertThat(preAuthorize.value()).contains("THIRD_PARTY");
+        }
     }
 
     // ==================== Query Report Snapshot Tests ====================
@@ -285,6 +313,20 @@ class BlockchainControllerTest {
                     .andExpect(jsonPath("$.code").value(5001));
 
             verify(blockchainService, times(1)).queryReportSnapshot(reportId);
+        }
+
+        @Test
+        @DisplayName("报告存证查询端点不再对企开放")
+        void testQueryReportSnapshotExcludesEnterprise() throws Exception {
+            // @WebMvcTest(addFilters=false) 不执行方法级 @PreAuthorize（见 08-PATTERNS.md Trap 6），
+            // 因此断言注解字面量而非 HTTP 状态码。
+            // CR-01：快照含 txHash / enterpriseId / 签名且无归属校验，对企业开放即跨租户读取。
+            var handler = BlockchainController.class.getMethod("queryReportSnapshot", Long.class);
+            PreAuthorize preAuthorize = handler.getAnnotation(PreAuthorize.class);
+
+            assertThat(preAuthorize).isNotNull();
+            assertThat(preAuthorize.value()).doesNotContain("ENTERPRISE");
+            assertThat(preAuthorize.value()).isEqualTo("hasAnyRole('ADMIN', 'REVIEWER', 'THIRD_PARTY')");
         }
     }
 
@@ -417,6 +459,20 @@ class BlockchainControllerTest {
 
             verify(blockchainService, times(1)).listTransactions(3, 10);
         }
+
+        @Test
+        @DisplayName("交易列表端点对企业角色关闭")
+        void testListTransactionsForbiddenForEnterprise() throws Exception {
+            // @WebMvcTest(addFilters=false) 不执行方法级 @PreAuthorize（见 08-PATTERNS.md Trap 6），
+            // 因此断言注解字面量而非 HTTP 状态码。
+            var handler = BlockchainController.class.getMethod(
+                    "listTransactions", Integer.class, Integer.class);
+            PreAuthorize preAuthorize = handler.getAnnotation(PreAuthorize.class);
+
+            assertThat(preAuthorize).isNotNull();
+            assertThat(preAuthorize.value()).doesNotContain("ENTERPRISE");
+            assertThat(preAuthorize.value()).isEqualTo("hasAnyRole('ADMIN', 'THIRD_PARTY')");
+        }
     }
 
     // ==================== List Latest Blocks Tests ====================
@@ -488,6 +544,20 @@ class BlockchainControllerTest {
                     .andExpect(jsonPath("$.code").value(200));
 
             verify(blockchainService, times(1)).listLatestBlocks(1, 5);
+        }
+
+        @Test
+        @DisplayName("最新区块列表端点对企业角色关闭")
+        void testListLatestBlocksForbiddenForEnterprise() throws Exception {
+            // @WebMvcTest(addFilters=false) 不执行方法级 @PreAuthorize（见 08-PATTERNS.md Trap 6），
+            // 因此断言注解字面量而非 HTTP 状态码。
+            var handler = BlockchainController.class.getMethod(
+                    "listLatestBlocks", Integer.class, Integer.class);
+            PreAuthorize preAuthorize = handler.getAnnotation(PreAuthorize.class);
+
+            assertThat(preAuthorize).isNotNull();
+            assertThat(preAuthorize.value()).doesNotContain("ENTERPRISE");
+            assertThat(preAuthorize.value()).isEqualTo("hasAnyRole('ADMIN', 'THIRD_PARTY')");
         }
     }
 }

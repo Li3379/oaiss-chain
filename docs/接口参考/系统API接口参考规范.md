@@ -794,7 +794,7 @@ List projects pending verification.
 
 Get blockchain connection status.
 
-- ADMIN, ENTERPRISE, THIRD_PARTY**
+- ADMIN, ENTERPRISE, REVIEWER, THIRD_PARTY**
 
 ### GET `/blockchain/block/{blockNumber}`
 
@@ -807,19 +807,19 @@ Query a block by number.
 Read the on-chain v2 snapshot of a carbon report (chaincode `QueryReportHistory`, latest version).
 Returns the raw snapshot JSON; `data` is `null` when the ledger has no record for that report id.
 
-- ADMIN, ENTERPRISE, REVIEWER, THIRD_PARTY**
+- ADMIN, REVIEWER, THIRD_PARTY**
 
 ### GET `/blockchain/transactions`
 
 List recent transactions.
 
-- ADMIN, ENTERPRISE, THIRD_PARTY** | Paginated
+- ADMIN, THIRD_PARTY** | Paginated
 
 ### GET `/blockchain/blocks/latest`
 
 Get latest blocks.
 
-- ADMIN, ENTERPRISE, THIRD_PARTY**
+- ADMIN, THIRD_PARTY**
 - 
 
 ### Digital Signature (`/signature`)

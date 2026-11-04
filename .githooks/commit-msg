@@ -40,8 +40,14 @@ if [ -z "$SUBJECT" ]; then
 fi
 
 # 放行场景
+#
+# 注意 `merge: ...`：Conventional Commits 没有 merge 这个 type，但把合并
+# 描述成一条规范提交是完全合理的写法，而且比 git 默认的
+# "Merge branch 'x'" 更可读。第一版只放行裸的 `Merge `，于是
+# `merge: 合入 agent B 的独立改动` 这种**更规范**的写法反而被拒——
+# 护栏惩罚了它本该鼓励的行为。现在两种都放行。
 case "$SUBJECT" in
-  Merge\ *|Revert\ *|fixup!\ *|squash!\ *|amend!\ *)
+  Merge\ *|merge:\ *|Revert\ *|revert:\ *|fixup!\ *|squash!\ *|amend!\ *)
     exit 0
     ;;
 esac

@@ -16,7 +16,8 @@ function writeJson(name: string, data: unknown) {
 
 test('probe blockchain browser status and transaction lookup', async ({ page }) => {
   ensureOutDir()
-  await loginViaApi(page, 'enterprise001', 'admin123')
+  // 区块浏览器已收口为 ADMIN/THIRD_PARTY（Phase 8 D-01）
+  await loginViaApi(page, 'thirdparty001', 'admin123')
   await page.goto(`${BASE_URL}/enterprise/blockchain/browser`)
   await page.waitForLoadState('domcontentloaded')
   await page.waitForTimeout(1000)

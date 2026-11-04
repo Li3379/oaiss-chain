@@ -24,12 +24,9 @@ test('probe official home routes and footer anchor scrolling', async ({ page }) 
   const featureButtons = page.locator('.feature-card .el-button')
   const roleButtons = page.locator('.role-card .el-button')
 
-  await expect(featureButtons.nth(1)).toHaveAttribute('data-route', '/enterprise/blockchain/browser')
-  await featureButtons.nth(1).click()
-  await expect(page).toHaveURL(/\/enterprise\/blockchain\/browser$/)
-  await page.goBack()
-  await page.waitForLoadState('domcontentloaded')
-  await page.waitForTimeout(400)
+  // Phase 8 D-01：区块浏览器已是 ADMIN/THIRD_PARTY 内部工具，
+  // 公开页入口改指登录页，不再把访客送到会被守卫弹回的地址。
+  await expect(featureButtons.nth(1)).toHaveAttribute('data-route', '/login')
 
   await expect(featureButtons.nth(3)).toHaveAttribute('data-route', '/enterprise/user/profile')
   await featureButtons.nth(3).click()

@@ -72,11 +72,11 @@ function mockEmptyBlockchainApi(page) {
 
 test.describe('D9: Blockchain Browser', () => {
   test.describe('Blocks Tab', () => {
-    test.use({ storageState: buildStorageState('enterprise') })
+    test.use({ storageState: buildStorageState('THIRD_PARTY') })
 
     test.beforeEach(async ({ page }) => {
       mockBlockchainApi(page)
-      await loginViaToken(page, 'enterprise')
+      await loginViaToken(page, 'THIRD_PARTY')
       await page.goto('/enterprise/blockchain/browser')
       await page.waitForLoadState('networkidle')
     })
@@ -110,11 +110,11 @@ test.describe('D9: Blockchain Browser', () => {
   })
 
   test.describe('Transactions Tab', () => {
-    test.use({ storageState: buildStorageState('enterprise') })
+    test.use({ storageState: buildStorageState('THIRD_PARTY') })
 
     test.beforeEach(async ({ page }) => {
       mockBlockchainApi(page)
-      await loginViaToken(page, 'enterprise')
+      await loginViaToken(page, 'THIRD_PARTY')
       await page.goto('/enterprise/blockchain/browser')
       await page.waitForLoadState('networkidle')
     })
@@ -150,11 +150,11 @@ test.describe('D9: Blockchain Browser', () => {
   })
 
   test.describe('Empty State', () => {
-    test.use({ storageState: buildStorageState('enterprise') })
+    test.use({ storageState: buildStorageState('THIRD_PARTY') })
 
     test.beforeEach(async ({ page }) => {
       mockEmptyBlockchainApi(page)
-      await loginViaToken(page, 'enterprise')
+      await loginViaToken(page, 'THIRD_PARTY')
       await page.goto('/enterprise/blockchain/browser')
       await page.waitForLoadState('networkidle')
     })
@@ -167,7 +167,7 @@ test.describe('D9: Blockchain Browser', () => {
   })
 
   test.describe('API Integration', () => {
-    test.use({ storageState: buildStorageState('enterprise') })
+    test.use({ storageState: buildStorageState('THIRD_PARTY') })
 
     test('page calls blocks and transactions endpoints on load', async ({ page }) => {
       const requests = []
@@ -178,7 +178,7 @@ test.describe('D9: Blockchain Browser', () => {
       })
 
       mockBlockchainApi(page)
-      await loginViaToken(page, 'enterprise')
+      await loginViaToken(page, 'THIRD_PARTY')
       await page.goto('/enterprise/blockchain/browser')
       await page.waitForLoadState('networkidle')
 

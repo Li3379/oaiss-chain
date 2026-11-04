@@ -57,9 +57,6 @@ const currentPage = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
 
-const detailDialogVisible = ref(false)
-const currentDetailTrade = ref<TradeResponse | null>(null)
-
 const loadTrades = async () => {
   try {
     loading.value = true
@@ -119,11 +116,6 @@ const tradeTypeLabel = (tradeType: number | null | undefined) => {
 
 const getCounterparty = (row: TradeResponse) => {
   return row.buyerName || row.sellerName || '-'
-}
-
-const openDetail = (row: TradeResponse) => {
-  currentDetailTrade.value = row
-  detailDialogVisible.value = true
 }
 
 const handleCancel = async (row: TradeResponse) => {
@@ -276,7 +268,9 @@ const orderStats = computed(() => {
         <el-table-column prop="createdAt" :label="t('ordersManage.colCreateTime')" min-width="170" :formatter="(row: TradeResponse) => formatDateTime(row.createdAt)" />
         <el-table-column :label="t('ordersManage.colOperation')" width="150" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openDetail(row)">{{ t('common.viewDetail') }}</el-button>
+            <router-link v-if="row.id" :to="`/enterprise/trading/orders/${row.id}`">
+              <el-button link type="primary">{{ t('common.viewDetail') }}</el-button>
+            </router-link>
             <el-button v-if="row.status === 0" link type="danger" @click="handleCancel(row)">{{ t('ordersManage.btnCancel') }}</el-button>
           </template>
         </el-table-column>
@@ -295,26 +289,6 @@ const orderStats = computed(() => {
         />
       </template>
     </DataPanel>
-
-    <el-dialog v-model="detailDialogVisible" :title="t('ordersManage.dialogDetail')" width="700px">
-      <el-descriptions :column="2" border v-if="currentDetailTrade">
-        <el-descriptions-item :label="t('ordersManage.colTradeNo')">{{ currentDetailTrade.tradeNo }}</el-descriptions-item>
-        <el-descriptions-item :label="t('ordersManage.colTradeType')">{{ tradeTypeLabel(currentDetailTrade.tradeType) }}</el-descriptions-item>
-        <el-descriptions-item :label="t('ordersManage.labelBuyer')">{{ currentDetailTrade.buyerName || '-' }}</el-descriptions-item>
-        <el-descriptions-item :label="t('ordersManage.labelSeller')">{{ currentDetailTrade.sellerName || '-' }}</el-descriptions-item>
-        <el-descriptions-item :label="t('ordersManage.colQuantity')">{{ formatNumber(currentDetailTrade.quantity) }}</el-descriptions-item>
-        <el-descriptions-item :label="t('ordersManage.colUnitPrice')">{{ formatNumber(currentDetailTrade.unitPrice) }}</el-descriptions-item>
-        <el-descriptions-item :label="t('ordersManage.colTotalAmount')">{{ formatNumber(currentDetailTrade.totalAmount) }}</el-descriptions-item>
-        <el-descriptions-item :label="t('ordersManage.colTradeStatus')">
-          <StatusTag domain="trade" :status="currentDetailTrade.status" />
-        </el-descriptions-item>
-        <el-descriptions-item :label="t('ordersManage.colCreateTime')" :span="2">{{ formatDateTime(currentDetailTrade.createdAt) }}</el-descriptions-item>
-        <el-descriptions-item :label="t('ordersManage.labelRemark')" :span="2">{{ currentDetailTrade.remark || '-' }}</el-descriptions-item>
-        <el-descriptions-item v-if="currentDetailTrade.blockchainTxHash" :label="t('ordersManage.labelBlockchainHash')" :span="2">
-          {{ currentDetailTrade.blockchainTxHash }}
-        </el-descriptions-item>
-      </el-descriptions>
-    </el-dialog>
   </section>
 </template>
 

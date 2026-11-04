@@ -20,6 +20,7 @@ test.describe('Role: Enterprise - Smoke', () => {
     await page.waitForLoadState('networkidle')
     const layout = new Layout(page)
     // pen 图标栏：11 个入口，可访问名用完整菜单名（短标签只在视觉层）
+    // 区块浏览器已移交 ADMIN / THIRD_PARTY，企业端不再渲染该入口。
     await layout.expectSidebar([
       '碳核算',
       'P2P订单管理',
@@ -28,13 +29,12 @@ test.describe('Role: Enterprise - Smoke', () => {
       '本公司信息',
       '信誉评分',
       '碳币账户',
-      '区块链',
       '碳中和',
       'AI智能预测',
       '搜索查询',
       '个人中心',
     ])
-    await layout.expectRailCount(12)
+    await layout.expectRailCount(11)
   })
 
   test('user info displayed', async ({ page }) => {
@@ -130,14 +130,6 @@ test.describe('Role: Enterprise - Smoke', () => {
       await po.goto()
       await po.expectLoaded()
       await po.expectBalance()
-    })
-  })
-
-  test.describe('Blockchain Browser', () => {
-    test('page loads', async ({ page }) => {
-      await page.goto('/enterprise/blockchain/browser')
-      await page.waitForLoadState('networkidle')
-      await expect(page).toHaveURL(/\/enterprise\/blockchain\/browser/)
     })
   })
 

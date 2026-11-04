@@ -1231,6 +1231,9 @@ test.describe('OAISS CHAIN frontend full functional matrix', () => {
       }
     })
 
+    // 区块浏览器已收口为 ADMIN/THIRD_PARTY（Phase 8 D-01），S9 必须以监管身份执行
+    await gotoAs(page, request, 'thirdParty', '/enterprise/blockchain/browser')
+
     await recordCase(page, 'S9 Blockchain', 'S9-01', 'blockchain page loads', 'P2', async () => {
       await page.goto(`${BASE_URL}/enterprise/blockchain/browser`)
       await settle(page)
@@ -1248,6 +1251,9 @@ test.describe('OAISS CHAIN frontend full functional matrix', () => {
       if ((await txTab.count()) > 0) await txTab.first().click()
       await assertTableOrEmpty(page)
     })
+
+    // S9 换了监管会话，S10 起回到企业角色
+    await gotoAs(page, request, 'enterprise', '/enterprise/carbon/upload')
 
     await recordCase(page, 'S10 Carbon Neutral', 'S10-01', 'project page loads', 'P1', async () => {
       await page.goto(`${BASE_URL}/enterprise/carbon-neutral/projects`)

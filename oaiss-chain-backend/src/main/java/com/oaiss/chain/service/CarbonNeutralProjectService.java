@@ -256,6 +256,13 @@ public class CarbonNeutralProjectService {
             throw new BusinessException(3003, "项目不在可核证状态");
         }
 
+        // 只有未核证或核证失败的项目可提交核证；NULL 视为不可提交，避免拆箱 NPE
+        Integer verificationStatus = project.getVerificationStatus();
+        if (verificationStatus == null
+                || (verificationStatus != VERIFY_STATUS_NONE && verificationStatus != VERIFY_STATUS_FAILED)) {
+            throw new BusinessException(3003, "项目已申请核证或已核证，不能重复提交");
+        }
+
         project.setVerifierId(resolveVerifierUserId(verifierId));
         project.setVerificationStatus(VERIFY_STATUS_PENDING);
         project = projectRepository.save(project);
@@ -275,6 +282,11 @@ public class CarbonNeutralProjectService {
 
         if (project.getVerificationStatus() != VERIFY_STATUS_PENDING) {
             throw new BusinessException(3003, "项目不在待核证状态");
+        }
+
+        // 第二道防线：已签发过碳信用的项目不可再次签发
+        if (nz(project.getIssuedCredits()).compareTo(BigDecimal.ZERO) > 0) {
+            throw new BusinessException(3003, "项目已签发碳信用，不能重复核证");
         }
 
         project.setActualReduction(request.getVerifiedReduction());

@@ -2,10 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 
-vi.mock('../../api/blockchain', () => ({
-  getReportSnapshot: vi.fn(() => Promise.resolve(null)),
-}))
-
 vi.mock('../../api/carbon', () => ({
   getMyReports: vi.fn(() => Promise.resolve({ items: [], total: 0 })),
   createReport: vi.fn(() => Promise.resolve()),
@@ -26,7 +22,6 @@ vi.mock('element-plus', async (importOriginal) => {
 
 import CarbonUpload from '../enterprise/CarbonUpload.vue'
 import { getMyReports, createReport, deleteReport, submitReport, getAiReportAnalysis, getReport } from '../../api/carbon'
-import { getReportSnapshot } from '../../api/blockchain'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const stubs = {
@@ -262,50 +257,64 @@ describe('CarbonUpload.vue', () => {
     wrapper.unmount()
   })
 
-  it('loads the on-chain snapshot when the detail has a txHash', async () => {
-    vi.mocked(getMyReports).mockResolvedValueOnce({
-      items: [], total: 0,
-    } as never)
+  it('keeps the HISTORICAL_MOCK warning visible in the detail dialog', async () => {
     vi.mocked(getReport).mockResolvedValueOnce({
-      id: 7,
+      id: 9,
       status: 5,
-      blockchainTxHash: 'tx-abc',
+      chainMark: 'HISTORICAL_MOCK',
       onChainAt: '2026-10-01T10:00:00',
-    } as never)
-    vi.mocked(getReportSnapshot).mockResolvedValueOnce({
-      reportId: '7', schemaVersion: 'v2', totalEmission: '1234.56',
-    } as never)
-
-    const wrapper = mountComponent()
-    await flushPromises()
-
-    await (wrapper.vm as unknown as { viewDetail: (row: { id: number; status: number; blockchainTxHash: string }) => Promise<void> })
-      .viewDetail({ id: 7, status: 5, blockchainTxHash: 'tx-abc' })
-    await flushPromises()
-
-    expect(getReportSnapshot).toHaveBeenCalledWith(7)
-    expect((wrapper.vm as unknown as { chainSnapshot: unknown }).chainSnapshot).toMatchObject({
-      schemaVersion: 'v2',
-      totalEmission: '1234.56',
-    })
-
-    wrapper.unmount()
-  })
-
-  it('does not query the ledger when the report has no txHash', async () => {
-    vi.mocked(getReport).mockResolvedValueOnce({
-      id: 8, status: 1, blockchainTxHash: null,
     } as never)
 
     const wrapper = mountComponent()
     await flushPromises()
 
     await (wrapper.vm as unknown as { viewDetail: (row: { id: number; status: number }) => Promise<void> })
-      .viewDetail({ id: 8, status: 1 })
+      .viewDetail({ id: 9, status: 5 })
     await flushPromises()
 
-    expect(getReportSnapshot).not.toHaveBeenCalled()
+    // el-alert stub 不继承 class，按渲染后的告警文案断言
+    expect(wrapper.text()).toContain('这条存证的链上记录不可核验')
+    wrapper.unmount()
+  })
 
+  it('HISTORICAL_MOCK 告警在没有 onChainAt 时也必须显示', async () => {
+    vi.mocked(getReport).mockResolvedValueOnce({
+      id: 10,
+      status: 5,
+      chainMark: 'HISTORICAL_MOCK',
+      onChainAt: null,
+    } as never)
+
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    await (wrapper.vm as unknown as { viewDetail: (row: { id: number; status: number }) => Promise<void> })
+      .viewDetail({ id: 10, status: 5 })
+    await flushPromises()
+
+    // 外层卡片条件是 chainMark === 'HISTORICAL_MOCK' || onChainAt，
+    // 只靠 onChainAt 才显示会把「链上没有、库里写着」的最危险情况藏起来
+    expect(wrapper.text()).toContain('这条存证的链上记录不可核验')
+    wrapper.unmount()
+  })
+
+  it('详情弹窗不渲染区块链哈希（D-02）', async () => {
+    vi.mocked(getReport).mockResolvedValueOnce({
+      id: 11,
+      status: 5,
+      blockchainTxHash: 'tx-should-never-render',
+      onChainAt: '2026-10-01T10:00:00',
+    } as never)
+
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    await (wrapper.vm as unknown as { viewDetail: (row: { id: number; status: number }) => Promise<void> })
+      .viewDetail({ id: 11, status: 5 })
+    await flushPromises()
+
+    // 即便后端仍返回 blockchainTxHash，企业端详情也不得出现该值
+    expect(wrapper.text()).not.toContain('tx-should-never-render')
     wrapper.unmount()
   })
 })

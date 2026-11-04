@@ -41,11 +41,13 @@ import { getStatus, getLatestBlocks } from '../api/blockchain'
 import { getMarketOverview } from '../api/search'
 import type { BlockchainBlockResponse, MarketOverview } from '../types'
 import { getAccessToken } from '../utils/auth'
+import { useAppStore } from '../store'
 
 const { t } = useI18n()
 
 const router = useRouter()
 const route = useRoute()
+const appStore = useAppStore()
 
 const mobileMenuOpen = ref(false)
 
@@ -79,7 +81,9 @@ const featureCards = computed(() => [
     title: t('officialHome.featureBlockchain'),
     description: t('officialHome.featureBlockchainDesc'),
     icon: Link,
-    route: '/enterprise/blockchain/browser',
+    // 区块浏览器已收口为 ADMIN/THIRD_PARTY 内部工具（Phase 8 D-01），
+    // 公开页入口改指登录页，不再把访客/企业送到会被守卫弹回的地址。
+    route: '/login',
   },
   {
     title: t('officialHome.featureAI'),
@@ -419,8 +423,15 @@ const refreshPulse = async (): Promise<void> => {
   }
 }
 
+/**
+ * 区块流仅对具备链上浏览权限的角色可用（Phase 8 D-01/D-06）。
+ * 其余角色不发起请求：/blockchain/blocks/latest 已收口为 ADMIN/THIRD_PARTY，
+ * 企业登录态每 30 秒轮询会持续收到 403 并弹出「无权限」提示。
+ */
+const canReadBlockStream = computed(() => appStore.role === 'ADMIN' || appStore.role === 'THIRD_PARTY')
+
 const refreshBlocks = async (): Promise<void> => {
-  if (!getAccessToken()) return
+  if (!canReadBlockStream.value) return
   try {
     const page = await getLatestBlocks({ page: 0, size: 5 })
     const rows: BlockchainBlockResponse[] = Array.isArray(page?.items) ? page.items : []
@@ -545,7 +556,7 @@ watch(
               {{ t('officialHome.btnEnterSystem') }}
               <span class="hero-cta-arrow" aria-hidden="true">→</span>
             </button>
-            <button type="button" class="hero-cta-ghost" @click="jumpToRoute('/enterprise/blockchain/browser')">
+            <button type="button" class="hero-cta-ghost" @click="jumpToRoute('/login')">
               {{ t('officialHome.btnViewExplorer') }}
             </button>
           </div>
