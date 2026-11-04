@@ -115,6 +115,32 @@ describe('TradeDetail.vue', () => {
     wrapper.unmount()
   })
 
+  it('已取消交易的时间线写明「已取消」而不是「尚未完成」', async () => {
+    vi.mocked(getTrade).mockResolvedValueOnce({
+      ...fullTrade, status: 3, auditStatus: 0, completedAt: null,
+    } as never)
+
+    const wrapper = mountDetail()
+    await flush()
+
+    expect(wrapper.text()).toContain('已取消')
+    expect(wrapper.text()).not.toContain('尚未完成')
+    wrapper.unmount()
+  })
+
+  it('失败交易的时间线写明失败', async () => {
+    vi.mocked(getTrade).mockResolvedValueOnce({
+      ...fullTrade, status: 4, auditStatus: 0, completedAt: null,
+    } as never)
+
+    const wrapper = mountDetail()
+    await flush()
+
+    expect(wrapper.text()).toContain('失败')
+    expect(wrapper.text()).not.toContain('尚未完成')
+    wrapper.unmount()
+  })
+
   it('核算关联按 reportId 渲染链接或占位符', async () => {
     vi.mocked(getTrade).mockResolvedValueOnce(fullTrade as never)
     const withReport = mountDetail()
