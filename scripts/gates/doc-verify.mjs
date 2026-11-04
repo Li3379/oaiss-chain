@@ -104,6 +104,12 @@ function parseDevGuideSection11(content) {
         }
         expected.migrations = expectedMigs
         expected.declaredGaps = [...skipped]
+        // 小数版本（V29_1）无法被整数循环展开。仅「主版本落在区间内」不足以
+        // 判定已声明——那样区间内任何未声明的小数版本都会被静默放过，
+        // 正是本门禁要防的漏报。改为要求文档正文显式点名该版本号。
+        expected.declaredFractional = new Set(
+          [...`${row.val} ${row.desc}`.matchAll(/V(\d+_\d+)/g)].map(m => `V${m[1]}`)
+        )
       }
     } else if (/i18n/.test(f)) {
       expected.i18n = parseInt(row.val.replace(/,/g, ''), 10)
@@ -270,12 +276,19 @@ if (missingEnums.length === 0 && extraEnums.length === 0) {
 const migrateSet = new Set(migrations)
 const missingMig = EXPECT.migrations.filter(v => !migrateSet.has(v))
 const expectedMigSet = new Set(EXPECT.migrations)
-const undeclaredMig = migrations.filter(v => !expectedMigSet.has(v))
+// 小数版本（V29_1）无法被整数区间展开，必须在文档正文里逐一点名声明。
+// 只看「主版本是否落在区间内」会漏报区间内未声明的小数版本，故不采用。
+const declaredFractional = EXPECT.declaredFractional ?? new Set()
+const undeclaredMig = migrations.filter(
+  v => !expectedMigSet.has(v) && !declaredFractional.has(v)
+)
 const declaredGaps = EXPECT.declaredGaps ?? []
 const phantomGaps = declaredGaps.filter(v => migrateSet.has(v))
 if (missingMig.length === 0 && undeclaredMig.length === 0 && phantomGaps.length === 0) {
   const gapNote = declaredGaps.length ? `，${declaredGaps.join('/')} 已声明为空号` : ''
-  console.log(`✓ Flyway 迁移: ${EXPECT.migrations.join(',')} (共 ${EXPECT.migrations.length} 个版本${gapNote})`)
+  const fractional = migrations.filter(v => /^V\d+_\d+$/.test(v))
+  const fractionalNote = fractional.length ? ` + ${fractional.join(',')}` : ''
+  console.log(`✓ Flyway 迁移: ${EXPECT.migrations.join(',')}${fractionalNote} (共 ${EXPECT.migrations.length + fractional.length} 个版本${gapNote})`)
 } else {
   failures++
   console.log(`✗ Flyway 迁移: 缺 ${missingMig.join(',') || '无'}${phantomGaps.length ? `，声明为空号但文件存在 ${phantomGaps.join(',')}` : ''}${undeclaredMig.length ? `，代码存在但文档未声明 ${undeclaredMig.join(',')}` : ''}`)

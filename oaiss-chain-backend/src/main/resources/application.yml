@@ -61,6 +61,9 @@ spring:
     baseline-version: 0
     locations: classpath:db/migration
     table: flyway_schema_history
+    # V29_1 是为 V30 唯一索引补齐的数据前置修复，版本号低于已发布的 V30。
+    # 已在 V30 失败过的库 repair 后需要按 29.1 → 30 的顺序补跑，故允许乱序。
+    out-of-order: true
 
 # JWT Configuration
 jwt:

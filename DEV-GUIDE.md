@@ -179,7 +179,7 @@ bash ./scripts/stability-baseline.sh
 | Entities | 29 | 28 @Entity + BaseEntity（+IndustryBenchmark） |
 | Tables | 28 | 现存 28 张（曾创建 29 张，authenticator 在 V8 DROP 退场；+industry_benchmark） |
 | Repositories | 28 | `repository/*.java` 数（+IndustryBenchmarkRepository） |
-| Flyway 迁移 | V1-V30 | V3、V22 跳过（共 28 个版本；V23=单价口径注释，V24=信誉下市标记，V25=配额发放结构，V26=发电基准值种子，V27=报告周期唯一键，V28=碳币发放结构，V29=缺口抵扣字段，V30=证书编号唯一索引与信誉事件复合索引） |
+| Flyway 迁移 | V1-V30 | V3、V22 跳过（共 29 个版本；V23=单价口径注释，V24=信誉下市标记，V25=配额发放结构，V26=发电基准值种子，V27=报告周期唯一键，V28=碳币发放结构，V29=缺口抵扣字段，V29_1=证书编号唯一索引前的历史重号去重，V30=证书编号唯一索引与信誉事件复合索引） |
 | i18n 词条 | 2272 | zh-CN 与 en-US 严格镜像（`scripts/gates/i18n-verify.mjs` 实测；2026-11-03 Phase 7 生命周期与核证弹窗文案：+12） |
 | 前端 API 模块 | 23 | `src/api/*.ts`（不含 request.ts 与 index.ts；2026-11-01 新增 tradeAudit / regulatoryFinding） |
 | 枚举 | 10 | `enums/*.java`（含新增 AllocationStateEnum；`doc-verify.mjs` 的 expectEnums 已同步） |
