@@ -63,10 +63,18 @@ updates:
           - "minor"
           - "patch"
     ignore:
-      # Java 17 是本仓的运行时基线（CI 用 temurin 17，生产镜像同为 17）。
-      # 升到 21 需要同步改三处构建配置并回归，不能由机器人单方面推进。
+      # 锁定 Spring Boot 3.2.x 线。
+      #
+      # 第一版这里写的是 update-types: [semver-major]，理由是「Java 17 是基线」。
+      # 实测发现这个理由和规则**对不上**：3.2.12 → 3.5.16 在 semver 里是 **minor**
+      # （次版本号 2→5），根本不会命中 semver-major，于是 Dependabot 照开 PR #13。
+      # 而 Spring Boot 3.5 本身仍支持 Java 17，所以我原注释里「升到 21 才行」的说法
+      # 也不准确。
+      #
+      # 真正的意图是「3.2 是已验证的稳定线，跨次要版本需要一轮完整回归」。
+      # 用 versions 显式钉住区间，才能准确表达这个意图。
       - dependency-name: "org.springframework.boot:spring-boot-starter-parent"
-        update-types: ["version-update:semver-major"]
+        versions: [">=3.3.0"]
 
   # ------------------------------------------------------------------
   # 前端：npm
