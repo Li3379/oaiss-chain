@@ -43,8 +43,29 @@ fail=0
 # ------------------------------------------------------------------
 
 version_of() {
-  # V22__foo.sql -> 22 ；不符合命名时输出空
-  basename "$1" | sed -nE 's/^V([0-9]+)__.*/\1/p'
+  # V22__foo.sql -> 22 ；V29_1__foo.sql -> 29.1 ；不符合命名时输出空
+  #
+  # 为什么要支持小数版本：Flyway 的版本号允许 `29.1` 这种段（写成文件名是
+  # V29_1__），它用来插队到 V29 与 V30 之间做数据前置修复。第一版正则只认
+  # `^V([0-9]+)__`，于是 V29_1 解析为空 → 被判成「命名不合规」→ 整条推送
+  # 被拦。实测复现：main 上 13 个待推提交全部推不出去。
+  #
+  # 文件名内的 `_` 是 Flyway 版本分隔符，转成 `.` 输出，便于人读与比较。
+  local raw
+  raw="$(basename "$1" | sed -nE 's/^V([0-9]+(_[0-9]+)*)__.*/\1/p')"
+  [ -z "$raw" ] && return 0
+  printf '%s' "${raw//_/.}"
+}
+
+ver_key() {
+  # 把 "29" / "29.1" / "29.1.2" 压成定长整数，供数值比较。
+  #
+  # 为什么不能直接比字符串：字符串比较下 "29.1" > "30"（第二字符 '9' vs '0'），
+  # 而数值上 29.1 < 30。Flyway 是按数值逐段比较的，护栏的比较口径必须一致，
+  # 否则水位线判断会反向。
+  local v="$1" major minor patch
+  IFS='.' read -r major minor patch <<<"$v"
+  printf '%d' "$(( ${major:-0} * 100000000 + ${minor:-0} * 10000 + ${patch:-0} ))"
 }
 
 # 计算「本次推送新增了什么」的基点。
@@ -114,12 +135,19 @@ done
 check_migration_watermark() {
   local base_sha="$1"
 
-  local watermark=0
+  # watermark 同时保留「原始版本串」与「定长数值键」：
+  # 前者用于给人看的报错文案，后者用于比较（小数版本不能按字符串比）。
+  local watermark_raw=0 watermark=0
   if git rev-parse --verify -q "refs/remotes/${remote_name}/main" >/dev/null 2>&1; then
     while IFS= read -r f; do
-      local v
+      local v vk
       v="$(version_of "$f")"
-      if [ -n "$v" ] && [ "$v" -gt "$watermark" ]; then watermark=$v; fi
+      [ -z "$v" ] && continue
+      vk="$(ver_key "$v")"
+      if [ "$vk" -gt "$watermark" ]; then
+        watermark=$vk
+        watermark_raw=$v
+      fi
     done < <(git ls-tree -r --name-only "refs/remotes/${remote_name}/main" -- "$MIG_DIR" 2>/dev/null)
   fi
 
@@ -134,23 +162,56 @@ check_migration_watermark() {
   added="$(git diff --name-only --diff-filter=A "$range" -- "$MIG_DIR" 2>/dev/null || true)"
   [ -z "$added" ] && return 0
 
+  # Flyway 的 out-of-order 开关决定「版本号小于水位线」到底是灾难还是允许的补跑。
+  #
+  # 这里必须读运行期配置，而不是一律硬拦。两种情形都是真实存在的：
+  #   out-of-order=false（默认）→ 低版本迁移会让已部署环境**拒绝启动**，必须拦；
+  #   out-of-order=true         → 项目明确接受乱序（V29_1 就是刻意为 V30 做前置
+  #                                数据修复而插在水位线之下），此时硬拦等于让护栏
+  #                                与实际策略互相矛盾：CI 全绿、本地却推不出去。
+  local ooo=0
+  for cand in oaiss-chain-backend/src/main/resources/application.yml \
+              oaiss-chain-backend/src/main/resources/application.properties; do
+    [ -f "$cand" ] || continue
+    if grep -qE '^[[:space:]]*out-of-order:[[:space:]]*true' "$cand" 2>/dev/null; then
+      ooo=1
+    fi
+  done
+  local ooo_flag="$ooo"
+
   local bad=0
   while IFS= read -r f; do
     [ -z "$f" ] && continue
-    local v
+    local v vk
     v="$(version_of "$f")"
     if [ -z "$v" ]; then
-      echo "✗ 迁移文件命名不合规（应为 Vxx__desc.sql）：$f" >&2
+      echo "✗ 迁移文件命名不合规（应为 Vxx__desc.sql 或 Vxx_y__desc.sql）：$f" >&2
       bad=1
       continue
     fi
-    if [ "$v" -le "$watermark" ]; then
+    vk="$(ver_key "$v")"
+    if [ "$vk" -le "$watermark" ]; then
+      if [ "$ooo_flag" = "1" ]; then
+        cat >&2 <<EOF
+
+⚠ Flyway 版本号低于水位线：$f
+
+  该迁移版本 V$v，${remote_name}/main 上已有 V$watermark_raw。
+  但本项目 application.yml 已显式开启 flyway.out-of-order，属**允许的补跑**，
+  故只提示、不拦截。
+
+  仍然提醒：乱序迁移只能用于「数据前置修复」这类幂等脚本，
+  不能携带新的表结构依赖——它会在 V$watermark_raw 之后才执行。
+
+EOF
+        continue
+      fi
       cat >&2 <<EOF
 
 ✗ Flyway 版本冲突：$f
 
-  该迁移版本 V$v，但 ${remote_name}/main 上已有 V$watermark。
-  在已执行过 V$watermark 的环境里，V$v 会被 Flyway 判定为 out-of-order，
+  该迁移版本 V$v，但 ${remote_name}/main 上已有 V$watermark_raw。
+  在已执行过 V$watermark_raw 的环境里，V$v 会被 Flyway 判定为 out-of-order，
   应用直接启动失败（不是告警，是拒绝启动）。
 
   为什么会发生：
@@ -160,7 +221,7 @@ check_migration_watermark() {
   正确做法（按顺序做，不要偷懒）：
     git fetch $remote_name
     ls $MIG_DIR | sort -V | tail -3      # 取真正的最大号
-    git mv "$f" $MIG_DIR/V$((watermark + 1))__<描述>.sql
+    git mv "$f" $MIG_DIR/V$(( ${watermark_raw%%.*} + 1 ))__<描述>.sql
     # 然后同步 DEV-GUIDE.md §11 的 Flyway 迁移行
 
   注意：若空号已经产生，**不要**去补空号。补空号等于让所有已部署环境炸掉；
