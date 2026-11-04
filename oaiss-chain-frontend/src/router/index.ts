@@ -72,10 +72,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '碳币账户', roles: [ROLE.ENTERPRISE] },
       },
       {
+        // 区块浏览器归属监管与管理员：含区块列表、块内交易、MSP、背书节点等溯源信息。
+        // 组件文件保留在 views/enterprise/Blockchain.vue 原地，仅调整可见角色。
         path: 'enterprise/blockchain/browser',
         name: 'EnterpriseBlockchain',
         component: () => import('../views/enterprise/Blockchain.vue'),
-        meta: { title: '区块链浏览器', roles: [ROLE.ENTERPRISE] },
+        meta: { title: '区块链浏览器', roles: [ROLE.ADMIN, ROLE.THIRD_PARTY] },
       },
       {
         path: 'enterprise/carbon-neutral/projects',

@@ -72,7 +72,6 @@ export const MENU_BY_ROLE: Record<RoleType, MenuItem[]> = {
     },
     { label: 'menu.creditScore', path: '/enterprise/credit/score', tab: 'asset', rail: true },
     { label: 'menu.carbonCoinAccount', path: '/enterprise/carbon-coin/account', tab: 'asset', rail: true },
-    { label: 'menu.blockchain', path: '/enterprise/blockchain/browser', tab: 'asset', rail: true },
     {
       label: 'menu.carbonNeutral',
       children: [
@@ -105,6 +104,7 @@ export const MENU_BY_ROLE: Record<RoleType, MenuItem[]> = {
   ],
   [ROLE.THIRD_PARTY]: [
     { label: 'menu.monitoringCenter', path: '/third-party/monitor', tab: 'monitor', rail: true },
+    { label: 'menu.blockchain', path: '/enterprise/blockchain/browser', tab: 'monitor', rail: true },
     { label: 'menu.searchCenter', path: '/search', tab: 'search', rail: true },
   ],
   [ROLE.ADMIN]: [
@@ -122,6 +122,9 @@ export const MENU_BY_ROLE: Record<RoleType, MenuItem[]> = {
     // 与审核员端指向同一组件，路由允许 REVIEWER|ADMIN（与后端授权一致）。
     { label: 'menu.tradeAudit', path: '/auditor/trade/audit', tab: 'trade', rail: true },
     { label: 'menu.chainOps', path: '/admin/blockchain', tab: 'chain', rail: true },
+    // 区块浏览器（区块列表 / 块内交易 / MSP / 背书节点）——与「链上管理」是两个页面，
+    // 因此沿用 menu.blockchain 而非 menu.chainOps，避免同一 label 在菜单里出现两次。
+    { label: 'menu.blockchain', path: '/enterprise/blockchain/browser', tab: 'chain', rail: true },
     // 上链补救统一由审核员端「上链补救」承担，管理员端不再保留功能重复的「认证列表」入口。
     { label: 'menu.certificateManage', path: '/admin/certificates', tab: 'cert', rail: true },
     { label: 'menu.searchCenter', path: '/search', tab: 'search', rail: true },
@@ -130,7 +133,7 @@ export const MENU_BY_ROLE: Record<RoleType, MenuItem[]> = {
 
 /**
  * 图标栏条目表：与 MENU_BY_ROLE 的叶子路由一一对应，但按 pen 稿收敛为图标入口。
- * 条目数（企业 11 / 审核 4 / 监管 1 / 管理 6）即设计稿的图标栏规模。
+ * 条目数（企业 11 / 审核 5 / 监管 3 / 管理 7）即设计稿的图标栏规模。
  */
 export const RAIL_BY_ROLE: Record<RoleType, RailItem[]> = {
   [ROLE.ENTERPRISE]: [
@@ -141,7 +144,6 @@ export const RAIL_BY_ROLE: Record<RoleType, RailItem[]> = {
     { label: 'menu.companyInfo', railLabel: 'menu.railBoard', path: '/enterprise/company/dashboard', icon: 'TrendCharts', match: ['/enterprise/company/dashboard', '/enterprise/info'] },
     { label: 'menu.creditScore', railLabel: 'menu.railCredit', path: '/enterprise/credit/score', icon: 'Medal', match: ['/enterprise/credit/score'] },
     { label: 'menu.carbonCoinAccount', railLabel: 'menu.railCoin', path: '/enterprise/carbon-coin/account', icon: 'Wallet', match: ['/enterprise/carbon-coin/account'] },
-    { label: 'menu.blockchain', railLabel: 'menu.railChain', path: '/enterprise/blockchain/browser', icon: 'Link', match: ['/enterprise/blockchain/browser'] },
     { label: 'menu.carbonNeutral', railLabel: 'menu.railNeutral', path: '/enterprise/carbon-neutral/projects', icon: 'Aim', match: ['/enterprise/carbon-neutral/projects'] },
     { label: 'menu.aiPrediction', railLabel: 'menu.railAI', path: '/enterprise/market-prediction', icon: 'Cpu', match: ['/enterprise/market-prediction'] },
     { label: 'menu.searchCenter', railLabel: 'menu.railSearch', path: '/search', icon: 'Search', match: ['/search'] },
@@ -156,6 +158,7 @@ export const RAIL_BY_ROLE: Record<RoleType, RailItem[]> = {
   ],
   [ROLE.THIRD_PARTY]: [
     { label: 'menu.monitoringCenter', railLabel: 'menu.railMonitor', path: '/third-party/monitor', icon: 'Monitor', match: ['/third-party/monitor'] },
+    { label: 'menu.blockchain', railLabel: 'menu.railChain', path: '/enterprise/blockchain/browser', icon: 'Link', match: ['/enterprise/blockchain/browser'] },
     { label: 'menu.searchCenter', railLabel: 'menu.railSearch', path: '/search', icon: 'Search', match: ['/search'] },
   ],
   [ROLE.ADMIN]: [
@@ -163,6 +166,7 @@ export const RAIL_BY_ROLE: Record<RoleType, RailItem[]> = {
     { label: 'menu.dataManage', railLabel: 'menu.railData', path: '/admin/data/statistics', icon: 'DataBoard', match: ['/admin/data/statistics'] },
     { label: 'menu.auctionMatching', railLabel: 'menu.railMatching', path: '/admin/trading/matching', icon: 'Histogram', match: ['/admin/trading/matching'] },
     { label: 'menu.chainOps', railLabel: 'menu.railChainOps', path: '/admin/blockchain', icon: 'Link', match: ['/admin/blockchain'] },
+    { label: 'menu.blockchain', railLabel: 'menu.railChain', path: '/enterprise/blockchain/browser', icon: 'Link', match: ['/enterprise/blockchain/browser'] },
     { label: 'menu.certificateManage', railLabel: 'menu.railCertAdmin', path: '/admin/certificates', icon: 'Files', match: ['/admin/certificates'] },
     { label: 'menu.searchCenter', railLabel: 'menu.railSearch', path: '/search', icon: 'Search', match: ['/search'] },
   ],
