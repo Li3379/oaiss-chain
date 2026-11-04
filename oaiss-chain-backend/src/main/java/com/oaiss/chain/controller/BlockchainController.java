@@ -117,7 +117,7 @@ public class BlockchainController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "未授权访问")
     })
     @SecurityRequirement(name = "Bearer Authentication")
-    @PreAuthorize("hasAnyRole('ADMIN', 'ENTERPRISE', 'THIRD_PARTY')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'THIRD_PARTY')")
     public ApiResponse<Page<Map<String, Object>>> listTransactions(
             @Parameter(description = "页码（从1开始）", example = "1") @RequestParam(defaultValue = "1") Integer page,
             @Parameter(description = "每页大小", example = "20") @RequestParam(defaultValue = "20") Integer size) {
@@ -138,7 +138,7 @@ public class BlockchainController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "未授权访问")
     })
     @SecurityRequirement(name = "Bearer Authentication")
-    @PreAuthorize("hasAnyRole('ADMIN', 'ENTERPRISE', 'THIRD_PARTY')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'THIRD_PARTY')")
     public ApiResponse<Page<Map<String, Object>>> listLatestBlocks(
             @Parameter(description = "页码（从1开始）", example = "1") @RequestParam(defaultValue = "1") Integer page,
             @Parameter(description = "每页大小", example = "20") @RequestParam(defaultValue = "20") Integer size) {
