@@ -1,0 +1,209 @@
+# Dependabot —— 依赖与安全更新的自动化
+#
+# ============================================================
+# 为什么需要它
+# ============================================================
+# 诊断时实测：仓库的 dependabot_security_updates = **disabled**，
+# 且没有任何 dependabot.yml。这意味着：
+#
+#   - CVE 披露后不会自动开 PR，只能靠人偶然发现
+#   - 依赖升级没有节奏，等到「非升不可」时是一次大跳（风险最高）
+#   - 前端 npm / 后端 maven / ML pip / 链码 go / Actions 五个生态
+#     全都不在自动跟踪范围内
+#
+# 历史教训：本仓曾一次性做 axios / echarts / vite / postcss / nanoid / ws
+# 的 semver 内升级（见 CHANGELOG 1.7.x），清理掉全部 vulnerabilities——
+# 那种「攒一批再清」的做法应该由持续的小步更新替代。
+#
+# ============================================================
+# 设计取舍
+# ============================================================
+# 1. 所有生态统一每周一次、同一天：避免每天都有 PR 打断注意力。
+#    单个 PR 的 review 成本远低于「一次大版本迁移」。
+# 2. 分组（groups）：把同一生态的 patch/minor 合成一个 PR。
+#    否则五条流水线一次开十几个 PR，人会直接关掉通知。
+# 3. major 版本**不分组**：破坏性变更必须单独审视，不能混在批量里被顺手点合并。
+# 4. 打开 open-pull-requests-limit，避免 PR 堆积淹没其他工作。
+# 5. 提交信息用 Conventional Commits（commit-message 配置），
+#    与本仓 commit-msg 钩子、release notes 生成保持一致。
+
+version: 2
+
+updates:
+  # ------------------------------------------------------------------
+  # 后端：Maven
+  # ------------------------------------------------------------------
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "backend"
+    groups:
+      # Spring 全家桶必须同版本走：Spring Boot BOM 之外的个别构件
+      # 单独升级会出现版本错配，运行时才炸。
+      spring:
+        patterns:
+          - "org.springframework*"
+        update-types:
+          - "minor"
+          - "patch"
+      maven-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # Java 17 是本仓的运行时基线（CI 用 temurin 17，生产镜像同为 17）。
+      # 升到 21 需要同步改三处构建配置并回归，不能由机器人单方面推进。
+      - dependency-name: "org.springframework.boot:spring-boot-starter-parent"
+        update-types: ["version-update:semver-major"]
+
+  # ------------------------------------------------------------------
+  # 前端：npm
+  # ------------------------------------------------------------------
+  - package-ecosystem: "npm"
+    directory: "/oaiss-chain-frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "frontend"
+    groups:
+      # Vue 生态联动：vue / vue-router / vue-i18n / pinia / @vue/* 必须同时升，
+      # 单独升一个经常出现 peer 依赖冲突或运行时不兼容。
+      vue:
+        patterns:
+          - "vue"
+          - "vue-router"
+          - "vue-i18n"
+          - "pinia"
+          - "@vue/*"
+        update-types:
+          - "minor"
+          - "patch"
+      npm-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # Playwright 大版本升级会改变选择器/断言行为，且 e2e 已针对当前版本
+      # 固定了 ubuntu-24.04 runner（见 e2e-tests.yml 注释）。需人工评估。
+      - dependency-name: "playwright"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@playwright/test"
+        update-types: ["version-update:semver-major"]
+
+  # ------------------------------------------------------------------
+  # ML 微服务：pip
+  # ------------------------------------------------------------------
+  - package-ecosystem: "pip"
+    directory: "/oaiss-chain-ml-service"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "ml-service"
+    groups:
+      pip-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ------------------------------------------------------------------
+  # 根 scripts：Playwright（e2e 探针用）
+  # ------------------------------------------------------------------
+  - package-ecosystem: "npm"
+    directory: "/scripts"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "tooling"
+
+  # ------------------------------------------------------------------
+  # 链码：Go
+  # ------------------------------------------------------------------
+  - package-ecosystem: "gomod"
+    directory: "/oaiss-chain-chaincode"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "chaincode"
+    groups:
+      # Fabric 合约 API 与 shim 必须同版本，否则链码容器 build 阶段即失败。
+      fabric:
+        patterns:
+          - "github.com/hyperledger/fabric-contract-api-go"
+          - "github.com/hyperledger/fabric-chaincode-go"
+          - "github.com/hyperledger/fabric-protos-go"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ------------------------------------------------------------------
+  # GitHub Actions
+  # ------------------------------------------------------------------
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(ci)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "ci"
+    groups:
+      actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
