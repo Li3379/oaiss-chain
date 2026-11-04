@@ -14,8 +14,8 @@ test.describe('Role: Third Party - Smoke', () => {
     await page.goto('/third-party/monitor')
     await page.waitForLoadState('networkidle')
     const layout = new Layout(page)
-    await layout.expectSidebar(['监管中心', '搜索查询'])
-    await layout.expectRailCount(2)
+    await layout.expectSidebar(['监管中心', '区块链', '搜索查询'])
+    await layout.expectRailCount(3)
   })
 
   test('user info displayed', async ({ page }) => {
@@ -37,6 +37,14 @@ test.describe('Role: Third Party - Smoke', () => {
       const po = new MonitorPage(page)
       await po.goto()
       await po.expectStatistics()
+    })
+  })
+
+  test.describe('Blockchain Browser', () => {
+    test('page loads', async ({ page }) => {
+      await page.goto('/enterprise/blockchain/browser')
+      await page.waitForLoadState('networkidle')
+      await expect(page).toHaveURL(/\/enterprise\/blockchain\/browser/)
     })
   })
 })

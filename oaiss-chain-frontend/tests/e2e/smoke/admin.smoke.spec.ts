@@ -17,9 +17,10 @@ test.describe('Role: Admin - Smoke', () => {
 
     // 管理端所有叶子都是 rail: true，侧栏（rail === false 的二级项）本来就是空的，
     // 所以不能断言 role=menuitem——那样永远失败。真正可见的是两处：
-    //   1. 72px 图标栏（6 个入口，含本轮新增「链上管理」）
-    //   2. 顶栏一级页签（按 tab 去重：撮合控制台与成交审核共用 trade，只出现一次）
-    await layout.expectRailCount(6)
+    //   1. 72px 图标栏（7 个入口：「链上管理」+ 本轮新增的「区块链」浏览器）
+    //   2. 顶栏一级页签（按 tab 去重：撮合控制台与成交审核共用 trade，只出现一次；
+    //      区块浏览器与链上管理共用 chain，不新增页签）
+    await layout.expectRailCount(7)
     await layout.expectTopTabCount(6)
     await layout.expectTopTabs(['系统管理', '数据管理', '交易市场', '链上管理', '证书管理', '搜索查询'])
   })
@@ -68,6 +69,14 @@ test.describe('Role: Admin - Smoke', () => {
       await page.goto('/admin/data/statistics')
       await page.waitForLoadState('networkidle')
       await expect(page).toHaveURL(/\/admin\/data\/statistics/)
+    })
+  })
+
+  test.describe('Blockchain Browser', () => {
+    test('page loads', async ({ page }) => {
+      await page.goto('/enterprise/blockchain/browser')
+      await page.waitForLoadState('networkidle')
+      await expect(page).toHaveURL(/\/enterprise\/blockchain\/browser/)
     })
   })
 })
