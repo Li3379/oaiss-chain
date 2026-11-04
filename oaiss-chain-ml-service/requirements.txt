@@ -3,7 +3,7 @@ uvicorn[standard]==0.34.0
 prophet==1.1.6
 scikit-learn==1.6.1
 xgboost==2.1.4
-pandas==2.2.3
+pandas==3.1.0
 numpy==2.2.3
 pydantic==2.10.6
 pydantic-settings==2.7.1
