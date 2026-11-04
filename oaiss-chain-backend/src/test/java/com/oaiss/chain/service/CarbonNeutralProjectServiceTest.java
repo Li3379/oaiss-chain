@@ -718,6 +718,86 @@ class CarbonNeutralProjectServiceTest {
     }
 
     @Test
+    @DisplayName("提交核证申请失败-项目已在核证中不可重复提交")
+    void submitForVerification_pendingProjectRejected() {
+        testProject.setStatus(CarbonNeutralProjectService.STATUS_IMPLEMENTING);
+        testProject.setVerificationStatus(CarbonNeutralProjectService.VERIFY_STATUS_PENDING);
+        testProject.setVerifierId(7L);
+        Reviewer reviewer = Reviewer.builder().userId(2L).build();
+        reviewer.setId(9L);
+        when(projectRepository.findById(1L)).thenReturn(Optional.of(testProject));
+        when(enterpriseRepository.findByUserIdAndDeletedFalse(1L)).thenReturn(Optional.of(testEnterprise));
+        when(reviewerRepository.findByUserIdAndDeletedFalse(2L)).thenReturn(Optional.of(reviewer));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> service.submitForVerification(testUser, 1L, 2L));
+
+        assertEquals(3003, ex.getCode());
+        verify(projectRepository, never()).save(any());
+        assertEquals(7L, testProject.getVerifierId());
+    }
+
+    @Test
+    @DisplayName("提交核证申请失败-已核证项目不可重复提交")
+    void submitForVerification_verifiedProjectRejected() {
+        testProject.setStatus(CarbonNeutralProjectService.STATUS_COMPLETED);
+        testProject.setVerificationStatus(CarbonNeutralProjectService.VERIFY_STATUS_VERIFIED);
+        testProject.setIssuedCredits(BigDecimal.valueOf(100));
+        Reviewer reviewer = Reviewer.builder().userId(2L).build();
+        reviewer.setId(9L);
+        when(projectRepository.findById(1L)).thenReturn(Optional.of(testProject));
+        when(enterpriseRepository.findByUserIdAndDeletedFalse(1L)).thenReturn(Optional.of(testEnterprise));
+        when(reviewerRepository.findByUserIdAndDeletedFalse(2L)).thenReturn(Optional.of(reviewer));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> service.submitForVerification(testUser, 1L, 2L));
+
+        assertEquals(3003, ex.getCode());
+        verify(projectRepository, never()).save(any());
+        assertEquals(CarbonNeutralProjectService.VERIFY_STATUS_VERIFIED, testProject.getVerificationStatus());
+        assertEquals(0, BigDecimal.valueOf(100).compareTo(testProject.getIssuedCredits()));
+    }
+
+    @Test
+    @DisplayName("提交核证申请成功-核证失败的项目可重新提交")
+    void submitForVerification_failedVerificationAllowed() {
+        testProject.setStatus(CarbonNeutralProjectService.STATUS_IMPLEMENTING);
+        testProject.setVerificationStatus(CarbonNeutralProjectService.VERIFY_STATUS_FAILED);
+        testProject.setIssuedCredits(BigDecimal.ZERO);
+        Reviewer reviewer = Reviewer.builder().userId(2L).build();
+        reviewer.setId(9L);
+        when(projectRepository.findById(1L)).thenReturn(Optional.of(testProject));
+        when(enterpriseRepository.findByUserIdAndDeletedFalse(1L)).thenReturn(Optional.of(testEnterprise));
+        when(reviewerRepository.findByUserIdAndDeletedFalse(2L)).thenReturn(Optional.of(reviewer));
+        when(projectRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        CarbonNeutralProjectResponse response = service.submitForVerification(testUser, 1L, 2L);
+
+        assertNotNull(response);
+        assertEquals(CarbonNeutralProjectService.VERIFY_STATUS_PENDING, testProject.getVerificationStatus());
+        assertEquals(Long.valueOf(2L), testProject.getVerifierId());
+        verify(projectRepository, times(1)).save(any());
+    }
+
+    @Test
+    @DisplayName("提交核证申请失败-历史空核证状态按不可提交处理")
+    void submitForVerification_nullVerificationStatusRejected() {
+        testProject.setStatus(CarbonNeutralProjectService.STATUS_IMPLEMENTING);
+        testProject.setVerificationStatus(null);
+        Reviewer reviewer = Reviewer.builder().userId(2L).build();
+        reviewer.setId(9L);
+        when(projectRepository.findById(1L)).thenReturn(Optional.of(testProject));
+        when(enterpriseRepository.findByUserIdAndDeletedFalse(1L)).thenReturn(Optional.of(testEnterprise));
+        when(reviewerRepository.findByUserIdAndDeletedFalse(2L)).thenReturn(Optional.of(reviewer));
+
+        BusinessException ex = assertThrows(BusinessException.class,
+                () -> service.submitForVerification(testUser, 1L, 2L));
+
+        assertEquals(3003, ex.getCode());
+        verify(projectRepository, never()).save(any());
+    }
+
+    @Test
     @DisplayName("核证项目成功-项目状态为已完成不改变状态")
     void testVerifyProjectWhenAlreadyCompleted() {
         testProject.setVerificationStatus(CarbonNeutralProjectService.VERIFY_STATUS_PENDING);
